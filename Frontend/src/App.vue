@@ -54,11 +54,9 @@ import RestrictionView from './components/RestrictionView.vue';
   content: "";
   position: absolute;
   bottom: -10px;
-  /* Adjust the value to expose more or less of the bottom shadow */
   left: 0;
   width: 100%;
   height: 10px;
-  /* Match this to the offset in the bottom property */
   box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
 }
 </style>
