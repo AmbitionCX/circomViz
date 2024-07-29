@@ -17,4 +17,6 @@ pnpm run dev
 The backend is built with **TypeScript + Fastify**. To run the backend, run the following command in the root directory of the project:
 ```shell
 pnpm install
+pnpm run build
+pnpm run start
 ```

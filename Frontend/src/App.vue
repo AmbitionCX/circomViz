@@ -1,31 +1,28 @@
 <template>
   <el-container class="h-screen">
-    <el-header class="bg-gray-800 text-white p-4">
-      <h1 class="text-2xl">Circom Visual Programming System</h1>
+    <el-header class="bg-indigo-900">
+      <h1 class="text-base text-white font-bold p-2">Visual Assistance System for Circom Programming</h1>
     </el-header>
-    <el-main class="p-4 bg-gray-100">
-      <el-row :gutter="20" class="h-full">
-        <el-col :span="6" class="h-full">
+    <el-main class="bg-gray-100 pt-2">
+      <el-row class="h-full w-full">
+        <el-col :span="8" class="h-full">
           <!-- A: Circom Code Input Area -->
-          <div class="h-full bg-white p-4 rounded-lg shadow-md">
+          <div class="h-3/4 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
             <CircomCode />
           </div>
-        </el-col>
-        <el-col :span="18" class="h-full">
-          <!-- B: Circuit View -->
-          <div class="h-1/2 p-4 mb-4">
-            <div class="h-full w-full bg-white rounded-lg shadow-custom shadow-exposed-bottom">
-              <CircuitView class="h-full w-full p-4" />
-            </div>
+          <!-- C: Signal Selection -->
+          <div class="h-1/4 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
+            <SignalSelection class="h-full w-full" />
           </div>
-          <!-- C & D: Signal Selection and Restriction View -->
-          <div class="h-1/2 grid grid-cols-2 gap-4">
-            <div class="bg-white p-4 rounded-lg shadow-custom">
-              <SignalSelection class="h-full w-full" />
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow-custom shadow-exposed-bottom">
-              <RestrictionView class="h-full w-full" />
-            </div>
+        </el-col>
+        <el-col :span="16" class="h-full pl-2">
+          <!-- B: Circuit View -->
+          <div class="h-1/2 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
+            <CircuitView />
+          </div>
+          <!-- D: Restriction View -->
+          <div class="h-1/2 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
+            <RestrictionView />
           </div>
         </el-col>
       </el-row>
@@ -41,6 +38,10 @@ import RestrictionView from './components/RestrictionView.vue';
 </script>
 
 <style scoped>
+.el-header {
+  --el-header-height: fit-content;
+}
+
 .shadow-custom {
   box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   overflow: hidden;
