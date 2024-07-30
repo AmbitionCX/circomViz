@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node ./build/index.js"
+    "start": "node ./dist/index.js"
   },
   "keywords": [],
   "author": "",
@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.11",
-    "typescript": "^5.5.3"
+    "typescript": "5.6.0-dev.20240730"
   },
   "type": "module"
 }

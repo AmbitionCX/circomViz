@@ -14,6 +14,21 @@ pnpm run dev
 
 ## Initial setup for Backend
 
+Install [circom](https://github.com/iden3/circom) before running the backend. You can download from [GitHub release page](https://github.com/iden3/circom/releases) (recommended), and make it executable by running:
+```shell
+chmod +x ./circom-linux-amd64
+cp ./circom-linux-amd64 /usr/local/bin/circom
+circom --version
+```
+Or build manually:
+```shell
+git clone https://github.com/iden3/circom.git
+cargo build --release
+cargo install --path circom
+# install the circom binary in the directory $HOME/.cargo/bin
+circom --version
+```
+
 The backend is built with **TypeScript + Fastify**. To run the backend, run the following command in the root directory of the project:
 ```shell
 pnpm install

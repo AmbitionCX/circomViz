@@ -36,25 +36,28 @@ interface ErrorType {
 }
 
 const generateCircuit = async () => {
+  if (!code.value) {
+    console.log("Empty code");
+  } else {
+    let data = {
+      code: code.value
+    }
 
-  let data = {
-    code: code.value
+    generate_circuit(data).then((response: generate_circuit_response) => {
+      let circuitData = response.data;
+      console.log(circuitData);
+
+      circuitStore.setCircuitData(circuitData);
+    }).catch((err: ErrorType) => {
+      console.log(error)
+      error.value = err.response?.data?.error || 'Error generating circuit';
+    })
   }
-
-  generate_circuit(data).then((response: generate_circuit_response) => {
-    let circuitData = response.data;
-    console.log(circuitData);
-    
-    circuitStore.setCircuitData(circuitData);
-  }).catch((err: ErrorType) => {
-    console.log(error)
-    error.value = err.response?.data?.error || 'Error generating circuit';
-  })
 };
 </script>
 
 <style scoped>
 :deep(textarea) {
-  height:100%
+  height: 100%
 }
 </style>

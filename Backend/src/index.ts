@@ -1,5 +1,7 @@
 import fastify from 'fastify';
 import cors from '@fastify/cors';
+import { saveCode } from './scripts/compilation.js';
+
 
 const server = fastify();
 server.register(cors, {
@@ -8,11 +10,15 @@ server.register(cors, {
     credentials: true
 });
 
-server.post('/parse-circom', async (request, reply) => {
+server.post('/generateCircuit', async (request, reply) => {
     const { code } = request.body as { code: string };
+    const timestamp: string = new Date().toISOString().replace(/[:.]/g, '-'); // Format: YYYY-MM-DDTHH-MM-SS-MSZ
+    const fileName: string = `${timestamp}.circom`;
+
     try {
-        
-        reply.send("Hello");
+        saveCode(timestamp, fileName, code)
+
+        reply.send(JSON.stringify({"data": "Hello"}));
     } catch (error) {
         const err = error as Error;
         reply.status(400).send({ error: 'Failed to parse Circom code', details: err.message });
