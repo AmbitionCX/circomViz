@@ -43,6 +43,8 @@ const generateCircuit = async () => {
 
   generate_circuit(data).then((response: generate_circuit_response) => {
     let circuitData = response.data;
+    console.log(circuitData);
+    
     circuitStore.setCircuitData(circuitData);
   }).catch((err: ErrorType) => {
     console.log(error)
