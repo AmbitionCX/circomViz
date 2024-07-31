@@ -4,8 +4,7 @@
       <h2 class="text-base font-bold mb-2">Circom Code Input Area</h2>
     </div>
     <div class="grow">
-      <el-input type="textarea" v-model="code" class="w-full h-full"
-        placeholder="Enter your Circom code here..."></el-input>
+      <MonacoEditor v-model="code" class="w-full h-full" />
     </div>
     <div>
       <el-button @click="generateCircuit" type="primary" class="mt-2">Generate Circuit</el-button>
@@ -16,7 +15,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { generate_circuit } from '@/apis/index.ts'
+import MonacoEditor from '@/components/MonacoEditor.vue';
+import { generate_circuit } from '@/apis/index.ts';
 import { useCircuitStore } from '@/stores/circuit';
 
 const code = ref<string>('');
@@ -24,7 +24,7 @@ const circuitStore = useCircuitStore();
 const error = ref<string>('');
 
 interface generate_circuit_response {
-  data: string
+  data: string;
 }
 
 interface ErrorType {
@@ -40,8 +40,8 @@ const generateCircuit = async () => {
     console.log("Empty code");
   } else {
     let data = {
-      code: code.value
-    }
+      code: code.value,
+    };
 
     generate_circuit(data).then((response: generate_circuit_response) => {
       let circuitData = response.data;
@@ -49,15 +49,15 @@ const generateCircuit = async () => {
 
       circuitStore.setCircuitData(circuitData);
     }).catch((err: ErrorType) => {
-      console.log(error)
+      console.log(error);
       error.value = err.response?.data?.error || 'Error generating circuit';
-    })
+    });
   }
 };
 </script>
 
 <style scoped>
 :deep(textarea) {
-  height: 100%
+  height: 100%;
 }
 </style>
