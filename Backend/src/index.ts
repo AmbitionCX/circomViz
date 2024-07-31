@@ -2,7 +2,6 @@ import fastify from 'fastify';
 import cors from '@fastify/cors';
 import { saveCode } from './scripts/compilation.js';
 
-
 const server = fastify();
 server.register(cors, {
     origin: '*',
@@ -18,7 +17,11 @@ server.post('/generateCircuit', async (request, reply) => {
     try {
         saveCode(timestamp, fileName, code)
 
-        reply.send(JSON.stringify({"data": "Hello"}));
+        let replyData = {
+            "compilationId": timestamp
+        }
+        
+        reply.send(JSON.stringify(replyData));
     } catch (error) {
         const err = error as Error;
         reply.status(400).send({ error: 'Failed to parse Circom code', details: err.message });

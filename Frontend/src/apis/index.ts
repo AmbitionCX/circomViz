@@ -5,12 +5,13 @@ enum API {
 }
 
 // --------- generate_circuit ---------
-interface generate_circuit_request {
+export interface generate_circuit_request {
     code: string
 }
 
-interface generate_circuit_response {
-    data: string
+export interface generate_circuit_response {
+    compilationId: string,
+    
 }
 
 export const generate_circuit = (data: generate_circuit_request) =>
