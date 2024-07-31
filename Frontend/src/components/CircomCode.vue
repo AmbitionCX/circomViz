@@ -16,39 +16,26 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { generate_circuit } from '@/apis/index.ts'
+import { generate_circuit, generate_circuit_request, generate_circuit_response } from '@/apis/index.ts'
 import { useCircuitStore } from '@/stores/circuit';
 
 const code = ref<string>('');
 const circuitStore = useCircuitStore();
 const error = ref<string>('');
 
-interface generate_circuit_response {
-  data: string
-}
-
-interface ErrorType {
-  response?: {
-    data?: {
-      error?: string;
-    };
-  };
-}
-
 const generateCircuit = async () => {
   if (!code.value) {
     console.log("Empty code");
   } else {
-    let data = {
+    let data: generate_circuit_request = {
       code: code.value
     }
 
     generate_circuit(data).then((response: generate_circuit_response) => {
-      let circuitData = response.data;
-      console.log(circuitData);
+      console.log("Circom code compiled:", response.compilationId);
 
-      circuitStore.setCircuitData(circuitData);
-    }).catch((err: ErrorType) => {
+      circuitStore.setCompilationId(response.compilationId);
+    }).catch((err: any) => {
       console.log(error)
       error.value = err.response?.data?.error || 'Error generating circuit';
     })
