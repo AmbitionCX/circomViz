@@ -3,7 +3,7 @@
     <div>
       <h2 class="text-base font-bold mb-2">Circom Code Input Area</h2>
     </div>
-    <div class="grow">
+    <div class="grow border">
       <MonacoEditor v-model="code" class="w-full h-full" />
     </div>
     <div>
@@ -28,7 +28,7 @@ const generateCircuit = async () => {
   if (!code.value) {
     console.log("Empty code");
   } else {
-
+    
     let data: generate_circuit_request = {
       code: code.value
     }

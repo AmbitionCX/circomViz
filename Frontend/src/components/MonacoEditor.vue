@@ -1,15 +1,15 @@
 <template>
-  <div class="editor-container" ref="editorContainer"></div>
+  <div class="editor-container" id="monaco-editor" ref="editorContainer"></div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import * as monaco from 'monaco-editor';
 
-const editorContainer = ref(null);
+const editorContainer = ref<HTMLElement | null>(document.getElementById('monaco-editor'));
 const code = ref('');
 
-let editor;
+let editor: any;
 
 onMounted(() => {
   monaco.languages.register({ id: 'circom' });
@@ -59,12 +59,14 @@ onMounted(() => {
     },
   });
 
-  editor = monaco.editor.create(editorContainer.value, {
-    value: code.value,
-    language: 'circom',
-    theme: 'vs',
-    automaticLayout: true,
-  });
+  if (editorContainer.value) {
+    editor = monaco.editor.create(editorContainer.value, {
+      value: code.value,
+      language: 'circom',
+      theme: 'vs',
+      automaticLayout: true,
+    });
+  }
 
   editor.onDidChangeModelContent(() => {
     code.value = editor.getValue();
