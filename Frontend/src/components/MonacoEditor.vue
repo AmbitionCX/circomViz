@@ -5,9 +5,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import * as monaco from 'monaco-editor';
+import { useCircuitStore } from '@/stores/circuit';
 
 const editorContainer = ref<HTMLElement | null>(document.getElementById('monaco-editor'));
-const code = ref('');
+const circuitStore = useCircuitStore();
 
 let editor: any;
 
@@ -18,18 +19,18 @@ onMounted(() => {
   monaco.languages.setMonarchTokensProvider('circom', {
     keywords: [
       'signal', 'input', 'output', 'public', 'template', 'component', 'parallel', 'custom', 'var', 'function',
-      'return', 'if', 'else', 'for', 'while', 'do', 'log', 'assert', 'include', 'pragma',
+      'return', 'if', 'else', 'for', 'while', 'do', 'log', 'assert', 'include', 'pragma'
     ],
     typeKeywords: ['input', 'output', 'public'],
     operators: [
-      '!', '~', '-', '||', '&&', '==', '!=', '<', '>', '<=', '>=', '|', '&', '<<', '>>', '+', '-', '*', '/', '\\', '%', '**', '^', '=', '<--', '<==',
+      '!', '~', '-', '||', '&&', '==', '!=', '<', '>', '<=', '>=', '|', '&', '<<', '>>', '+', '-', '*', '/', '\\', '%', '**', '^', '=', '<--', '<=='
     ],
-    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{14}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
     tokenizer: {
       root: [
         [/\w+/, { cases: { '@keywords': 'keyword', '@default': 'identifier' } }],
         [/[{}()\[\]]/, '@brackets'],
-        [/[;,.]/, 'delimiter'],
+        [/[;.]/, 'delimiter'],
         [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
         [/0[xX][0-9a-fA-F]+/, 'number.hex'],
         [/\d+/, 'number'],
@@ -56,12 +57,12 @@ onMounted(() => {
         [/\/\*/, 'comment', '@comment'],
         [/\/\/.*$/, 'comment'],
       ],
-    },
+    }
   });
 
   if (editorContainer.value) {
     editor = monaco.editor.create(editorContainer.value, {
-      value: code.value,
+      value: circuitStore.code,
       language: 'circom',
       theme: 'vs',
       automaticLayout: true,
@@ -69,7 +70,7 @@ onMounted(() => {
   }
 
   editor.onDidChangeModelContent(() => {
-    code.value = editor.getValue();
+    circuitStore.setCode(editor.getValue());
   });
 });
 
@@ -79,7 +80,7 @@ onBeforeUnmount(() => {
   }
 });
 
-watch(code, (newValue) => {
+watch(() => circuitStore.code, (newValue) => {
   if (editor && editor.getValue() !== newValue) {
     editor.setValue(newValue);
   }

@@ -4,10 +4,11 @@ export const useCircuitStore = defineStore('circuit', {
     state: () => ({
         compilationId: '' as string,
         circuitData: {
-            signals: [],
-            components: []
+            signals: [] as any[],
+            components: [] as any[],
         },
-        selectedSignals: []
+        selectedSignals: [] as any[],
+        code: '' as string,
     }),
     actions: {
         setCompilationId(id: string) {
@@ -15,6 +16,9 @@ export const useCircuitStore = defineStore('circuit', {
         },
         resetCompilationId() {
             this.compilationId = '';
-        }
+        },
+        setCode(newCode: string) {
+            this.code = newCode;
+        },
     }
 });
