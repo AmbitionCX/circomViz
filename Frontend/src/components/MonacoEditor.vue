@@ -15,7 +15,6 @@ let editor: any;
 onMounted(() => {
   monaco.languages.register({ id: 'circom' });
 
-  // 配置语法高亮
   monaco.languages.setMonarchTokensProvider('circom', {
     keywords: [
       'signal', 'input', 'output', 'public', 'template', 'component', 'parallel', 'custom', 'var', 'function',

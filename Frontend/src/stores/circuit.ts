@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 
 export const useCircuitStore = defineStore('circuit', {
     state: () => ({
+        circomCode: '' as string,
+
         compilationId: '' as string,
         circuitData: {
             signals: [] as any[],
@@ -10,6 +12,11 @@ export const useCircuitStore = defineStore('circuit', {
         selectedSignals: [] as any[],
         code: '' as string,
     }),
+    getters: {
+        isCodeEmpty(): boolean {
+            return this.circomCode === '';
+        },
+    },
     actions: {
         setCompilationId(id: string) {
             this.compilationId = id;
