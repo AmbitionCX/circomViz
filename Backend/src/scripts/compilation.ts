@@ -1,9 +1,7 @@
-import { log } from 'console';
 import * as fs from 'fs';
 import * as path from 'path';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
-import * as readline from 'readline';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -30,10 +28,12 @@ export async function saveCode(folderName: string, fileName: string, code: strin
     const { symbolFile, constraintFile } = result;
     const tree = await generateDAG(symbolFile, constraintFile);
 
-    // 构建 circuitTree的json 文件路径并保存
+    // Build circuitTree's json file path and save it
     const treeFileName = fileName.replace('.circom', '_tree.json');
     const outputFilePath = path.join(folderPath, treeFileName);
-    await exportTreeAsJSON(tree, outputFilePath);
+    await exportTreeAsJSON(tree, outputFilePath).then((circuitData) => {
+      return circuitData
+    })
   });
 }
 
@@ -41,7 +41,8 @@ async function compileCircomCode(folderPath: string, filePath: string): Promise<
   const libraryPath = path.join(__dirname, '..', '..');
 
   try {
-    const { stdout, stderr } = await execPromise(`circom -l ${libraryPath} -o ${folderPath} ${filePath} --sym --json --O2`);
+    const { stdout, stderr } = await execPromise(`circom -l ${libraryPath} -o ${folderPath} ${filePath} --sym --json --simplification_substitution --O2`);
+
     const stdoutLines = stdout.split('\n');
 
     let symbolFile = '';
@@ -55,7 +56,6 @@ async function compileCircomCode(folderPath: string, filePath: string): Promise<
         constraintFile = line.trim().split(' ')[3];
       }
     });
-
 
     if (!symbolFile || !constraintFile) {
       throw new Error('Symbol file or constraint file not found in the output.');
@@ -72,15 +72,15 @@ async function compileCircomCode(folderPath: string, filePath: string): Promise<
   }
 }
 
-// 定义约束中的线性表达式类型
+// Defining the type of linear expression in a constraint
 interface LinearExpr {
   [signalId: string]: string;
 }
 
 interface Constraint {
-  0: LinearExpr;  // 对应 linA
-  1: LinearExpr;  // 对应 linB
-  2: LinearExpr;  // 对应 linC
+  0: LinearExpr;  // linA
+  1: LinearExpr;  // linB
+  2: LinearExpr;  // linC
 }
 
 interface Symbol {
@@ -95,16 +95,16 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-// 确保所有节点都包含 children 属性，若无子节点则添加空数组
+// Make sure all nodes contain the children attribute, or add an empty array if there are no children.
 function ensureChildren(node: TreeNode): void {
   if (!node.children) {
     node.children = [];
   } else {
-    node.children.forEach(ensureChildren); // 递归处理子节点
+    node.children.forEach(ensureChildren); // Recursive processing of child nodes
   }
 }
 
-export const generateDAG = async (symbolFile: string, constraintFile: string): Promise<TreeNode> => {
+const generateDAG = async (symbolFile: string, constraintFile: string): Promise<TreeNode> => {
   // sym format: #s, #w, #c, name
   // https://docs.circom.io/circom-language/formats/sym/
 
@@ -163,9 +163,15 @@ export const generateDAG = async (symbolFile: string, constraintFile: string): P
   return root;
 }
 
+const exportTreeAsJSON = async (tree: TreeNode, outputFilePath: string) => {
+  let circuitData = {
+    "symbols": {},
+    "constraints": {},
+  }
 
-export const exportTreeAsJSON = async (tree: TreeNode, outputFilePath: string) => {
   const jsonContent = JSON.stringify(tree, null, 2);
   await fs.promises.writeFile(outputFilePath, jsonContent, 'utf8');
   console.log(`Tree saved to ${outputFilePath}`);
+
+  return circuitData;
 };

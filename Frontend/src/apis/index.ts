@@ -11,7 +11,10 @@ export interface generate_circuit_request {
 
 export interface generate_circuit_response {
     compilationId: string,
-    
+    circuitData: {
+        symbols: any,
+        constraints: any,
+    }
 }
 
 export const generate_circuit = (data: generate_circuit_request) =>

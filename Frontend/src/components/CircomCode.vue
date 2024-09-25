@@ -50,32 +50,24 @@ const generateCircuit = async () => {
 
 const fillExampleCode = () => {
   circuitStore.setCode(
-    `pragma circom 2.1.6;
-    include "circomlib/poseidon.circom";
+    `pragma circom 2.0.0;
 
-    template Example () {
-      signal input a;
-      signal input b;
-      signal output c;
-      
-      var unused = 4;
-      c <== a * b;
-      assert(a > 2);
-      
-      component hash = Poseidon(2);
-      hash.inputs[0] <== a;
-      hash.inputs[1] <== b;
+      template Internal() {
+      signal input in[2];
+      signal output out;
+      out <== in[0]*in[1];
+      }
 
-      log("hash", hash.out);
+    template Main() {
+      signal input in[2];
+      signal output out;
+      component c = Internal ();
+      c.in[0] <== in[0];
+      c.in[1] <== in[1]+2*in[0]+1;
+      c.out ==> out;
     }
 
-    component main { public [ a ] } = Example();
-
-    /* INPUT = {
-        "a": "5",
-        "b": "77"
-    } */
-    `)
+    component main { public [ in ] } = Main();`)
 }
 
 const cleanCode = () => {

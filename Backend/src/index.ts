@@ -15,13 +15,14 @@ server.post('/generateCircuit', async (request, reply) => {
     const fileName: string = `${timestamp}.circom`;
 
     try {
-        saveCode(timestamp, fileName, code)
+        await saveCode(timestamp, fileName, code).then((circuitData) => {
+            let replyData = {
+                "compilationId": timestamp,
+                "circuitData": circuitData,
+            }
 
-        let replyData = {
-            "compilationId": timestamp
-        }
-        
-        reply.send(JSON.stringify(replyData));
+            reply.send(JSON.stringify(replyData));
+        })
     } catch (error) {
         const err = error as Error;
         reply.status(400).send({ error: 'Failed to parse Circom code', details: err.message });
