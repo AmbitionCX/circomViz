@@ -14,6 +14,7 @@ export interface generate_circuit_response {
     circuitData: {
         symbols: any,
         constraints: any,
+        substitutions: any
     }
 }
 

@@ -40,7 +40,12 @@ const generateCircuit = async () => {
 
     generate_circuit(data).then((response: generate_circuit_response) => {
       console.log("Circom code compiled:", response.compilationId);
+      
       circuitStore.setCompilationId(response.compilationId);
+      circuitStore.setConstraints(response.circuitData.constraints);
+      circuitStore.setSubstitutions(response.circuitData.substitutions);
+      circuitStore.setSymbols(response.circuitData.symbols);
+
     }).catch((err: any) => {
       console.log(error);
       error.value = err.response?.data?.error || 'Error generating circuit';

@@ -4,6 +4,7 @@
     <el-checkbox-group v-model="selectedSignals">
       <el-checkbox v-for="signal in signals" :key="signal" :label="signal">{{ signal }}</el-checkbox>
     </el-checkbox-group>
+    <p>{{ signals }}</p>
   </div>
 </template>
 
@@ -14,7 +15,7 @@ import { useCircuitStore } from '@/stores/circuit';
 const circuitStore = useCircuitStore();
 const selectedSignals = ref([]);
 
-const signals = computed(() => circuitStore.circuitData.signals || []);
+const signals = computed(() => circuitStore.symbols || []);
 
 watch(selectedSignals, (newSignals) => {
   circuitStore.setSelectedSignals(newSignals);

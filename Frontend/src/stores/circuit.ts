@@ -5,10 +5,10 @@ export const useCircuitStore = defineStore('circuit', {
         circomCode: '' as string,
 
         compilationId: '' as string,
-        circuitData: {
-            signals: [] as any[],
-            components: [] as any[],
-        },
+        symbols: [] as any[],
+        constraints: [] as any[],
+        substitutions: {},
+        
         selectedSignals: [] as any[],
         code: '' as string,
     }),
@@ -20,6 +20,18 @@ export const useCircuitStore = defineStore('circuit', {
     actions: {
         setCompilationId(id: string) {
             this.compilationId = id;
+        },
+        setSymbols(symbol: any[]) {
+            this.symbols = symbol;
+        },
+        setConstraints(constraint: any[]) {
+            this.constraints = constraint;
+        },
+        setSubstitutions(substitution: {}) {
+            this.substitutions = substitution
+        },
+        setSelectedSignals(signals: any[]) {
+            this.selectedSignals = signals;
         },
         resetCompilationId() {
             this.compilationId = '';

@@ -15,12 +15,12 @@ server.post('/generateCircuit', async (request, reply) => {
     const fileName: string = `${timestamp}.circom`;
 
     try {
-        await saveCode(timestamp, fileName, code).then((circuitData) => {
+        await saveCode(timestamp, fileName, code).then((result) => {
             let replyData = {
                 "compilationId": timestamp,
-                "circuitData": circuitData,
+                "circuitData": result,
             }
-
+            
             reply.send(JSON.stringify(replyData));
         })
     } catch (error) {
