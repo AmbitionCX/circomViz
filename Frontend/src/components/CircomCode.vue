@@ -40,7 +40,7 @@ const generateCircuit = async () => {
 
     generate_circuit(data).then((response: generate_circuit_response) => {
       console.log("Circom code compiled:", response.compilationId);
-      
+
       circuitStore.setCompilationId(response.compilationId);
       circuitStore.setConstraints(response.circuitData.constraints);
       circuitStore.setSubstitutions(response.circuitData.substitutions);

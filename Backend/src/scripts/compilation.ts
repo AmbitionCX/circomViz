@@ -43,25 +43,27 @@ export async function saveCode(folderName: string, fileName: string, code: strin
 
       // symbol file format
       // https://docs.circom.io/circom-language/formats/sym/
-      const obj: any = {};
-      fields.forEach((symbol_field, symbol_index) => {
-        switch (symbol_index) {
-          case 0:
-            obj['symbol_id'] = symbol_field.trim();
-            break;
-          case 1:
-            break;
-          case 2:
-            obj['component'] = symbol_field.trim();
-            break;
-          case 3:
-            obj['name'] = symbol_field.trim();
-            break;
-          default:
-            console.log('Redundant columns in symbol file');
-        }
-      });
-      symbols.push(obj);
+      if (fields.length >= 2) { // this line really have content
+        const obj: any = {};
+        fields.forEach((symbol_field, symbol_index) => {
+          switch (symbol_index) {
+            case 0:
+              obj['symbol_id'] = symbol_field.trim();
+              break;
+            case 1:
+              break;
+            case 2:
+              obj['component'] = symbol_field.trim();
+              break;
+            case 3:
+              obj['name'] = symbol_field.trim();
+              break;
+            default:
+              console.log('Redundant columns in symbol file');
+          }
+        });
+        symbols.push(obj);
+      }
     });
     circuitData.symbols = symbols;
 
