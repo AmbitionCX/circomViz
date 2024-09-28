@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
+import { buildDAG } from './buildDAG.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const execPromise = promisify(exec);
@@ -107,7 +109,8 @@ export async function saveCode(folderName: string, fileName: string, code: strin
       }
       constraints.push(obj);
     };
-    circuitData.constraints = constraints;
+
+    circuitData.constraints = buildDAG(constraints);
 
     // building substitutions
     const substitutionFile = fs.readFileSync(substitutionFilePath, 'utf-8');
