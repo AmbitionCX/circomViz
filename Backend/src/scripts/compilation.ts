@@ -59,6 +59,11 @@ function modularInverse(element: string): bigint {
   return elementSimplification(result.toString());
 }
 
+/**
+ * Returns the absolute value of a BigInt number
+ * @param value The BigInt number to get absolute value of
+ * @returns The absolute value as BigInt
+ */
 function absBigInt(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
