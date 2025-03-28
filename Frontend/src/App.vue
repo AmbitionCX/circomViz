@@ -7,12 +7,12 @@
       <el-row class="h-full w-full">
         <el-col :span="8" class="h-full">
           <!-- A: Circom Code Input Area -->
-          <div class="h-3/4 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
+          <div :class="['w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom', isSignalExpanded ? 'h-1/4' : 'h-3/4']">
             <CircomCode />
           </div>
           <!-- C: Signal Selection -->
-          <div class="h-1/4 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
-            <SignalView class="h-full w-full" />
+          <div :class="['w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom', isSignalExpanded ? 'h-3/4' : 'h-1/4']">
+            <SignalView class="h-full w-full" @toggle-layout="onToggleLayout" />
           </div>
         </el-col>
         <el-col :span="16" class="h-full pl-2">
@@ -31,10 +31,17 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import CircomCode from './components/CircomCode.vue';
 import CircuitView from './components/CircuitView.vue';
 import SignalView from './components/SignalView.vue';
 import RestrictionView from './components/RestrictionView.vue';
+
+const isSignalExpanded = ref(false);
+
+const onToggleLayout = (expanded: boolean) => {
+  isSignalExpanded.value = expanded;
+};
 </script>
 
 <style scoped>

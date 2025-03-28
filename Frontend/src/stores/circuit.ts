@@ -7,12 +7,18 @@ export const useCircuitStore = defineStore('circuit', {
         compilationId: '' as string,
         symbols: [] as SymbolType[],
         constraints: [] as constraintType[],
-        substitutions: {} as Record<string, any>,      
+        substitutions: {} as Record<string, any>,
         selectedSignals: [] as any[],
         code: '' as string,
         symbolMap: new Map<string, SymbolType | string>(),
         nodes_list: [] as CircuitNode[],
         edges_list: [] as CircuitEdge[],
+        viewportTransform: {
+            x: 0,
+            y: 0,
+            scale: 1
+        },
+        selectedElements: new Set<string>()
     }),
     getters: {
         isCodeEmpty(): boolean {
@@ -33,8 +39,13 @@ export const useCircuitStore = defineStore('circuit', {
         setSubstitutions(substitution: {}) {
             this.substitutions = substitution
         },
-        setSelectedSignals(signals: any[]) {
-            this.selectedSignals = signals;
+        pushSignal(signal: any) {
+            if (!this.selectedSignals.some(s => s.symbol_id === signal.symbol_id)) {
+                this.selectedSignals.push(signal);
+            }
+        },
+        popSignal(signal: any) {
+            this.selectedSignals = this.selectedSignals.filter(s => s.symbol_id !== signal.symbol_id);
         },
         resetCompilationId() {
             this.compilationId = '';
@@ -44,7 +55,7 @@ export const useCircuitStore = defineStore('circuit', {
         },
         calculateSymbolMap() {
             this.symbolMap = new Map<string, string>();
-            this.symbolMap.set('0', "{symbol_id:'0',component:'none',name:'constant'}"); // signal number 0 expressing the constant 1
+            this.symbolMap.set('0', "{symbol_id:'0',component:'none',name:'const'}"); // signal number 0 expressing the constant 1
             this.symbols.forEach(s => {
                 if (s.symbol_id && s.name) {
                     this.symbolMap.set(s.symbol_id, s);

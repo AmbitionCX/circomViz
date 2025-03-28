@@ -16,6 +16,7 @@ export type SymbolType = {
 export type NodeType = 'signal' | 'constant' | 'add' | 'mul';
 export type CircuitNode = {
   id: string;
+  symbolId: string;
   type: NodeType;
   name: string;
   component: string;
@@ -23,8 +24,11 @@ export type CircuitNode = {
 };
 
 // edge type
+export type EdgeType = 'connect' | 'equal'
 export type CircuitEdge = {
+    type: EdgeType;
     source: string;
     target: string;
+    coefficient?: string;
 };
   

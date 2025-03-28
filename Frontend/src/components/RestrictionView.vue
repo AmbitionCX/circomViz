@@ -2,7 +2,7 @@
   <div class="flex flex-col h-full">
     <div class="flex flex-row flex-nowrap mb-2">
       <h2 class="text-base font-bold">Constraint View</h2>
-      <el-tooltip class="box-item" effect="light" content="Restriction View" placement="top">
+      <el-tooltip class="box-item" effect="light" :content="constraintViewExplanation" placement="top">
         <el-icon class="my-auto ml-1 hover:cursor-pointer">
           <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
         </el-icon>
@@ -25,6 +25,8 @@ import { useCircuitStore } from '@/stores/circuit';
 
 const circuitStore = useCircuitStore();
 const selectedSignals = computed(() => circuitStore.selectedSignals);
+
+const constraintViewExplanation = "This is Constraint View"
 
 </script>
 

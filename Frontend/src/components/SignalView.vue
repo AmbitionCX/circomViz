@@ -2,6 +2,19 @@
   <div class="signal-selection-container">
     <div class="flex flex-row flex-nowrap mb-2">
       <h2 class="text-base font-bold">Signal View</h2>
+      <el-tooltip class="box-item" effect="light" :content="signalViewExplanation" placement="top">
+        <el-icon class="my-auto ml-1 hover:cursor-pointer">
+          <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
+        </el-icon>
+      </el-tooltip>
+      <el-button 
+        type="info" 
+        size="small" 
+        :icon="isExpanded ? ArrowDownBold : ArrowUpBold" 
+        circle 
+        class="ml-auto"
+        @click="toggleLayout"
+      />
     </div>
     <div class="tree-container" ref="treeContainer">
       <svg ref="treeSvg"></svg>
@@ -13,12 +26,24 @@
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { useCircuitStore } from '@/stores/circuit';
 import * as d3 from 'd3';
+import { ArrowUpBold, ArrowDownBold } from '@element-plus/icons-vue'
+
+const emit = defineEmits(['toggle-layout']);
 
 const circuitStore = useCircuitStore();
 const treeContainer = ref<HTMLElement | null>(null);
 const treeSvg = ref<SVGSVGElement | null>(null);
 
 const signalTree = ref<any[]>([]);
+
+const isExpanded = ref(false);
+const signalViewExplanation = "All Signals"
+
+const toggleLayout = () => {
+  isExpanded.value = !isExpanded.value;
+  // Emit event to parent to adjust layout
+  emit('toggle-layout', isExpanded.value);
+};
 
 onMounted(() => {
   nextTick(() => {
@@ -86,7 +111,7 @@ function renderTree() {
     .attr('width', width)
     .attr('height', height)
     .style('overflow', 'visible')
-    .append('g'); 
+    .append('g');
 
   svg.selectAll('*').remove();
 
@@ -107,8 +132,8 @@ function renderTree() {
     .append('g')
     .attr('class', 'node')
     .attr('transform', d => `translate(${(d as d3.HierarchyPointNode<any>).y},${(d as d3.HierarchyPointNode<any>).x})`)
-    .on('click', function(event, d) {
-      toggleSelection(d.data);  
+    .on('click', function (_, d) {
+      toggleSelection(d.data);
     });
 
   nodes.append('circle')
@@ -132,7 +157,7 @@ function toggleSelection(nodeData: any) {
 
   if (isSelected) {
     circuitStore.selectedSignals = circuitStore.selectedSignals.filter(signal => signal.symbol_id !== nodeData.symbol_id);
-    markAllDescendants(nodeData, false); 
+    markAllDescendants(nodeData, false);
   } else {
     circuitStore.selectedSignals.push(nodeData);
     markAllDescendants(nodeData, true);
@@ -151,7 +176,7 @@ function markAllDescendants(nodeData: any, isSelected: boolean) {
   }
 
   nodeData.children?.forEach((child: any) => {
-    markAllDescendants(child, isSelected); 
+    markAllDescendants(child, isSelected);
   });
 }
 
@@ -163,8 +188,8 @@ function updateNodeColor() {
 
   svg.selectAll('.node')
     .select('circle')
-    .attr('fill', function(d: any) {
-          const node = d.data;
+    .attr('fill', function (d: any) {
+      const node = d.data;
       return selectedSignalIds.includes(node.symbol_id) ? 'red' : '#2b8cbe';
     });
 }

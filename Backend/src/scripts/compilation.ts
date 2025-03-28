@@ -6,7 +6,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from "dotenv";
 
-import { buildDAG } from './buildDAG.js';
+import {  } from './buildQAP.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -59,11 +59,6 @@ function modularInverse(element: string): bigint {
   return elementSimplification(result.toString());
 }
 
-/**
- * Returns the absolute value of a BigInt number
- * @param value The BigInt number to get absolute value of
- * @returns The absolute value as BigInt
- */
 function absBigInt(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
@@ -106,6 +101,8 @@ export async function saveCode(folderName: string, fileName: string, code: strin
       "substitutions": {}
     };
 
+
+    ///////////////////////////////////////////////////////////////////////////////
     // building symbols
     const symbolFile = fs.readFileSync(symbolFilePath, 'utf-8');
     const symbol_lines = symbolFile.split('\n');
@@ -214,7 +211,7 @@ export async function saveCode(folderName: string, fileName: string, code: strin
     }
     circuitData.substitutions = substitutions;
 
-    return buildDAG(circuitData);
+    return circuitData;
   });
 }
 

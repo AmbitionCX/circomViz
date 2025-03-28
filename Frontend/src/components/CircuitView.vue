@@ -2,7 +2,7 @@
   <div class="flex flex-col h-full">
     <div class="flex flex-row flex-nowrap mb-2">
       <h2 class="text-base font-bold">Circuit View</h2>
-      <el-tooltip class="box-item" effect="light" content="Circuit View" placement="top">
+      <el-tooltip class="box-item" effect="light" :content="circuitViewExplanation" placement="top">
         <el-icon class="my-auto ml-1 hover:cursor-pointer">
           <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
         </el-icon>
@@ -23,7 +23,10 @@ import { CircuitNode, SymbolType, CircuitEdge, constraintType } from '@/types/ci
 const circuitStore = useCircuitStore();
 const symbolMap = computed(() => circuitStore.symbolMap);
 const constraints = computed(() => circuitStore.constraints);
+const selectedSignals = computed(() => circuitStore.selectedSignals);
 const circuitContainer = ref(null);
+
+const circuitViewExplanation = "This is Circuit View"
 
 // return nodes and edges
 function buildCircuitGraph(constra: constraintType[], symMap: Map<string, SymbolType>){
@@ -39,8 +42,9 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         constraint.lin_expr_A.forEach((signal: string, sig_index: number) => {
         const node: CircuitNode = {
           id: `c${constra_index}_A_${sig_index}`,
+          symbolId: signal,
           type: signal === '0' ? 'constant' : 'signal',
-          name: symMap.get(signal)!.name || 'none',
+          name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
           component: symMap.get(signal)!.component || 'none',
           coefficient: constraint.coefficient_A[sig_index] || 'none',
         };
@@ -51,8 +55,9 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         constraint.lin_expr_A.forEach((signal: string, sig_index: number) => {
           const node: CircuitNode = {
             id: `c${constra_index}_A_${sig_index}`,
+            symbolId: signal,
             type: signal === '0' ? 'constant' : 'signal',
-            name: symMap.get(signal)!.name || 'none',
+            name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
             component: symMap.get(signal)!.component || 'none',
             coefficient: constraint.coefficient_A[sig_index] || 'none',
           };
@@ -62,6 +67,7 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         // add node
         const addNode: CircuitNode = {
           id: `c${constra_index}_A_add`,
+          symbolId: 'none',
           type: 'add',
           name: 'add',
           component: 'none',
@@ -88,8 +94,9 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         constraint.lin_expr_B.forEach((signal: string, sig_index: number) => {
         const node: CircuitNode = {
           id: `c${constra_index}_B_${sig_index}`,
+          symbolId: signal,
           type: signal === '0' ? 'constant' : 'signal',
-          name: symMap.get(signal)!.name || 'none',
+          name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
           component: symMap.get(signal)!.component || 'none',
           coefficient: constraint.coefficient_B[sig_index] || 'none',
         };
@@ -100,8 +107,9 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         constraint.lin_expr_B.forEach((signal: string, sig_index: number) => {
           const node: CircuitNode = {
             id: `c${constra_index}_B_${sig_index}`,
+            symbolId: signal,
             type: signal === '0' ? 'constant' : 'signal',
-            name: symMap.get(signal)!.name || 'none',
+            name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
             component: symMap.get(signal)!.component || 'none',
             coefficient: constraint.coefficient_B[sig_index] || 'none',
           };
@@ -111,6 +119,7 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         // add node
         const addNode: CircuitNode = {
           id: `c${constra_index}_B_add`,
+          symbolId: 'none',
           type: 'add',
           name: 'add',
           component: 'none',
@@ -137,8 +146,9 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         constraint.lin_expr_C.forEach((signal: string, sig_index: number) => {
         const node: CircuitNode = { 
           id: `c${constra_index}_C_${sig_index}`,
+          symbolId: signal,
           type: signal === '0' ? 'constant' : 'signal',
-          name: symMap.get(signal)!.name || 'none',
+          name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
           component: symMap.get(signal)!.component || 'none',
           coefficient: constraint.coefficient_C[sig_index] || 'none',
         };
@@ -149,8 +159,9 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         constraint.lin_expr_C.forEach((signal: string, sig_index: number) => {
           const node: CircuitNode = {
             id: `c${constra_index}_C_${sig_index}`,
+            symbolId: signal,
             type: signal === '0' ? 'constant' : 'signal',
-            name: symMap.get(signal)!.name || 'none',
+            name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
             component: symMap.get(signal)!.component || 'none',
             coefficient: constraint.coefficient_C[sig_index] || 'none',
           };
@@ -160,6 +171,7 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
         // add node
         const addNode: CircuitNode = {
           id: `c${constra_index}_C_add`,
+          symbolId: 'none',
           type: 'add',
           name: 'add',
           component: 'none',
@@ -184,6 +196,7 @@ function buildCircuitGraph(constra: constraintType[], symMap: Map<string, Symbol
     // mul node
     const addNode: CircuitNode = {
       id: `c${constra_index}_mul`,
+      symbolId: 'none',
       type: 'mul',
       name: 'mul',
       component: 'none',
@@ -248,9 +261,29 @@ function drawCircuitGraph(){
   if (!circuitContainer.value) return;
   const { width, height } = circuitContainer.value.getBoundingClientRect();
 
+  // remove all content when changed
+  d3.select(circuitContainer.value).selectAll('*').remove();
+
   buildCircuitGraph(constraints.value, symbolMap.value);
   const circuit_nodes = circuitStore.nodes_list;
   const circuit_edges = circuitStore.edges_list;
+
+  const svg = d3.select(circuitContainer.value)
+    .append('svg')
+    .attr('width', width)
+    .attr('height', height)
+    .style('width', '100%')
+    .style('height', '100%');
+  
+  const zoomGroup = svg.append('g');
+
+  const zoom = d3.zoom<SVGSVGElement, unknown>()
+    .scaleExtent([0.5, 5])
+    .on('zoom', (event) => {
+      zoomGroup.attr('transform', event.transform);
+    });
+
+  svg.call(zoom);
 
   // build D3 DAG structure
   const stratify = graphStratify()
@@ -268,18 +301,11 @@ function drawCircuitGraph(){
     .coord(coordQuad());
   layout(dag);
 
-  const svg = d3.select(circuitContainer.value)
-    .append('svg')
-    .attr('width', width)
-    .attr('height', height)
-    .style('width', '100%')
-    .style('height', '100%');
-
   const link = d3.linkHorizontal()
     .source(d => [d.source.x, d.source.y])
     .target(d => [d.target.x, d.target.y]);
 
-  svg.append('g')
+  zoomGroup.append('g')
     .selectAll('path')
     .data(dag.links())
     .enter()
@@ -289,7 +315,7 @@ function drawCircuitGraph(){
     .attr('stroke', '#999')
     .attr('stroke-width', 1.5);
 
-  const nodeGroup = svg.append('g')
+  const nodeGroup = zoomGroup.append('g')
     .selectAll('g')
     .data(dag.nodes())
     .enter()
@@ -301,25 +327,61 @@ function drawCircuitGraph(){
     if (!node) return; // if node is invalid
     const g = d3.select(this);
     
+    const symbolSize = 20; // Size of the multiplication symbol
+    const strokeWidth = 4;
+    const halfSize = symbolSize / 2;
+
     switch (node.type) {
       case 'signal':
         g.append('circle')
           .attr('r', 20)
           .attr('fill', '#2b8cbe');
         break;
-      case 'add':
-        g.append('rect')
-          .attr('width', 40)
-          .attr('height', 40)
-          .attr('x', -20)
-          .attr('y', -20)
-          .attr('rx', 5)
-          .attr('fill', '#e6550d');
+      case 'add':        
+        g.append('circle')
+          .attr('r', halfSize)
+          .attr('fill', '#f0f0f0')
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
+          
+        g.append('line')
+          .attr('x1', -halfSize + strokeWidth)
+          .attr('y1', 0)
+          .attr('x2', halfSize - strokeWidth)
+          .attr('y2', 0)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
+          
+        g.append('line')
+          .attr('x1', 0)
+          .attr('y1', -halfSize + strokeWidth)
+          .attr('x2', 0)
+          .attr('y2', halfSize - strokeWidth)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
         break;
       case 'mul':
-        g.append('path')
-          .attr('d', 'M-20,-20 L20,-20 20,20 -20,20 Z')
-          .attr('fill', '#31a354');
+        g.append('circle')
+          .attr('r', halfSize)
+          .attr('fill', '#f0f0f0')
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
+          
+        g.append('line')
+          .attr('x1', -halfSize + strokeWidth)
+          .attr('y1', -halfSize + strokeWidth)
+          .attr('x2', halfSize - strokeWidth)
+          .attr('y2', halfSize - strokeWidth)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
+          
+        g.append('line')
+          .attr('x1', halfSize - strokeWidth)
+          .attr('y1', -halfSize + strokeWidth)
+          .attr('x2', -halfSize + strokeWidth)
+          .attr('y2', halfSize - strokeWidth)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
         break;
       case 'constant':
         g.append('circle')
@@ -329,20 +391,56 @@ function drawCircuitGraph(){
     }
 
     g.append('text')
-      .text(node.name)
+      .text(d => {
+        switch (d.data.type) {
+          case 'signal':
+            return `${d.data.coefficient}${d.data.name.split(".").slice(-1)[0]}`
+          case 'add':
+            return null
+          case 'mul':
+            return null
+          case 'constant':
+            return d.data.coefficient
+        }
+      })
       .attr('text-anchor', 'middle')
       .attr('dy', '0.3em')
       .style('font-size', '12px');
   });
 };
 
+function updateNodeColor() {
+  if (!circuitContainer.value) return;
+
+  const svg = d3.select(circuitContainer.value);
+  const selectedSignalIds = circuitStore.selectedSignals.map(signal => signal.symbol_id);
+
+  svg.selectAll('.node')
+    .select('circle')
+    .attr('fill', function(d: any) {
+      const node = d.data;
+      console.log("a", node);
+      
+      return selectedSignalIds.includes(node.symbolId) ? 'red' : '#2b8cbe';
+    });
+}
+
 watch(constraints, () => {
   drawCircuitGraph();
+})
+
+watch(selectedSignals, () => {
+  console.log("selectedSignalssss");
+  
+  // updateNodeColor();
 })
 </script>
 
 <style lang="css" scoped>
 .bg-gray-50 {
   overflow: hidden; /* Prevent SVG overflow */
+}
+svg {
+  overflow: visible;
 }
 </style>
