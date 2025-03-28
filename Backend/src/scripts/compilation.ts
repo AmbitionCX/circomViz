@@ -59,6 +59,10 @@ function modularInverse(element: string): bigint {
   return elementSimplification(result.toString());
 }
 
+function absBigInt(value: bigint): bigint {
+  return value < 0n ? -value : value;
+}
+
 function readable_coefficient(input: string) {
   let simplified = elementSimplification(input);
   let inversed = modularInverse(input);
@@ -66,11 +70,10 @@ function readable_coefficient(input: string) {
   const absSimplified = simplified < 0 ? -simplified : simplified;
   const absInversed = inversed < 0 ? -inversed : inversed;
   
-  let result: bigint = BigInt(0);
   if (absSimplified <= absInversed) {
     return simplified.toString()
   } else {
-    return `1/${inversed.toString()}`
+    return `-1/${absBigInt(inversed).toString()}`
   }
 }
 
