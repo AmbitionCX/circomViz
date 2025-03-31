@@ -18,9 +18,10 @@ import * as d3 from 'd3';
 import { graphStratify, sugiyama, layeringLongestPath, decrossTwoLayer, coordQuad } from 'd3-dag';
 import { computed, ref, watch } from 'vue';
 import { useCircuitStore } from '@/stores/circuit';
-import { CircuitNode, SymbolObject, CircuitEdge, ConstraintObject } from '@/types/circuitTypes';
+import { CircuitNode, SymbolType, CircuitEdge, constraintType } from '@/types/circuitTypes';
 
 const circuitStore = useCircuitStore();
+const symbolMap = computed(() => circuitStore.symbolMap);
 const constraints = computed(() => circuitStore.constraints);
 const selectedSignals = computed(() => circuitStore.selectedSignals);
 const circuitContainer = ref(null);
@@ -28,11 +29,11 @@ const circuitContainer = ref(null);
 const circuitViewExplanation = "This is Circuit View"
 
 // return nodes and edges
-function buildCircuitGraph(constra: ConstraintObject[], symMap: Map<string, SymbolObject>){
+function buildCircuitGraph(constra: constraintType[], symMap: Map<string, SymbolType>){
   const nodes: CircuitNode[] = [];
   const edges: CircuitEdge[] = [];
 
-  constra.forEach((constraint: ConstraintObject, constra_index: number) => { // index start from 0
+  constra.forEach((constraint: constraintType, constra_index: number) => { // index start from 0
 
     // build constraints for linear expression A
     if(constraint.lin_expr_A.length > 0){ // signal A exist

@@ -1,6 +1,8 @@
 import fastify from 'fastify';
 import cors from '@fastify/cors';
+
 import { saveCode } from './scripts/compilation.js';
+import { serializeBigInts, convertR1CStoQAP } from './scripts/buildQAP.js'
 
 const server = fastify();
 server.register(cors, {
@@ -15,15 +17,19 @@ server.post('/generateCircuit', async (request, reply) => {
     const fileName: string = `${timestamp}.circom`;
 
     try {
-
         // save Frontend code to a folder under /compilations, the folder is named with timestamp
         // compile circom code in the folder. The process will interrupt if the code cannot compile, 
         await saveCode(timestamp, fileName, code).then((result) => {
+            const qapDataJSON = convertR1CStoQAP(result);
+
             let replyData = {
                 "compilationId": timestamp,
                 "circuitData": result,
+                "qapData": qapDataJSON
             }
             console.log(`project ${timestamp} compile successed`);
+            console.log("QAP", qapDataJSON);
+            
             reply.send(JSON.stringify(replyData));
         })
     } catch (error) {
@@ -33,6 +39,8 @@ server.post('/generateCircuit', async (request, reply) => {
         console.log(`The error message is: ${error}`)
     }
 });
+
+
 
 server.listen({ port: 8080 }, (err, address) => {
     if (err) {

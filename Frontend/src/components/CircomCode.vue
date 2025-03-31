@@ -26,7 +26,7 @@
       <MonacoEditor v-model="circuitStore.code" @validation="handleEditorValidation"
         style="min-height: 300px; height: 99%;" />
     </div>
-    <div >
+    <div>
       <el-button @click="generateCircuit" type="primary" round class="mt-2">Generate Circuit</el-button>
       <el-alert v-if="error" type="error" class="mt-4">{{ error }}</el-alert>
     </div>
@@ -59,14 +59,17 @@ const handleDropdownSelect = (command: string) => {
 const generateCircuit = async () => {
   if (!circuitStore.code) {
     console.log("Empty code");
+    return;
   } else {
-    let data: generate_circuit_request = {
+    const data: generate_circuit_request = {
       code: circuitStore.code,
     };
 
     generate_circuit(data).then((response: generate_circuit_response) => {
       console.log("Circom code compiled:", response.compilationId);
 
+      console.log("QAP Data", response.qapData);
+      
       circuitStore.setCompilationId(response.compilationId);
       circuitStore.setConstraints(response.circuitData.constraints);
       circuitStore.setSubstitutions(response.circuitData.substitutions);
@@ -86,14 +89,14 @@ const generateCircuit = async () => {
 };
 
 const fillExampleCode = async (example: string) => {
-  if (selectedExample.value == null){
+  if (selectedExample.value == null) {
     ElMessage.error("No example selected");
     return;
   }
 
   try {
-    const response = await fetch(`src/examples/${example}.circom`);                                                                                                       
-    if (!response.ok) throw new Error('Failed to load example');                                                                                                                 
+    const response = await fetch(`src/examples/${example}.circom`);
+    if (!response.ok) throw new Error('Failed to load example');
     const exampleCode = await response.text();
     circuitStore.setCode(exampleCode);
   } catch (err) {

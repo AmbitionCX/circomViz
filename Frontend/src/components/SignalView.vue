@@ -7,17 +7,17 @@
           <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
         </el-icon>
       </el-tooltip>
-      <el-button 
-        type="info" 
-        size="small" 
-        :icon="isExpanded ? ArrowDownBold : ArrowUpBold" 
-        circle 
-        class="ml-auto"
-        @click="toggleLayout"
-      />
+      <el-button type="info" plain size="small" :icon="isExpanded ? ArrowDownBold : ArrowUpBold" circle class="ml-auto"
+        @click="toggleLayout" />
     </div>
     <div class="tree-container" ref="treeContainer">
       <svg ref="treeSvg"></svg>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div v-for="(color, comp) in componentColors" :key="comp" class="flex items-center gap-1 text-sm">
+        <div :style="{ backgroundColor: color }" class="w-3 h-3 rounded-full"></div>
+        <span>{{ comp }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -38,6 +38,9 @@ const signalTree = ref<any[]>([]);
 
 const isExpanded = ref(false);
 const signalViewExplanation = "All Signals"
+const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+const componentColors = ref<Record<string, string>>({});
 
 const toggleLayout = () => {
   isExpanded.value = !isExpanded.value;
@@ -54,13 +57,19 @@ onMounted(() => {
 watch(() => circuitStore.symbols, () => {
   if (circuitStore.symbols.length > 0) {
     signalTree.value = buildSignalTree(circuitStore.symbols);
+    buildComponentColors(circuitStore.symbols);
     renderTree();
   }
 });
 
-function buildSignalTree(symbols: { symbol_id: string; name: string }[]): any[] {
+function buildSignalTree(symbols: { index: number; name: string; component: number }[]): any[] {
   const tree: any[] = [];
   const nodeMap: Record<string, any> = {};
+
+  const getPenultimate = (name: string) => {
+    const parts = name.split('.');
+    return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+  };
 
   symbols.forEach((symbol) => {
     const parts = symbol.name.split('.');
@@ -69,18 +78,15 @@ function buildSignalTree(symbols: { symbol_id: string; name: string }[]): any[] 
 
     parts.forEach((part, index) => {
       const currentPath = parts.slice(0, index + 1).join('.');
-      if (index === 0 && part === "main" && !nodeMap[currentPath]) {
+      const isLeaf = index === parts.length - 1;
+      const componentName = getPenultimate(symbol.name);
+
+      if (!nodeMap[currentPath]) {
         const newNode = {
           name: part,
-          symbol_id: symbol.symbol_id,
-          children: [],
-        };
-        tree.push(newNode);
-        nodeMap[currentPath] = newNode;
-      } else if (!nodeMap[currentPath]) {
-        const newNode = {
-          name: part,
-          symbol_id: symbol.symbol_id,
+          fullName: symbol.name,
+          symbol_id: isLeaf ? symbol.index : undefined,
+          component: componentName,
           children: [],
         };
         currentChildren.push(newNode);
@@ -92,6 +98,28 @@ function buildSignalTree(symbols: { symbol_id: string; name: string }[]): any[] 
   });
 
   return tree;
+}
+
+function buildComponentColors(symbols: any[]) {
+  const componentNameSet = new Set<string>();
+
+  const getPenultimate = (name: string) => {
+    const parts = name.split('.');
+    return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+  };
+
+  symbols.forEach(s => {
+    const compName = getPenultimate(s.name);
+    componentNameSet.add(compName);
+  });
+
+  const scale = d3.scaleOrdinal(d3.schemeCategory10);
+  const colorMap: Record<string, string> = {};
+  Array.from(componentNameSet).forEach((comp, _) => {
+    colorMap[comp] = scale(comp);
+  });
+
+  componentColors.value = colorMap;
 }
 
 function renderTree() {
@@ -133,12 +161,22 @@ function renderTree() {
     .attr('class', 'node')
     .attr('transform', d => `translate(${(d as d3.HierarchyPointNode<any>).y},${(d as d3.HierarchyPointNode<any>).x})`)
     .on('click', function (_, d) {
-      toggleSelection(d.data);
+      if (!d.children || d.children.length === 0) {
+        toggleSelection(d.data);
+      }
     });
 
   nodes.append('circle')
     .attr('r', 10)
-    .attr('fill', '#2b8cbe');
+    .attr('fill', d => {
+      return componentColors.value[d.data.component] || '#aaa';
+    });
+
+  nodes.append('title')
+    .text(d => {
+      const comp = d.data.component !== undefined ? `Component: ${d.data.component}` : '';
+      return `Signal: ${d.data.fullName}\n${comp}`;
+    });
 
   nodes.append('text')
     .attr('dy', -15)
@@ -190,8 +228,11 @@ function updateNodeColor() {
     .select('circle')
     .attr('fill', function (d: any) {
       const node = d.data;
-      return selectedSignalIds.includes(node.symbol_id) ? 'red' : '#2b8cbe';
+      const isSelected = selectedSignalIds.includes(node.symbol_id);
+      const baseColor = node.component !== undefined ? colorScale(node.component) : '#aaa';
+      return isSelected ? 'red' : baseColor;
     });
+
 }
 </script>
 

@@ -1,5 +1,5 @@
-// ------------------------ data type ------------------------
-
+// The type of a single symbol
+// witness: -1 refer to the private symbol or replaced by substitution
 export type SymbolObject = {
     index: number;
     witness: number;
@@ -7,12 +7,15 @@ export type SymbolObject = {
     name: string;
 };
 
+// The type of a single constraint
+// The key is the variable, and the value is the coefficient
 export interface ConstraintComponent {
     [key: string]: string | number;
 }
 
 export type ConstraintObject = [ConstraintComponent, ConstraintComponent, ConstraintComponent];
 
+// The type for substitutions
 export interface SubstitutionObject {
     [key: string]: string | number;
 }
@@ -21,31 +24,14 @@ export type SubstitutionMap = {
     [key: string]: SubstitutionObject;
 }
 
+// A circuit contains a symbol, a constraint and a substitution
 export type circuitData = {
     symbols: SymbolObject[];
     constraints: ConstraintObject[];
     substitutions: SubstitutionMap;
 }
 
-// ------------------------ svg type ------------------------
-
-export type NodeType = 'signal' | 'constant' | 'add' | 'mul';
-export type CircuitNode = {
-    id: string;
-    symbolId: string;
-    type: NodeType;
-    name: string;
-    component: string;
-    coefficient?: string;
+type QAP_Polynomial = {
+    coefficients: string[];
+    variables: string[];
 };
-
-// edge type
-export type EdgeType = 'connect' | 'equal'
-export type CircuitEdge = {
-    type: EdgeType;
-    source: string;
-    target: string;
-    coefficient?: string;
-};
-
-

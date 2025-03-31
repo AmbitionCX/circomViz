@@ -1,16 +1,15 @@
 import { defineStore } from 'pinia';
-import { SymbolType, constraintType, CircuitNode, CircuitEdge } from '@/types/circuitTypes';
+import { SymbolObject, ConstraintObject, CircuitNode, CircuitEdge } from '@/types/circuitTypes';
 
 export const useCircuitStore = defineStore('circuit', {
     state: () => ({
         circomCode: '' as string,
         compilationId: '' as string,
-        symbols: [] as SymbolType[],
-        constraints: [] as constraintType[],
+        symbols: [] as SymbolObject[],
+        constraints: [] as ConstraintObject[],
         substitutions: {} as Record<string, any>,
         selectedSignals: [] as any[],
         code: '' as string,
-        symbolMap: new Map<string, SymbolType | string>(),
         nodes_list: [] as CircuitNode[],
         edges_list: [] as CircuitEdge[],
         viewportTransform: {
@@ -31,7 +30,6 @@ export const useCircuitStore = defineStore('circuit', {
         },
         setSymbols(symbol: any[]) {
             this.symbols = symbol;
-            this.calculateSymbolMap();
         },
         setConstraints(constraint: any[]) {
             this.constraints = constraint;
@@ -52,15 +50,6 @@ export const useCircuitStore = defineStore('circuit', {
         },
         setCode(newCode: string) {
             this.code = newCode;
-        },
-        calculateSymbolMap() {
-            this.symbolMap = new Map<string, string>();
-            this.symbolMap.set('0', "{symbol_id:'0',component:'none',name:'const'}"); // signal number 0 expressing the constant 1
-            this.symbols.forEach(s => {
-                if (s.symbol_id && s.name) {
-                    this.symbolMap.set(s.symbol_id, s);
-                }
-            })
         },
         setNodesList(nodes_list: CircuitNode[]) {
             this.nodes_list = nodes_list;
