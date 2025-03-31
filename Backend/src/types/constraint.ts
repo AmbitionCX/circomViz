@@ -31,7 +31,12 @@ export type circuitData = {
     substitutions: SubstitutionMap;
 }
 
-type QAP_Polynomial = {
-    coefficients: string[];
-    variables: string[];
+export type qapData = {
+    numVars: number;
+    numConstraints: number;
+    qapPolysA: any[];
+    qapPolysB: any[];
+    qapPolysC: any[];
+    zPoly: any[];
+    evaluationPoints: any[];
 };

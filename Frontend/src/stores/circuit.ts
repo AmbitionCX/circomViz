@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { SymbolObject, ConstraintObject, CircuitNode, CircuitEdge } from '@/types/circuitTypes';
+import { SymbolObject, ConstraintObject, QAPData, QAPNode, QAPLink } from '@/types/circuitTypes';
 
 export const useCircuitStore = defineStore('circuit', {
     state: () => ({
@@ -10,8 +10,9 @@ export const useCircuitStore = defineStore('circuit', {
         substitutions: {} as Record<string, any>,
         selectedSignals: [] as any[],
         code: '' as string,
-        nodes_list: [] as CircuitNode[],
-        edges_list: [] as CircuitEdge[],
+        qapData: {} as QAPData,
+        nodes_list: [] as QAPNode[],
+        links_list: [] as QAPLink[],
         viewportTransform: {
             x: 0,
             y: 0,
@@ -51,11 +52,14 @@ export const useCircuitStore = defineStore('circuit', {
         setCode(newCode: string) {
             this.code = newCode;
         },
-        setNodesList(nodes_list: CircuitNode[]) {
+        setQAPData(qapData: QAPData) {
+            this.qapData = qapData;
+        },
+        setNodesList(nodes_list: QAPNode[]) {
             this.nodes_list = nodes_list;
         },
-        setEdgesList(edges_list: CircuitEdge[]) {
-            this.edges_list = edges_list;
-        },
+        setLinksList(links_list: QAPLink[]) {
+            this.links_list = links_list;
+        }
     }
 });

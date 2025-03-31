@@ -1,4 +1,4 @@
-import { ConstraintObject, circuitData } from "../types/constraint.js";
+import { ConstraintObject, circuitData, qapData } from "../types/constraint.js";
 
 const Prime = String(process.env.P);
 const PrimeNumber = BigInt(Prime);
@@ -125,7 +125,7 @@ function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
  * @param circuitData Circuit data containing constraints and symbols 
  * @returns QAP representation 
  */
-export function convertR1CStoQAP(circuitData: circuitData): any {
+export function convertR1CStoQAP(circuitData: circuitData): qapData {
     const constraints = circuitData.constraints;
     const symbols = circuitData.symbols;
     const numVars = symbols.length + 1; // +1 for the constant signal (index 0)
@@ -193,7 +193,7 @@ export function convertR1CStoQAP(circuitData: circuitData): any {
         return multiplyPolynomials(acc, factor, PrimeNumber);
     }, [] as bigint[]);
 
-    const qap = {
+    const qap: qapData = {
         numVars,
         numConstraints,
         qapPolysA,

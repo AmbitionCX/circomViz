@@ -27,25 +27,30 @@ export type circuitData = {
     substitutions: SubstitutionMap;
 }
 
+export type QAPData = {
+    numVars: number;
+    numConstraints: number;
+    qapPolysA: any[];
+    qapPolysB: any[];
+    qapPolysC: any[];
+    zPoly: any[];
+    evaluationPoints: any[];
+};
+
 // ------------------------ svg type ------------------------
 
-export type NodeType = 'signal' | 'constant' | 'add' | 'mul';
-export type CircuitNode = {
-    id: string;
-    symbolId: string;
+export type NodeType = 'signal' | 'constant' | 'add' | 'mul' | 'equation';
+export type QAPNode = {
+    id: number;
+    symbolId: number; // signal index
     type: NodeType;
-    name: string;
-    component: string;
+    name: string; // Signal name
+    component: number; // Signal component
     coefficient?: string;
 };
 
-// edge type
-export type EdgeType = 'connect' | 'equal'
-export type CircuitEdge = {
-    type: EdgeType;
-    source: string;
-    target: string;
-    coefficient?: string;
+export type QAPLink = {
+    source: number; // source symbolId
+    target: number; // target symbolId
 };
-
 

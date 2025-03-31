@@ -2,7 +2,7 @@ import fastify from 'fastify';
 import cors from '@fastify/cors';
 
 import { saveCode } from './scripts/compilation.js';
-import { serializeBigInts, convertR1CStoQAP } from './scripts/buildQAP.js'
+import { convertR1CStoQAP } from './scripts/buildQAP.js'
 
 const server = fastify();
 server.register(cors, {

@@ -7,7 +7,6 @@ import { promisify } from 'util';
 import * as dotenv from "dotenv";
 
 import { SymbolObject, ConstraintComponent, ConstraintObject, SubstitutionMap, circuitData } from "../types/constraint.js";
-import { } from './buildQAP.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

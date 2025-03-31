@@ -68,12 +68,11 @@ const generateCircuit = async () => {
     generate_circuit(data).then((response: generate_circuit_response) => {
       console.log("Circom code compiled:", response.compilationId);
 
-      console.log("QAP Data", response.qapData);
-      
       circuitStore.setCompilationId(response.compilationId);
       circuitStore.setConstraints(response.circuitData.constraints);
       circuitStore.setSubstitutions(response.circuitData.substitutions);
       circuitStore.setSymbols(response.circuitData.symbols);
+      circuitStore.setQAPData(response.qapData)
 
     }).catch((err: any) => {
       if (err.response?.status === 400) {

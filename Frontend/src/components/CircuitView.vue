@@ -18,254 +18,120 @@ import * as d3 from 'd3';
 import { graphStratify, sugiyama, layeringLongestPath, decrossTwoLayer, coordQuad } from 'd3-dag';
 import { computed, ref, watch } from 'vue';
 import { useCircuitStore } from '@/stores/circuit';
-import { CircuitNode, SymbolObject, CircuitEdge, ConstraintObject } from '@/types/circuitTypes';
+import { QAPNode, QAPLink, NodeType, ConstraintObject, SymbolObject } from '@/types/circuitTypes';
 
 const circuitStore = useCircuitStore();
 const constraints = computed(() => circuitStore.constraints);
+const signals = computed(() => circuitStore.symbols)
 const selectedSignals = computed(() => circuitStore.selectedSignals);
-const circuitContainer = ref(null);
+const circuitContainer = ref<HTMLElement | null>(null);
 
 const circuitViewExplanation = "This is Circuit View"
 
-// return nodes and edges
-function buildCircuitGraph(constra: ConstraintObject[], symMap: Map<string, SymbolObject>){
-  const nodes: CircuitNode[] = [];
-  const edges: CircuitEdge[] = [];
+function buildCircuitGraph(constraints: ConstraintObject[], signals: SymbolObject[]) {
+  const nodes: QAPNode[] = [];
+  const links: QAPLink[] = [];
+  const CONST_NODE_NAME = 'const';
+  const CONST_NODE_COMPONENT = -1;
+  const nodeMap = new Map<string, QAPNode>(); // Avoid duplicates
+  let nodeId = 0; // 0 is the equation node
 
-  constra.forEach((constraint: ConstraintObject, constra_index: number) => { // index start from 0
+  // signal with different coefficient is treated as different signal
+  const createNode = (symbolId: number, type: NodeType, name: string, component: number, coefficient?: string): QAPNode => {
+    // Coefficient is part of the key to differentiate nodes with the same symbolId but different coefficients
+    const key = `${type}_${symbolId}_${name}_${coefficient}`;
+    if (nodeMap.has(key)) return nodeMap.get(key)!;
 
-    // build constraints for linear expression A
-    if(constraint.lin_expr_A.length > 0){ // signal A exist
-      if(constraint.lin_expr_A.length === 1){
-        // only one signal in A, push the node to node set.
-        constraint.lin_expr_A.forEach((signal: string, sig_index: number) => {
-        const node: CircuitNode = {
-          id: `c${constra_index}_A_${sig_index}`,
-          symbolId: signal,
-          type: signal === '0' ? 'constant' : 'signal',
-          name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
-          component: symMap.get(signal)!.component || 'none',
-          coefficient: constraint.coefficient_A[sig_index] || 'none',
-        };
-        nodes.push(node);
-      })
-      } else {
-        // multiple signals in A, push all nodes to the node set, create an add node and connect them all together
-        constraint.lin_expr_A.forEach((signal: string, sig_index: number) => {
-          const node: CircuitNode = {
-            id: `c${constra_index}_A_${sig_index}`,
-            symbolId: signal,
-            type: signal === '0' ? 'constant' : 'signal',
-            name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
-            component: symMap.get(signal)!.component || 'none',
-            coefficient: constraint.coefficient_A[sig_index] || 'none',
-          };
-          nodes.push(node);
-        })
-
-        // add node
-        const addNode: CircuitNode = {
-          id: `c${constra_index}_A_add`,
-          symbolId: 'none',
-          type: 'add',
-          name: 'add',
-          component: 'none',
-          coefficient: 'none',
-        };
-        nodes.push(addNode);
-
-        // add edge
-        constraint.lin_expr_A.forEach((_, sig_index: number) => {
-          const edge: CircuitEdge = {
-            source: `c${constra_index}_A_${sig_index}`,
-            target: addNode.id,
-        };
-        edges.push(edge);
-      })
-      }
-    }
-
-    // ----------------------------------------------------------------
-    // build constraints for linear expression B
-    if(constraint.lin_expr_B.length > 0){ // signal B exist
-      if(constraint.lin_expr_B.length === 1){
-        // only one signal in B, push the node to node set.
-        constraint.lin_expr_B.forEach((signal: string, sig_index: number) => {
-        const node: CircuitNode = {
-          id: `c${constra_index}_B_${sig_index}`,
-          symbolId: signal,
-          type: signal === '0' ? 'constant' : 'signal',
-          name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
-          component: symMap.get(signal)!.component || 'none',
-          coefficient: constraint.coefficient_B[sig_index] || 'none',
-        };
-        nodes.push(node);
-      })
-      } else {
-        // multiple signals in B, push all nodes to the node set, create an add node and connect them all together
-        constraint.lin_expr_B.forEach((signal: string, sig_index: number) => {
-          const node: CircuitNode = {
-            id: `c${constra_index}_B_${sig_index}`,
-            symbolId: signal,
-            type: signal === '0' ? 'constant' : 'signal',
-            name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
-            component: symMap.get(signal)!.component || 'none',
-            coefficient: constraint.coefficient_B[sig_index] || 'none',
-          };
-          nodes.push(node);
-        })
-
-        // add node
-        const addNode: CircuitNode = {
-          id: `c${constra_index}_B_add`,
-          symbolId: 'none',
-          type: 'add',
-          name: 'add',
-          component: 'none',
-          coefficient: 'none',
-        };
-        nodes.push(addNode);
-
-        // add edge
-        constraint.lin_expr_B.forEach((_, sig_index: number) => {
-          const edge: CircuitEdge = {
-            source: `c${constra_index}_B_${sig_index}`,
-            target: addNode.id,
-        };
-        edges.push(edge);
-      })
-      }
-    }
-
-    // ----------------------------------------------------------------
-    // build constraints for linear expression C
-    if(constraint.lin_expr_C.length > 0){ // signal A exist
-      if(constraint.lin_expr_C.length === 1){
-        // only one signal in C, push the node to node set.
-        constraint.lin_expr_C.forEach((signal: string, sig_index: number) => {
-        const node: CircuitNode = { 
-          id: `c${constra_index}_C_${sig_index}`,
-          symbolId: signal,
-          type: signal === '0' ? 'constant' : 'signal',
-          name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
-          component: symMap.get(signal)!.component || 'none',
-          coefficient: constraint.coefficient_C[sig_index] || 'none',
-        };
-        nodes.push(node);
-      })
-      } else {
-        // multiple signals in C, push all nodes to the node set, create an add node and connect them all together
-        constraint.lin_expr_C.forEach((signal: string, sig_index: number) => {
-          const node: CircuitNode = {
-            id: `c${constra_index}_C_${sig_index}`,
-            symbolId: signal,
-            type: signal === '0' ? 'constant' : 'signal',
-            name: signal === '0' ? 'const' : symMap.get(signal)!.name || 'none',
-            component: symMap.get(signal)!.component || 'none',
-            coefficient: constraint.coefficient_C[sig_index] || 'none',
-          };
-          nodes.push(node);
-        })
-
-        // add node
-        const addNode: CircuitNode = {
-          id: `c${constra_index}_C_add`,
-          symbolId: 'none',
-          type: 'add',
-          name: 'add',
-          component: 'none',
-          coefficient: 'none',
-        };
-        nodes.push(addNode);
-
-        // add edge
-        constraint.lin_expr_C.forEach((_, sig_index: number) => {
-          const edge: CircuitEdge = {
-            source: `c${constra_index}_C_${sig_index}`,
-            target: addNode.id,
-          };
-          edges.push(edge);
-        })
-      }
-    }
-
-    // ----------------------------------------------------------------
-    // build node and edge for A * B = C
-
-    // mul node
-    const addNode: CircuitNode = {
-      id: `c${constra_index}_mul`,
-      symbolId: 'none',
-      type: 'mul',
-      name: 'mul',
-      component: 'none',
-      coefficient: 'none',
+    const node: QAPNode = {
+      id: nodeId++,
+      symbolId,
+      type,
+      name,
+      component,
+      coefficient
     };
-    nodes.push(addNode);
+    nodeMap.set(key, node);
+    nodes.push(node);
+    return node;
+  };
 
-    // connect A to the mul nodes
-    if(constraint.lin_expr_A.length === 1){
-      const edge: CircuitEdge = {
-        source: `c${constra_index}_A_0`,
-        target: `c${constra_index}_mul`,
-      };
-      edges.push(edge);
-    } else if(constraint.lin_expr_A.length > 1) {
-      const edge: CircuitEdge = {
-        source: `c${constra_index}_A_add`,
-        target: `c${constra_index}_mul`,
-      };
-      edges.push(edge);
+  // Create a single "equation" link
+  const equationNode: QAPNode = createNode(-1, 'equation', 'equation', -1);
+
+  constraints.forEach((constraint, constraintIndex) => {
+    const [aComp, bComp, cComp] = constraint;
+
+    // Create add nodes for A, B, and C for each constraint
+    const aAdd = createNode(-1, 'add', `addA_${constraintIndex}`, -1);
+    const bAdd = createNode(-2, 'add', `addB_${constraintIndex}`, -1);
+    const cAdd = createNode(-3, 'add', `addC_${constraintIndex}`, -1);
+
+    // Link A signals to aAdd
+    for (const [sigIdStr, coeff] of Object.entries(aComp)) {
+      const sigId = parseInt(sigIdStr);
+      const type = sigId === 0 ? 'constant' : 'signal';
+      const component = sigId === 0 ? CONST_NODE_COMPONENT : signals.find(signal => signal.index === sigId)!.component
+      const name = sigId === 0 ? CONST_NODE_NAME : signals.find(signal => signal.index === sigId)!.name
+      const signalNode = createNode(sigId, type, name, component, coeff.toString());
+      links.push({ source: signalNode.id, target: aAdd.id });
+    }
+    // Link B signals to bAdd
+    for (const [sigIdStr, coeff] of Object.entries(bComp)) {
+      const sigId = parseInt(sigIdStr);
+      const type = sigId === 0 ? 'constant' : 'signal';
+      const component = sigId === 0 ? CONST_NODE_COMPONENT : signals.find(signal => signal.index === sigId)!.component
+      const name = sigId === 0 ? CONST_NODE_NAME : signals.find(signal => signal.index === sigId)!.name
+      const signalNode = createNode(sigId, type, name, component, coeff.toString());
+      links.push({ source: signalNode.id, target: bAdd.id });
     }
 
-    // connect B to the mul nodes
-    if(constraint.lin_expr_B.length === 1){
-      const edge: CircuitEdge = {
-        source: `c${constra_index}_B_0`,
-        target: `c${constra_index}_mul`,
-      };
-      edges.push(edge);
-    } else if(constraint.lin_expr_B.length > 1) {
-      const edge: CircuitEdge = {
-        source: `c${constra_index}_B_add`,
-        target: `c${constra_index}_mul`,
-      };
-      edges.push(edge);
+    // Link C signals to cAdd
+    for (const [sigIdStr, coeff] of Object.entries(cComp)) {
+      const sigId = parseInt(sigIdStr);
+      const type = sigId === 0 ? 'constant' : 'signal';
+      const component = sigId === 0 ? CONST_NODE_COMPONENT : signals.find(signal => signal.index === sigId)!.component
+      const name = sigId === 0 ? CONST_NODE_NAME : signals.find(signal => signal.index === sigId)!.name
+      const signalNode = createNode(sigId, type, name, component, coeff.toString());
+      links.push({ source: signalNode.id, target: cAdd.id });
     }
 
-    // connect C to the mul nodes
-    if(constraint.lin_expr_C.length === 1){
-      const edge: CircuitEdge = {
-        source: `c${constra_index}_C_0`,
-        target: `c${constra_index}_mul`,
-      };
-      edges.push(edge);
-    } else if(constraint.lin_expr_C.length > 1) {
-      const edge: CircuitEdge = {
-        source: `c${constra_index}_C_add`,
-        target: `c${constra_index}_mul`,
-      };
-      edges.push(edge);
-    }
-  }) // constra.forEach, looping all constraints
+    // Create multiplication node for this constraint
+    const mulNode = createNode(-1000 - constraintIndex, 'mul', `mul_${constraintIndex}`, -1);
+    links.push({ source: aAdd.id, target: mulNode.id });
+    links.push({ source: bAdd.id, target: mulNode.id });
 
+    // Equation: mul = cAdd (create the equation node to represent this equation)
+    links.push({ source: mulNode.id, target: cAdd.id });
+
+    // Link final mulNode to the equation node (single equation node)
+    links.push({ source: equationNode.id, target: mulNode.id });
+  });
+
+  // Store the graph data (nodes and links)
   circuitStore.setNodesList(nodes);
-  circuitStore.setEdgesList(edges);
-  console.log("nodes", circuitStore.nodes_list);
-  console.log("edges", circuitStore.edges_list);
-  // return { nodes, edges };
+  circuitStore.setLinksList(links);
+  // console.log("QAP nodes:", nodes);
+  // console.log("QAP links:", links);
 }
 
-function drawCircuitGraph(){
+const convertAllToString = (array: any[]) => {
+  return array.map(obj => {
+    return Object.fromEntries(
+      Object.entries(obj).map(([key, value]) => [key, String(value)])
+    );
+  });
+};
+
+function drawCircuitGraph() {
   if (!circuitContainer.value) return;
   const { width, height } = circuitContainer.value.getBoundingClientRect();
 
-  // remove all content when changed
+  // Remove all previous content when graph changes
   d3.select(circuitContainer.value).selectAll('*').remove();
 
-  buildCircuitGraph(constraints.value, symbolMap.value);
-  const circuit_nodes = circuitStore.nodes_list;
-  const circuit_edges = circuitStore.edges_list;
+  buildCircuitGraph(constraints.value, signals.value); // Build graph data with QAP nodes and links
+  const circuit_nodes = convertAllToString(circuitStore.nodes_list);
+  const circuit_links = convertAllToString(circuitStore.links_list);
 
   const svg = d3.select(circuitContainer.value)
     .append('svg')
@@ -273,7 +139,7 @@ function drawCircuitGraph(){
     .attr('height', height)
     .style('width', '100%')
     .style('height', '100%');
-  
+
   const zoomGroup = svg.append('g');
 
   const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -281,18 +147,17 @@ function drawCircuitGraph(){
     .on('zoom', (event) => {
       zoomGroup.attr('transform', event.transform);
     });
-
   svg.call(zoom);
 
-  // build D3 DAG structure
+  // Create a DAG from the QAP nodes and links
   const stratify = graphStratify()
     .id(data => data.id)
-    .parentIds(data => 
-    circuit_edges.filter(e => e.target === data.id)
-          .map(e => e.source));
+    .parentIds(data =>
+      circuit_links.filter(e => e.target === data.id)
+        .map(e => e.source));
   const dag = stratify(circuit_nodes);
-  
-  // Sugiyama
+
+  // Sugiyama layout: used for layered graph
   const layout = sugiyama()
     .nodeSize([100, 40])
     .layering(layeringLongestPath())
@@ -304,6 +169,7 @@ function drawCircuitGraph(){
     .source(d => [d.source.x, d.source.y])
     .target(d => [d.target.x, d.target.y]);
 
+  // Draw links (edges)
   zoomGroup.append('g')
     .selectAll('path')
     .data(dag.links())
@@ -311,9 +177,16 @@ function drawCircuitGraph(){
     .append('path')
     .attr('d', link)
     .attr('fill', 'none')
-    .attr('stroke', '#999')
+    .attr('stroke', d => {
+      if (d.source.data.type === 'equation' || d.target.data.type === 'equation') {
+        return 'red'
+      } else {
+        return '#999'
+      }
+    })
     .attr('stroke-width', 1.5);
 
+  // Draw nodes
   const nodeGroup = zoomGroup.append('g')
     .selectAll('g')
     .data(dag.nodes())
@@ -321,28 +194,29 @@ function drawCircuitGraph(){
     .append('g')
     .attr('transform', d => `translate(${d.x},${d.y})`);
 
-  nodeGroup.each(function(d) {
+  nodeGroup.each(function (d) {
     const node = circuit_nodes.find(n => n.id === d.data.id);
     if (!node) return; // if node is invalid
     const g = d3.select(this);
-    
+
     const symbolSize = 20; // Size of the multiplication symbol
     const strokeWidth = 4;
     const halfSize = symbolSize / 2;
 
+    // Node visualization based on node type
     switch (node.type) {
       case 'signal':
         g.append('circle')
           .attr('r', 20)
           .attr('fill', '#2b8cbe');
         break;
-      case 'add':        
+      case 'add':
         g.append('circle')
           .attr('r', halfSize)
           .attr('fill', '#f0f0f0')
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
-          
+
         g.append('line')
           .attr('x1', -halfSize + strokeWidth)
           .attr('y1', 0)
@@ -350,7 +224,7 @@ function drawCircuitGraph(){
           .attr('y2', 0)
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
-          
+
         g.append('line')
           .attr('x1', 0)
           .attr('y1', -halfSize + strokeWidth)
@@ -365,7 +239,7 @@ function drawCircuitGraph(){
           .attr('fill', '#f0f0f0')
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
-          
+
         g.append('line')
           .attr('x1', -halfSize + strokeWidth)
           .attr('y1', -halfSize + strokeWidth)
@@ -373,7 +247,7 @@ function drawCircuitGraph(){
           .attr('y2', halfSize - strokeWidth)
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
-          
+
         g.append('line')
           .attr('x1', halfSize - strokeWidth)
           .attr('y1', -halfSize + strokeWidth)
@@ -387,19 +261,29 @@ function drawCircuitGraph(){
           .attr('r', 15)
           .attr('fill', '#756bb1');
         break;
+      case 'equation':
+        g.append('circle')
+          .attr('r', 10)
+          .attr('fill', '#ffcc00')
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth);
+        break;
     }
 
+    // Text inside nodes
     g.append('text')
       .text(d => {
         switch (d.data.type) {
           case 'signal':
-            return `${d.data.coefficient}${d.data.name.split(".").slice(-1)[0]}`
+            return `${d.data.coefficient}${d.data.name.split(".").slice(-1)[0]}`;
           case 'add':
-            return null
+            return null; // No text for add nodes
           case 'mul':
-            return null
+            return null; // No text for mul nodes
           case 'constant':
-            return d.data.coefficient
+            return d.data.coefficient;
+          case 'equation':
+            return "Equation";
         }
       })
       .attr('text-anchor', 'middle')
@@ -416,10 +300,8 @@ function updateNodeColor() {
 
   svg.selectAll('.node')
     .select('circle')
-    .attr('fill', function(d: any) {
+    .attr('fill', function (d: any) {
       const node = d.data;
-      console.log("a", node);
-      
       return selectedSignalIds.includes(node.symbolId) ? 'red' : '#2b8cbe';
     });
 }
@@ -430,15 +312,17 @@ watch(constraints, () => {
 
 watch(selectedSignals, () => {
   console.log("selectedSignalssss");
-  
+
   // updateNodeColor();
 })
 </script>
 
 <style lang="css" scoped>
 .bg-gray-50 {
-  overflow: hidden; /* Prevent SVG overflow */
+  overflow: hidden;
+  /* Prevent SVG overflow */
 }
+
 svg {
   overflow: visible;
 }
