@@ -22,7 +22,7 @@
           </div>
           <!-- D: Restriction View -->
           <div class="h-1/2 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
-            <RestrictionView />
+            <QAPView />
           </div>
         </el-col>
       </el-row>
@@ -35,7 +35,7 @@ import { ref } from 'vue';
 import CircomCode from './components/CircomCode.vue';
 import CircuitView from './components/CircuitView.vue';
 import SignalView from './components/SignalView.vue';
-import RestrictionView from './components/RestrictionView.vue';
+import QAPView from './components/QAPView.vue';
 
 const isSignalExpanded = ref(false);
 
