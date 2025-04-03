@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import * as d3 from 'd3';
 import { useCircuitStore } from '@/stores/circuit';
 
@@ -229,34 +229,64 @@ function toggleColumnSelection(colIndex: number) {
   
   // Update the store directly
   circuitStore.selectedSignals = updatedSignals;
-
   
+  // Update row selection based on signals
   updateRowsFromSignals();
 }
 
+// Update row selection on component mount and when signals change
+onMounted(() => {
+  // Initialize row selection based on selected signals
+  if (selectedSignals.value.length > 0) {
+    updateRowsFromSignals();
+  }
+});
+
+// Watch for changes in selected signals
+watch(() => selectedSignals.value, () => {
+  // Update rows when selected signals change
+  updateRowsFromSignals();
+}, { deep: true });
+
 /**
- * Update selectedRows based on union of rows in matrices A, B, and C
+ * Update selectedRows based on intersection of rows in matrices A, B, and C
  * where each currently selected signal column has non-zero value.
  */
 function updateRowsFromSignals() {
-  const unionRows = new Set<number>();
   const matA = getMatrix(0);
   const matB = getMatrix(1);
   const matC = getMatrix(2);
   const totalRows = matrixSize.value.rows;
+  const selectedSignalIds = selectedSignals.value.map(signal => signal.symbol_id);
   
-  selectedSignals.value.forEach(signal => {
-    const col = signal.symbol_id;
+  // If no signals are selected, clear selected rows
+  if (selectedSignalIds.length === 0) {
+    emit('update:selectedRows', []);
+    return;
+  }
+  
+  // Create an array to track how many selected signals match each row
+  const rowMatchCounts = Array(totalRows).fill(0);
+  
+  // For each selected signal, check all rows
+  selectedSignalIds.forEach(colIndex => {
     for (let row = 0; row < totalRows; row++) {
-      // 如果任一矩阵对应单元格非零，则包含该行
-      if (matA[row][col] !== 0 || matB[row][col] !== 0 || matC[row][col] !== 0) {
-        unionRows.add(row);
+      // If row has non-zero value for this signal in any matrix, increment match count
+      if (matA[row][colIndex] !== 0 || matB[row][colIndex] !== 0 || matC[row][colIndex] !== 0) {
+        rowMatchCounts[row]++;
       }
     }
   });
   
-  const newRows = Array.from(unionRows).sort((a, b) => a - b);
-  emit('update:selectedRows', newRows);
+  // Filter rows that match all selected signals (intersection logic)
+  const intersectionRows = [];
+  for (let row = 0; row < totalRows; row++) {
+    if (rowMatchCounts[row] === selectedSignalIds.length) {
+      intersectionRows.push(row);
+    }
+  }
+  
+  emit('update:selectedRows', intersectionRows.sort((a, b) => a - b));
 }
 
 /**
@@ -446,7 +476,7 @@ function getCellStyle(value: number, colIndex: number) {
 .highlighted-label {
   font-weight: bold;
   transform: scale(1.1);
-  color: #000;
+  color: #1677ff;
   text-shadow: 0 0 2px rgba(255,255,255,0.8);
 }
 
@@ -475,8 +505,9 @@ function getCellStyle(value: number, colIndex: number) {
   pointer-events: none;
 }
 
-.highlighted {
-  border-color: rgba(0, 0, 0, 0.3);
+.column-highlight.highlighted {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-color: transparent;
 }
 
 .matrix-with-row-numbers {
@@ -509,6 +540,7 @@ function getCellStyle(value: number, colIndex: number) {
   border: 1px solid #ddd;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-sizing: border-box; /* Ensure borders are included in size calculations */
 }
 
 .row-number:hover {
@@ -519,6 +551,8 @@ function getCellStyle(value: number, colIndex: number) {
   background-color: #1677ff;
   color: white;
   font-weight: bold;
+  outline: 2px solid rgba(22, 119, 255, 0.7); /* Use outline instead of border */
+  z-index: 5;
 }
 
 /* Matrix rows and cells */
@@ -537,10 +571,14 @@ function getCellStyle(value: number, colIndex: number) {
   gap: 1px;
   position: relative;
   transition: background-color 0.2s ease;
+  box-sizing: border-box; /* Ensure borders are included in size calculations */
 }
 
 .selected-row {
   background-color: rgba(22, 119, 255, 0.1);
+  outline: 2px solid rgba(22, 119, 255, 0.7); /* Use outline instead of border */
+  position: relative;
+  z-index: 5;
 }
 
 .matrix-row:hover {
@@ -554,26 +592,6 @@ function getCellStyle(value: number, colIndex: number) {
   min-width: 6px;
   min-height: 6px;
   overflow: visible;
-}
-
-.matrix-cell:hover {
-  outline: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.cell-content {
-  position: relative;
-  z-index: 1;
-}
-
-/* Tooltip customization */
-:deep(.el-tooltip__trigger):after {
-  display: none !important;
-}
-
-:deep(.el-tooltip__popper) {
-  max-width: 300px;
-  word-break: break-all;
-  z-index: 10000 !important;
 }
 
 :deep(.matrix-tooltip) {

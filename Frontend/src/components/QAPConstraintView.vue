@@ -3,7 +3,7 @@
     <h3 class="formula-title">Selected Constraints:</h3>
     <div class="formulas-container">
       <div v-for="(rowIndex, index) in sortedSelectedRows" :key="index" class="formula-item">
-        <div class="row-label">Constraint {{ rowIndex }}:</div>
+        <div class="row-label">{{ formatConstraintLabel(rowIndex) }}:</div>
         <div class="formula-content" ref="mathElements"></div>
       </div>
     </div>
@@ -149,6 +149,23 @@ function getMatrix(matrixIndex: number) {
   }
   
   return result;
+}
+
+/**
+ * Format the constraint label with subscript notation
+ * @param index The constraint index
+ * @returns Formatted constraint label with subscript notation
+ */
+function formatConstraintLabel(index: number): string {
+  const subscripts = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
+  
+  const indexStr = index.toString();
+  const subscriptStr = indexStr
+    .split('')
+    .map(digit => subscripts[parseInt(digit)])
+    .join('');
+  
+  return 'C' + subscriptStr;
 }
 
 /**
