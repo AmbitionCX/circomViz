@@ -62,6 +62,12 @@ watch(() => circuitStore.symbols, () => {
   }
 });
 
+watch(() => circuitStore.selectedSignals, () => {
+  nextTick(() => {
+    updateNodeColor();
+  });
+}, { deep: true });
+
 function buildSignalTree(symbols: { index: number; name: string; component: number }[]): any[] {
   const tree: any[] = [];
   const nodeMap: Record<string, any> = {};
@@ -188,6 +194,8 @@ function renderTree() {
   });
 
   d3.select(treeSvg.value).call(zoom);
+
+  updateNodeColor();
 }
 
 function toggleSelection(nodeData: any) {
@@ -228,11 +236,12 @@ function updateNodeColor() {
     .select('circle')
     .attr('fill', function (d: any) {
       const node = d.data;
+      if (!node.symbol_id) return node.component !== undefined ? colorScale(node.component) : '#aaa';
+      
       const isSelected = selectedSignalIds.includes(node.symbol_id);
       const baseColor = node.component !== undefined ? colorScale(node.component) : '#aaa';
       return isSelected ? 'red' : baseColor;
     });
-
 }
 </script>
 
