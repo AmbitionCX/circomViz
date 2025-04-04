@@ -40,11 +40,14 @@ export type QAPData = {
 // ------------------------ svg type ------------------------
 
 export type NodeType = 'signal' | 'constant' | 'add' | 'mul' | 'equation';
+export type NodePosition = 'A' | 'B' | 'C' | 'equation';
 export type QAPNode = {
     id: number;
-    symbolId: number; // signal index
-    type: NodeType;
-    name: string; // Signal name
+    constraintIndex: number;
+    position: NodePosition;
+    nodeType: NodeType;
+    signalIndex: number; // signal index
+    signalName: string; // Signal name
     component: number; // Signal component
     coefficient?: string;
 };
