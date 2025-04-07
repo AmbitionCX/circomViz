@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+
 import { SymbolObject, ConstraintObject, QAPData, QAPNode, QAPLink } from '@/types/circuitTypes';
 
 export const useCircuitStore = defineStore('circuit', {
@@ -13,11 +14,8 @@ export const useCircuitStore = defineStore('circuit', {
         qapData: {} as QAPData,
         nodes_list: [] as QAPNode[],
         links_list: [] as QAPLink[],
-        viewportTransform: {
-            x: 0,
-            y: 0,
-            scale: 1
-        },
+        componentNameColorMap: {} as Record<string, string>, // { "main": "#1f77b4" }
+        componentIdColorMap: {} as Record<number, string>,   // { 0: "#1f77b4" }
         selectedElements: new Set<string>()
     }),
     getters: {
@@ -60,6 +58,12 @@ export const useCircuitStore = defineStore('circuit', {
         },
         setLinksList(links_list: QAPLink[]) {
             this.links_list = links_list;
+        },
+        setComponentNameColors(colorMap: Record<string, string>) {
+            this.componentNameColorMap = colorMap;
+        },
+        setComponentIdColors(colorMap: Record<string, string>) {
+            this.componentIdColorMap = colorMap;
         }
     }
 });

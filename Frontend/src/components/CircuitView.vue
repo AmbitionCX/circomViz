@@ -18,20 +18,22 @@ import * as d3 from 'd3';
 import { graphStratify } from 'd3-dag';
 import { computed, ref, watch } from 'vue';
 import { useCircuitStore } from '@/stores/circuit';
+import { hexToRgba } from '@/composables/colors'
 import { QAPNode, QAPLink, NodeType, NodePosition, ConstraintObject, SymbolObject, ConstraintComponent } from '@/types/circuitTypes';
 
 const circuitStore = useCircuitStore();
 const constraints = computed(() => circuitStore.constraints);
-const signals = computed(() => circuitStore.symbols)
+const signals = computed(() => circuitStore.symbols);
 const selectedSignals = computed(() => circuitStore.selectedSignals);
 const circuitContainer = ref<HTMLElement | null>(null);
+
+const componentColors = computed(() => circuitStore.componentIdColorMap);
 
 const circuitViewExplanation = "This is Circuit View"
 
 function buildCircuitGraph(constraints: ConstraintObject[], signals: SymbolObject[]) {
   const nodes: QAPNode[] = [];
   const links: QAPLink[] = [];
-
 
   const CONST_NODE_NAME = 'const';
   const CONST_NODE_COMPONENT = -1;
@@ -97,12 +99,12 @@ function buildCircuitGraph(constraints: ConstraintObject[], signals: SymbolObjec
 
         for (const [sigIdStr, coeff] of entries) {
           const sigIndex = parseInt(sigIdStr);
-        const nodeType = sigIndex === 0 ? 'constant' : 'signal';
-        const component = sigIndex === 0 ? CONST_NODE_COMPONENT : signals.find(s => s.index === sigIndex)!.component;
-        const nodeName = sigIndex === 0 ? CONST_NODE_NAME : signals.find(s => s.index === sigIndex)!.name;
+          const nodeType = sigIndex === 0 ? 'constant' : 'signal';
+          const component = sigIndex === 0 ? CONST_NODE_COMPONENT : signals.find(s => s.index === sigIndex)!.component;
+          const nodeName = sigIndex === 0 ? CONST_NODE_NAME : signals.find(s => s.index === sigIndex)!.name;
           const termNode = createNode(constraintIndex, position_label, nodeType, sigIndex, nodeName, component, coeff.toString());
           links.push({ target: termNode.id, source: addNode.id });
-        } 
+        }
         return addNode;
       }
     };
@@ -119,12 +121,12 @@ function buildCircuitGraph(constraints: ConstraintObject[], signals: SymbolObjec
     // Link direction is radiating from the center equation node to the outside signal nodes
     if (aNode != null && bNode != null) {
       const mulNode = createNode(constraintIndex, 'A', 'mul', MUL_NODE_ID, MUL_NODE_NAME, MUL_NODE_COMPONENT);
-      links.push({ target: aNode.id, source: mulNode.id});
-      links.push({ target: bNode.id, source: mulNode.id});
-      links.push({ target: mulNode.id, source: equationNode.id});
+      links.push({ target: aNode.id, source: mulNode.id });
+      links.push({ target: bNode.id, source: mulNode.id });
+      links.push({ target: mulNode.id, source: equationNode.id });
       if (cNode != null) {
         // Link both mul and C to the equation node
-        links.push({ target: cNode.id, source: equationNode.id});
+        links.push({ target: cNode.id, source: equationNode.id });
       }
     }
 
@@ -142,6 +144,25 @@ const convertAllToString = (array: any[]) => {
     );
   });
 };
+
+const minRadius = 10; // min radius when coeff less than 1
+const middleRadius = 20 // radius when coeff is 1
+const maxRadius = 30; // max radius when coeff larger than 1
+const minCoeff = 4; // min 1/4
+const maxCoeff = 1000; // max prime number, Ignore JavaScript big number errors
+
+function getRadiusFromCoefficient(coeff: string) {
+  let absCoef: number = 1;
+  if (!coeff) {
+    return 1;
+  } else if (coeff.startsWith('-1/')) {
+    let denominator = Number(coeff.split("-1/")[1]) || 1;
+    return Math.min(middleRadius, Math.max(minRadius, (minCoeff / denominator) * minRadius));
+  } else {
+    absCoef = Math.abs(Number(coeff))
+    return Math.max(middleRadius, Math.min(maxRadius, (absCoef / maxCoeff) * maxRadius));
+  }
+}
 
 function drawCircuitGraph() {
   if (!circuitContainer.value) return;
@@ -202,7 +223,7 @@ function drawCircuitGraph() {
     if (data.nodeType === 'equation') {
       group.equation = d;
     } else {
-      if (data.position === 'A' || data.position === 'B' ) { group.AandB.push(d); } 
+      if (data.position === 'A' || data.position === 'B') { group.AandB.push(d); }
       if (data.position === 'C') { group.C.push(d); }
     }
   });
@@ -242,7 +263,7 @@ function drawCircuitGraph() {
       } else if (direction === 'bottom') {
         node.y = startY + depth * nodeSpacing;
       }
-      
+
       svgNodeMap.set(node.data.id, node);
 
       // Find children of the current node and recursively place them
@@ -264,8 +285,6 @@ function drawCircuitGraph() {
   constraintGroups.forEach((group, i) => {
     const baseX = offsetX + i * xSpacing;
 
-    console.log("group", group);
-    
     // Find root symbol node for A/B, which is directly connected to the equation node
     const rootAorB = group.AandB.find(node => circuit_links.some(link => link.target === node.data.id && link.source === '0'));
     const rootAorBArray = rootAorB ? [rootAorB] : []
@@ -277,8 +296,7 @@ function drawCircuitGraph() {
     // Find root symbol node for C
     const rootC = group.C.find(node => circuit_links.some(link => link.target === node.data.id && link.source === '0'));
     const rootCArray = rootC ? [rootC] : []
-    console.log("group.C", group.C);
-    
+
     // Place the binary tree for bottom layer (C)    
     if (rootCArray.length > 0) {
       placeBinaryTree(rootCArray, 'bottom', baseX, centerY + ySpacing, 0, 3, circuit_links, group.C); // True for left, false for right
@@ -308,7 +326,7 @@ function drawCircuitGraph() {
     .attr('fill', 'none')
     .attr('stroke', d => {
       if (d.source.data.nodeType === 'equation' || d.target.data.nodeType === 'equation') {
-        return 'red'
+        return '#CE6149'
       } else {
         return '#999'
       }
@@ -326,76 +344,130 @@ function drawCircuitGraph() {
   nodeGroup.each(function (d) {
     const node = circuit_nodes.find(n => n.id === d.data.id);
     if (!node) return; // if node is invalid
-    const g = d3.select(this);
 
-    const symbolSize = 20; // Size of the multiplication symbol
     const strokeWidth = 4;
-    const halfSize = symbolSize / 2;
+    const nodeRadius = getRadiusFromCoefficient(node.coefficient);
+    const isSelected = circuitStore.selectedSignals.some(s => s.symbol_id === node.symbol_id);
+    const baseColor = componentColors.value[d.data.component] || '#aaa';
+    const fillColor = hexToRgba(baseColor, isSelected ? 1.0 : 0.6);
 
+    const g = d3.select(this);
     // Node visualization based on node type
     switch (node.nodeType) {
       case 'signal':
         g.append('circle')
-          .attr('r', 15)
-          .attr('fill', '#2b8cbe');
+          .attr('class', 'signal-node')
+          .attr('r', nodeRadius)
+          .attr('fill', fillColor)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth / 2)
+          .attr('stroke-dasharray', node.coefficient.startsWith('-') ? '8 4' : 'none')
+          .on('click', function (_, d) {
+            const node = circuit_nodes.find(n => n.id === d.data.id);
+            if (!node) return;
+
+            const selected = circuitStore.selectedSignals.some(s => s.symbol_id === node.signalIndex);
+            const signal = {
+              symbol_id: d.data.signalIndex,
+              fullName: d.data.signalName,
+              component: d.data.component,
+              name: d.data.signalName.split('.').pop()
+            };
+
+            if (selected) {
+              circuitStore.popSignal(signal);
+            } else {
+              circuitStore.pushSignal(signal);
+            }
+
+            updateNodeColor();
+          });
         break;
       case 'add':
         g.append('circle')
-          .attr('r', halfSize)
+          .attr('r', minRadius)
           .attr('fill', '#f0f0f0')
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
 
         g.append('line')
-          .attr('x1', -halfSize + strokeWidth)
+          .attr('x1', -minRadius + strokeWidth)
           .attr('y1', 0)
-          .attr('x2', halfSize - strokeWidth)
+          .attr('x2', minRadius - strokeWidth)
           .attr('y2', 0)
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
 
         g.append('line')
           .attr('x1', 0)
-          .attr('y1', -halfSize + strokeWidth)
+          .attr('y1', -minRadius + strokeWidth)
           .attr('x2', 0)
-          .attr('y2', halfSize - strokeWidth)
+          .attr('y2', minRadius - strokeWidth)
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
         break;
       case 'mul':
         g.append('circle')
-          .attr('r', halfSize)
+          .attr('r', minRadius)
           .attr('fill', '#f0f0f0')
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
 
         g.append('line')
-          .attr('x1', -halfSize + strokeWidth)
-          .attr('y1', -halfSize + strokeWidth)
-          .attr('x2', halfSize - strokeWidth)
-          .attr('y2', halfSize - strokeWidth)
+          .attr('x1', -minRadius + strokeWidth)
+          .attr('y1', -minRadius + strokeWidth)
+          .attr('x2', minRadius - strokeWidth)
+          .attr('y2', minRadius - strokeWidth)
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
 
         g.append('line')
-          .attr('x1', halfSize - strokeWidth)
-          .attr('y1', -halfSize + strokeWidth)
-          .attr('x2', -halfSize + strokeWidth)
-          .attr('y2', halfSize - strokeWidth)
+          .attr('x1', minRadius - strokeWidth)
+          .attr('y1', -minRadius + strokeWidth)
+          .attr('x2', -minRadius + strokeWidth)
+          .attr('y2', minRadius - strokeWidth)
           .attr('stroke', '#2c2c2c')
           .attr('stroke-width', strokeWidth);
         break;
       case 'constant':
         g.append('circle')
-          .attr('r', 15)
-          .attr('fill', '#756bb1');
+          .attr('r', nodeRadius)
+          .attr('fill', fillColor)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth / 2)
+          .attr('stroke-dasharray', node.coefficient.startsWith('-') ? '8 4' : 'none')
         break;
       case 'equation':
-        g.append('circle')
-          .attr('r', 10)
+        const eqSize = 20;
+        const eqLineSpacing = 4;
+        // draw a transparent clickable background
+        g.append('rect')
+          .attr('x', -eqSize / 2)
+          .attr('y', -eqSize / 2)
+          .attr('width', eqSize)
+          .attr('height', eqSize)
           .attr('fill', '#ffcc00')
           .attr('stroke', '#2c2c2c')
-          .attr('stroke-width', strokeWidth);
+          .attr('stroke-width', strokeWidth / 2)
+          .attr('rx', 4); // rounded corners
+
+        // Top line of '='
+        g.append('line')
+          .attr('x1', -eqSize / 3)
+          .attr('y1', -eqLineSpacing)
+          .attr('x2', eqSize / 3)
+          .attr('y2', -eqLineSpacing)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth / 1.5);
+
+        // Bottom line of '='
+        g.append('line')
+          .attr('x1', -eqSize / 3)
+          .attr('y1', eqLineSpacing)
+          .attr('x2', eqSize / 3)
+          .attr('y2', eqLineSpacing)
+          .attr('stroke', '#2c2c2c')
+          .attr('stroke-width', strokeWidth / 1.5);
         break;
     }
 
@@ -404,7 +476,14 @@ function drawCircuitGraph() {
       .text(d => {
         switch (d.data.nodeType) {
           case 'signal':
-            return `${d.data.coefficient}${d.data.signalName.split(".").slice(-1)[0]}`;
+            switch (d.data.coefficient) {
+              case '1':
+                return `${d.data.signalName.split(".").slice(-1)[0]}`;
+              case '-1':
+                return `-${d.data.signalName.split(".").slice(-1)[0]}`;
+              default:
+                return `${d.data.coefficient}${d.data.signalName.split(".").slice(-1)[0]}`;
+            }
           case 'add':
             return null; // No text for add nodes
           case 'mul':
@@ -412,26 +491,44 @@ function drawCircuitGraph() {
           case 'constant':
             return d.data.coefficient;
           case 'equation':
-            return "Equation";
+            return "";
         }
       })
+      .attr('fill', d => {
+        switch (d.data.nodeType) {
+          case 'signal':
+            return 'black';
+          case 'add':
+            return null; // No filling color
+          case 'mul':
+            return null; // No filling color
+          case 'constant':
+            return 'white';
+          case 'equation':
+            return null; // No filling color
+        }
+      })
+      .attr('dy', '0.35em')
       .attr('text-anchor', 'middle')
-      .attr('dy', '0.3em')
-      .style('font-size', '12px');
+      .attr('class', 'node-label')
+      .attr('font-size', '14px');
   });
-};
+}; // drawGraph function
 
 function updateNodeColor() {
   if (!circuitContainer.value) return;
+  const svg = d3.select(circuitContainer.value)
 
-  const svg = d3.select(circuitContainer.value);
-  const selectedSignalIds = circuitStore.selectedSignals.map(signal => signal.symbol_id);
-
-  svg.selectAll('.node')
-    .select('circle')
+  svg.selectAll('.signal-node')
     .attr('fill', function (d: any) {
       const node = d.data;
-      return selectedSignalIds.includes(node.symbolId) ? 'red' : '#2b8cbe';
+      const isSelected = circuitStore.selectedSignals.some(s => s.symbol_id === node.signalIndex);
+
+      const baseColor = componentColors.value[d.data.component] || '#aaa';
+      const opacityColor = hexToRgba(baseColor, isSelected ? 1.0 : 0.6);
+
+      if (!node.symbol_id) return opacityColor;
+      return isSelected ? baseColor : opacityColor;
     });
 }
 
@@ -440,10 +537,8 @@ watch(constraints, () => {
 })
 
 watch(selectedSignals, () => {
-  console.log("selectedSignalssss");
-
-  // updateNodeColor();
-})
+  updateNodeColor();
+}, { deep: true })
 </script>
 
 <style lang="css" scoped>

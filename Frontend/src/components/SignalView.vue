@@ -16,17 +16,18 @@
     <div class="flex flex-wrap items-center gap-2">
       <div v-for="(color, comp) in componentColors" :key="comp" class="flex items-center gap-1 text-sm">
         <div :style="{ backgroundColor: color }" class="w-3 h-3 rounded-full"></div>
-        <span>{{ comp }}</span>
+        <span :class="{ 'italic': comp === 'constant' }">{{ comp }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from 'vue';
-import { useCircuitStore } from '@/stores/circuit';
+import { ref, watch, onMounted, computed, nextTick } from 'vue';
 import * as d3 from 'd3';
 import { ArrowUpBold, ArrowDownBold } from '@element-plus/icons-vue'
+import { useCircuitStore } from '@/stores/circuit';
+import { hexToRgba } from '@/composables/colors';
 
 const emit = defineEmits(['toggle-layout']);
 
@@ -38,7 +39,7 @@ const signalTree = ref<any[]>([]);
 
 const isExpanded = ref(false);
 const signalViewExplanation = "All Signals"
-const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+const colorScale = d3.scaleOrdinal(d3.schemeObservable10);
 
 const componentColors = ref<Record<string, string>>({});
 
@@ -89,10 +90,10 @@ function buildSignalTree(symbols: { index: number; name: string; component: numb
 
       if (!nodeMap[currentPath]) {
         const newNode = {
-          name: part,
+          name: componentName,
           fullName: symbol.name,
           symbol_id: isLeaf ? symbol.index : undefined,
-          component: componentName,
+          component: symbol.component,
           children: [],
         };
         currentChildren.push(newNode);
@@ -107,25 +108,30 @@ function buildSignalTree(symbols: { index: number; name: string; component: numb
 }
 
 function buildComponentColors(symbols: any[]) {
-  const componentNameSet = new Set<string>();
+
+  const nameColorMap: Record<string, string> = {};
+  const idColorMap: Record<number, string> = {};
 
   const getPenultimate = (name: string) => {
     const parts = name.split('.');
     return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
   };
 
-  symbols.forEach(s => {
-    const compName = getPenultimate(s.name);
-    componentNameSet.add(compName);
+  symbols.forEach(symbol => {
+    const compName = getPenultimate(symbol.name);
+    const colorRGB = colorScale(symbol.component);
+
+    nameColorMap[compName] = colorRGB;
+    idColorMap[symbol.component] = colorRGB;
   });
 
-  const scale = d3.scaleOrdinal(d3.schemeCategory10);
-  const colorMap: Record<string, string> = {};
-  Array.from(componentNameSet).forEach((comp, _) => {
-    colorMap[comp] = scale(comp);
-  });
+  // color for constant numbers
+  nameColorMap['constant'] = '#666666';
+  idColorMap[-1] = '#666666';
+  componentColors.value = nameColorMap;
 
-  componentColors.value = colorMap;
+  circuitStore.setComponentNameColors(nameColorMap);
+  circuitStore.setComponentIdColors(idColorMap);
 }
 
 function renderTree() {
@@ -187,7 +193,13 @@ function renderTree() {
   nodes.append('text')
     .attr('dy', -15)
     .attr('text-anchor', 'middle')
-    .text(d => (d.data as any).name);
+    .text(d => {
+      if (d.data.children.length === 0) {
+        return (d.data as any).fullName.split('.').pop()
+      } else {
+        return (d.data as any).name
+      }
+    });
 
   const zoom = d3.zoom<SVGSVGElement, unknown>().on('zoom', function (event) {
     svg.attr('transform', event.transform);
@@ -236,13 +248,15 @@ function updateNodeColor() {
     .select('circle')
     .attr('fill', function (d: any) {
       const node = d.data;
-      if (!node.symbol_id) return node.component !== undefined ? colorScale(node.component) : '#aaa';
-      
-      const isSelected = selectedSignalIds.includes(node.symbol_id);
-      const baseColor = node.component !== undefined ? colorScale(node.component) : '#aaa';
-      return isSelected ? 'red' : baseColor;
+      const fullColor = node.component !== undefined ? colorScale(node.component) : '#aaaaaa';
+      const opacityColor = hexToRgba(fullColor, 0.6)
+
+      if (!node.symbol_id) return opacityColor;
+      const isSelected = selectedSignalIds.includes(String(node.symbol_id));
+      return isSelected ? fullColor : opacityColor;
     });
 }
+
 </script>
 
 <style scoped>

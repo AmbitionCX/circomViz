@@ -9,7 +9,7 @@
       </el-tooltip>
     </div>
 
-    <div class="border border-gray-300 p-2 rounded-md bg-gray-50 flex-grow overflow-y-auto">
+    <div class="border border-gray-300 rounded-md bg-gray-50 flex-grow overflow-x-auto">
       <div v-if="hasQAPData" class="w-full flex flex-col">
         <!-- Matrix Display Component -->
         <QAPMatrixView 
@@ -59,11 +59,4 @@ const selectedRows = ref<number[]>([]);
 </script>
 
 <style lang="css" scoped>
-.h-full {
-  max-height: 400px;
-}
-
-.overflow-y-auto {
-  overflow-y: auto;
-}
 </style>
