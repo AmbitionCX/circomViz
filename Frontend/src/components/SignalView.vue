@@ -2,7 +2,12 @@
   <div class="signal-selection-container">
     <div class="flex flex-row flex-nowrap mb-2">
       <h2 class="text-base font-bold">Signal View</h2>
-      <el-tooltip class="box-item" effect="light" :content="signalViewExplanation" placement="top">
+      <el-tooltip class="box-item" trigger="click" effect="light" placement="top">
+        <template #content>
+          <div class="text-sm leading-snug break-words max-w-xs whitespace-normal">
+            {{ signalViewExplanation }}
+          </div>
+        </template>
         <el-icon class="my-auto ml-1 hover:cursor-pointer">
           <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
         </el-icon>
@@ -38,7 +43,7 @@ const treeSvg = ref<SVGSVGElement | null>(null);
 const signalTree = ref<any[]>([]);
 
 const isExpanded = ref(false);
-const signalViewExplanation = "All Signals"
+const signalViewExplanation = "This view visualizes all signals in the circuit as a tree based on component nesting. Signals are color-coded by component, helping you spot naming conflicts or signal reuse. Click any signal to highlight related constraints in the Circuit and QAP views—great for debugging and tracing signal usage."
 const colorScale = d3.scaleOrdinal(d3.schemeObservable10);
 
 const componentColors = ref<Record<string, string>>({});

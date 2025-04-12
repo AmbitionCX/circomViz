@@ -2,7 +2,12 @@
   <div class="flex flex-col h-full">
     <div class="flex flex-row flex-nowrap mb-2">
       <h2 class="text-base font-bold">QAP View</h2>
-      <el-tooltip class="box-item" effect="light" :content="constraintViewExplanation" placement="top">
+      <el-tooltip class="box-item" trigger="click" effect="light" placement="top">
+        <template #content>
+          <div class="text-sm leading-snug break-words max-w-xs whitespace-normal">
+            {{ constraintViewExplanation }}
+          </div>
+        </template>
         <el-icon class="my-auto ml-1 hover:cursor-pointer">
           <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
         </el-icon>
@@ -45,7 +50,7 @@ const qapData = computed(() => circuitStore.qapData);
 const symbols = computed(() => circuitStore.symbols);
 
 // Help text explaining the QAP view
-const constraintViewExplanation = "This view displays the three matrices A, B, and C resulting from converting circuit constraints into a Quadratic Arithmetic Program (QAP). Each column corresponds to a signal, and each row corresponds to a constraint point.";
+const constraintViewExplanation = "This heatmap shows the QAP matrices (A, B, C) derived from the R1CS. Rows are constraints, columns are signals, and color intensity shows non-zero coefficients. Selecting a signal highlights all constraints it's involved in. Use this to uncover which signals influence which constraints, and see their algebraic forms rendered live.";
 
 // Check if QAP data is available
 const hasQAPData = computed(() => {

@@ -2,7 +2,12 @@
   <div class="flex flex-col h-full">
     <div class="flex flex-row flex-nowrap mb-2">
       <h2 class="text-base font-bold">Circuit View</h2>
-      <el-tooltip class="box-item" effect="light" :content="circuitViewExplanation" placement="top">
+      <el-tooltip class="box-item" trigger="click" effect="light" placement="top">
+        <template #content>
+          <div class="text-sm leading-snug break-words max-w-xs whitespace-normal">
+            {{ circuitViewExplanation }}
+          </div>
+        </template>
         <el-icon class="my-auto ml-1 hover:cursor-pointer">
           <Warning style="width: 0.9em; height: 0.9em; fill: black; fill-opacity: 0.8;" />
         </el-icon>
@@ -29,7 +34,7 @@ const circuitContainer = ref<HTMLElement | null>(null);
 
 const componentColors = computed(() => circuitStore.componentIdColorMap);
 
-const circuitViewExplanation = "This is Circuit View"
+const circuitViewExplanation = "Here, each constraint becomes a visual graph: A×B=C. Signals are shown as colored nodes (scaled by coefficient size). Use this view to understand dependency chains, detect structural issues, and interactively explore constraint logic."
 
 function buildCircuitGraph(constraints: ConstraintObject[], signals: SymbolObject[]) {
   const nodes: QAPNode[] = [];

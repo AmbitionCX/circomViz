@@ -14,8 +14,10 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="1-constraint">1-constraint</el-dropdown-item>
+              <el-dropdown-item command="multiplier">multiplier</el-dropdown-item>
               <el-dropdown-item command="simpleVote">simpleVote</el-dropdown-item>
               <el-dropdown-item command="mimc7">mimc7</el-dropdown-item>
+
             </el-dropdown-menu>
           </template>
         </el-dropdown>
