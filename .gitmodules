@@ -1,0 +1,18 @@
+[submodule "Backend/circomlib"]
+	path = Backend/circomlib
+	url = https://github.com/iden3/circomlib.git
+[submodule "submodules/zk-email-verify"]
+	path = submodules/zk-email-verify
+	url = https://github.com/zkemail/zk-email-verify.git
+[submodule "submodules/anon-aadhaar"]
+	path = submodules/anon-aadhaar
+	url = https://github.com/anon-aadhaar/anon-aadhaar.git
+[submodule "submodules/zksync-social-login-circuit"]
+	path = submodules/zksync-social-login-circuit
+	url = https://github.com/Moonsong-Labs/zksync-social-login-circuit.git
+[submodule "submodules/semaphore"]
+	path = submodules/semaphore
+	url = https://github.com/semaphore-protocol/semaphore.git
+[submodule "submodules/zk-franchise-proof-circuit"]
+	path = submodules/zk-franchise-proof-circuit
+	url = https://github.com/vocdoni/zk-franchise-proof-circuit.git
