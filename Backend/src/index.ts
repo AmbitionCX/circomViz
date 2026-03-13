@@ -1,51 +1,58 @@
 import fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
 import cors from '@fastify/cors';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 import { saveCode } from './scripts/compilation.js';
-import { convertR1CStoQAP } from './scripts/buildQAP.js'
+import { CircomParser as SubmoduleParser } from './core/parser/submoduleParser.js';
+import { parseCircuitHandler } from './server/routes/parseCircuit.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const server = fastify();
 server.register(cors, {
-    origin: '*',
-    methods: ['GET', 'POST'],
-    credentials: true
+  origin: '*',
+  methods: ['GET', 'POST'],
+  credentials: true
 });
 
-server.post('/generateCircuit', async (request, reply) => {
-    const { code } = request.body as { code: string };
-    const timestamp: string = new Date().toISOString().replace(/[:.]/g, '-'); // Format: YYYY-MM-DDTHH-MM-SS-MSZ
-    const fileName: string = `${timestamp}.circom`;
-
-    try {
-        // save Frontend code to a folder under /compilations, the folder is named with timestamp
-        // compile circom code in the folder. The process will interrupt if the code cannot compile, 
-        await saveCode(timestamp, fileName, code).then((result) => {
-            const qapDataJSON = convertR1CStoQAP(result);
-
-            let replyData = {
-                "compilationId": timestamp,
-                "circuitData": result,
-                "qapData": qapDataJSON
-            }
-            console.log(`project ${timestamp} compile successed`);
-            console.log("QAP", qapDataJSON);
-            
-            reply.send(JSON.stringify(replyData));
-        })
-    } catch (error) {
-        const err = error as Error;        
-        reply.status(400).send({ error: 'Failed to parse Circom code', details: err.message });
-        console.log(`project ${timestamp} compile failed.\n`);
-        console.log(`The error message is: ${error}`)
-    }
+server.register(fastifyStatic, {
+  root: path.join(__dirname, '../Frontend/dist'),
+  wildcard: false
 });
 
+server.setErrorHandler((error, _, reply) => {
+  reply.status(500).send({ error: error });
+});
 
+server.get('/', (_, reply) => {
+  reply.sendFile(path.join(__dirname, '../Frontend/dist/index.html'));
+});
+
+server.get('/submodules', (_, reply) => {
+  const submodules = SubmoduleParser.getAllSubmodules();
+  reply.send({ submodules });
+});
+
+server.get('/submodules/:id', (request, reply) => {
+  const { id } = request.params as { id: string };
+  const submodule = SubmoduleParser.getSubmoduleById(id);
+  
+  if (!submodule) {
+    return reply.code(404).send({ error: 'Submodule not found' });
+  }
+  
+  reply.send({ submodule });
+});
+
+server.post('/parse_circuit', parseCircuitHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
-    if (err) {
-        console.error(err);
-        process.exit(1);
-    }
-    console.log(`Server listening at ${address}`);
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`Server listening at ${address}`);
 });

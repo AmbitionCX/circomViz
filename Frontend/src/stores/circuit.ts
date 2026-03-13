@@ -2,68 +2,115 @@ import { defineStore } from 'pinia';
 
 import { SymbolObject, ConstraintObject, QAPData, QAPNode, QAPLink } from '@/types/circuitTypes';
 
+interface CircuitState {
+  circomCode: string;
+  compilationId: string;
+  symbols: SymbolObject[];
+  constraints: ConstraintObject[];
+  substitutions: Record<string, any>;
+  selectedSignals: any[];
+  code: string;
+  qapData: {
+    numVars: number;
+    numConstraints: number;
+    qapPolysA: any[];
+    qapPolysB: any[];
+    qapPolysC: any[];
+    zPoly: any[];
+    evaluationPoints: any[];
+  };
+  nodes_list: QAPNode[];
+  links_list: QAPLink[];
+  componentNameColorMap: Record<string, string>;
+  componentIdColorMap: Record<number, string>;
+  selectedElements: Set<string>;
+  templateTree: any;
+  parseFiles: any[];
+  parseErrors: any[];
+}
+
 export const useCircuitStore = defineStore('circuit', {
-    state: () => ({
-        circomCode: '' as string,
-        compilationId: '' as string,
-        symbols: [] as SymbolObject[],
-        constraints: [] as ConstraintObject[],
-        substitutions: {} as Record<string, any>,
-        selectedSignals: [] as any[],
-        code: '' as string,
-        qapData: {} as QAPData,
-        nodes_list: [] as QAPNode[],
-        links_list: [] as QAPLink[],
-        componentNameColorMap: {} as Record<string, string>, // { "main": "#1f77b4" }
-        componentIdColorMap: {} as Record<number, string>,   // { 0: "#1f77b4" }
-        selectedElements: new Set<string>()
-    }),
-    getters: {
-        isCodeEmpty(): boolean {
-            return this.circomCode === '';
-        },
+  state: (): CircuitState => ({
+    circomCode: '',
+    compilationId: '',
+    symbols: [],
+    constraints: [],
+    substitutions: {},
+    selectedSignals: [],
+    code: '',
+    qapData: {
+      numVars: 0,
+      numConstraints: 0,
+      qapPolysA: [],
+      qapPolysB: [],
+      qapPolysC: [],
+      zPoly: [],
+      evaluationPoints: []
     },
-    actions: {
-        setCompilationId(id: string) {
-            this.compilationId = id;
-        },
-        setSymbols(symbol: any[]) {
-            this.symbols = symbol;
-        },
-        setConstraints(constraint: any[]) {
-            this.constraints = constraint;
-        },
-        setSubstitutions(substitution: {}) {
-            this.substitutions = substitution
-        },
-        pushSignal(signal: any) {
-            if (!this.selectedSignals.some(s => s.symbol_id === signal.symbol_id)) {
-                this.selectedSignals.push(signal);
-            }
-        },
-        popSignal(signal: any) {
-            this.selectedSignals = this.selectedSignals.filter(s => s.symbol_id !== signal.symbol_id);
-        },
-        resetCompilationId() {
-            this.compilationId = '';
-        },
-        setCode(newCode: string) {
-            this.code = newCode;
-        },
-        setQAPData(qapData: QAPData) {
-            this.qapData = qapData;
-        },
-        setNodesList(nodes_list: QAPNode[]) {
-            this.nodes_list = nodes_list;
-        },
-        setLinksList(links_list: QAPLink[]) {
-            this.links_list = links_list;
-        },
-        setComponentNameColors(colorMap: Record<string, string>) {
-            this.componentNameColorMap = colorMap;
-        },
-        setComponentIdColors(colorMap: Record<string, string>) {
-            this.componentIdColorMap = colorMap;
-        }
+    nodes_list: [],
+    links_list: [],
+    componentNameColorMap: {},
+    componentIdColorMap: {},
+    selectedElements: new Set<string>(),
+    templateTree: null,
+    parseFiles: [],
+    parseErrors: []
+  }),
+  getters: {
+    isCodeEmpty(): boolean {
+      return this.code === '';
+    },
+  },
+  actions: {
+    setCompilationId(id: string) {
+      this.compilationId = id;
+    },
+    setSymbols(symbol: any[]) {
+      this.symbols = symbol;
+    },
+    setConstraints(constraint: any[]) {
+      this.constraints = constraint;
+    },
+    setSubstitutions(substitution: {}) {
+      this.substitutions = substitution;
+    },
+    pushSignal(signal: any) {
+      if (!this.selectedSignals.some(s => s.symbol_id === signal.symbol_id)) {
+        this.selectedSignals.push(signal);
+      }
+    },
+    popSignal(signal: any) {
+      this.selectedSignals = this.selectedSignals.filter(s => s.symbol_id !== signal.symbol_id);
+    },
+    resetCompilationId() {
+      this.compilationId = '';
+    },
+    setCode(newCode: string) {
+      this.code = newCode;
+    },
+    setQAPData(qapData: QAPData) {
+      this.qapData = qapData;
+    },
+    setNodesList(nodes_list: QAPNode[]) {
+      this.nodes_list = nodes_list;
+    },
+    setLinksList(links_list: QAPLink[]) {
+      this.links_list = links_list;
+    },
+    setComponentNameColors(colorMap: Record<string, string>) {
+      this.componentNameColorMap = colorMap;
+    },
+    setComponentIdColors(colorMap: Record<string, string>) {
+      this.componentIdColorMap = colorMap;
+    },
+    setTemplateTree(tree: any) {
+      this.templateTree = tree;
+    },
+    setParseFiles(files: any[]) {
+      this.parseFiles = files;
+    },
+    setParseErrors(errors: any[]) {
+      this.parseErrors = errors;
     }
+  }
 });

@@ -5,24 +5,24 @@
     </el-header>
     <el-main class="bg-gray-100 pt-2">
       <el-row class="h-full w-full">
-        <el-col :span="8" class="h-full">
-          <!-- A: Circom Code Input Area -->
-          <div :class="['w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom', isSignalExpanded ? 'h-1/4' : 'h-3/4']">
-            <CircomCode />
+        <el-col :span="6" class="h-full flex flex-col">
+          <!-- A: Submodule Selector -->
+          <div :class="['w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom flex-shrink-0']">
+            <SubmoduleSelector @parse-complete="handleParseComplete" />
           </div>
           <!-- C: Signal Selection -->
-          <div :class="['w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom', isSignalExpanded ? 'h-3/4' : 'h-1/4']">
-            <SignalView class="h-full w-full" @toggle-layout="onToggleLayout" />
+          <div :class="['w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom flex-1 overflow-auto min-h-0']">
+            
           </div>
         </el-col>
-        <el-col :span="16" class="h-full pl-2">
+        <el-col :span="18" class="h-full pl-2 flex flex-col">
           <!-- B: Circuit View -->
           <div class="h-1/2 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
-            <CircuitView />
+            
           </div>
           <!-- D: Restriction View -->
           <div class="h-1/2 w-full bg-white p-4 mb-2 rounded-lg shadow-custom shadow-exposed-bottom">
-            <QAPView />
+            
           </div>
         </el-col>
       </el-row>
@@ -31,16 +31,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import CircomCode from './components/CircomCode.vue';
-import CircuitView from './components/CircuitView.vue';
-import SignalView from './components/SignalView.vue';
-import QAPView from './components/QAPView.vue';
+import SubmoduleSelector from './components/SubmoduleSelector.vue';
 
-const isSignalExpanded = ref(false);
-
-const onToggleLayout = (expanded: boolean) => {
-  isSignalExpanded.value = expanded;
+const handleParseComplete = (data: any) => {
+  console.log('Parse complete data:', data);
 };
 </script>
 

@@ -1,11 +1,14 @@
-import request from './request';
-import type { SubmoduleInfo } from '@/types/parseTypes.js';
+import request from '@/apis/request.js';
 
-const enum API {
-  parse_circuit = '/parse_circuit',
-  submodules = '/submodules'
-}
+export type SubmoduleInfo = {
+  id: string;
+  name: string;
+  entry: string;
+  rootComponent: string;
+  description: string;
+};
 
+// Submodules API
 export interface getSubmodules_response {
   submodules: SubmoduleInfo[];
 }
@@ -14,10 +17,15 @@ export interface getSubmoduleById_response {
   submodule: SubmoduleInfo;
 }
 
+export const getSubmodules = () =>
+  request.get<getSubmodules_response>('/submodules');
+
+export const getSubmoduleById = (id: string) =>
+  request.get<getSubmoduleById_response>(`/submodules/${id}`);
+
+// 现有的 parse_circuit API（保持兼容）
 export interface parse_circuit_request {
-  repo: string;
-  entry: string;
-  rootComponent?: string;
+  code: string;
 }
 
 export interface parse_circuit_response {
@@ -46,14 +54,8 @@ export interface ParseMessage {
   message: string;
 }
 
-export const getSubmodules = () =>
-  request.get<getSubmodules_response>(API.submodules);
-
-export const getSubmoduleById = (id: string) =>
-  request.get<getSubmoduleById_response>(`${API.submodules}/${id}`);
-
-export const parseCircuitRequest = (data: parse_circuit_request) =>
-  request.post<any, parse_circuit_response>(API.parse_circuit, data, {
+export const parseCircuit = (data: parse_circuit_request) =>
+  request.post<any, parse_circuit_response>('/parse_circuit', data, {
     headers: {
       'Access-Control-Allow-Origin': '*'
     },
