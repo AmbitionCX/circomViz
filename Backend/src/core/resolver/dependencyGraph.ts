@@ -7,6 +7,7 @@ import { FsUtils } from '../../utils/fs.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { IncludeResolver } from './includeResolver.js';
 import { CircomLexer, CircomParser } from '../parser/index.js';
+import { logger } from '../../utils/logger.js';
 
 export interface DependencyNode {
   path: string;
@@ -112,6 +113,7 @@ export class DependencyGraph {
     const inDegree = new Map<string, number>();
     const queue: string[] = [];
     const result: string[] = [];
+    const addedToResult = new Set<string>();
 
     for (const [path, node] of this.nodes.entries()) {
       inDegree.set(path, node.includes.length);
@@ -122,28 +124,92 @@ export class DependencyGraph {
 
     while (queue.length > 0) {
       const currentPath = queue.shift()!;
-      result.push(currentPath);
 
-      const node = this.nodes.get(currentPath)!;
-      for (const dependent of node.dependents) {
-        const degree = inDegree.get(dependent)! - 1;
-        inDegree.set(dependent, degree);
+      if (!addedToResult.has(currentPath)) {
+        result.push(currentPath);
+        addedToResult.add(currentPath);
 
-        if (degree === 0) {
-          queue.push(dependent);
+        const node = this.nodes.get(currentPath)!;
+        for (const dependent of node.dependents) {
+          const degree = inDegree.get(dependent)! - 1;
+          inDegree.set(dependent, degree);
+
+          if (degree === 0) {
+            queue.push(dependent);
+          }
         }
       }
     }
 
     if (result.length !== this.nodes.size) {
-      this.errorCollector.error(
-        'Circular dependency detected in the project',
-        '',
-        0
-      );
+      const remainingNodes = Array.from(this.nodes.keys()).filter(p => !result.includes(p));
+      const cycle = this.findCircularDependency();
+      
+      if (cycle) {
+        logger.debug(`Circular dependency detected: ${cycle.join(' -> ')}`);
+        this.errorCollector.warning(
+          `Circular dependency detected:\n  ${cycle.join(' -> ')}`,
+          cycle[0]
+        );
+        
+        // Add all nodes in the cycle to result
+        for (const cyclePath of cycle) {
+          if (!addedToResult.has(cyclePath)) {
+            result.push(cyclePath);
+            addedToResult.add(cyclePath);
+          }
+        }
+      }
+
+      // Add any remaining nodes
+      for (const remainingPath of remainingNodes) {
+        if (!addedToResult.has(remainingPath)) {
+          result.push(remainingPath);
+          addedToResult.add(remainingPath);
+        }
+      }
     }
 
     return result;
+  }
+
+  private findCircularDependency(): string[] | null {
+    const visited = new Set<string>();
+    const path: string[] = [];
+
+    const findCycle = (nodePath: string) => {
+      if (path.includes(nodePath)) {
+        return true;
+      }
+
+      path.push(nodePath);
+      visited.add(nodePath);
+
+      const node = this.nodes.get(nodePath);
+      if (node) {
+        for (const edge of node.includes) {
+          if (!visited.has(edge.toPath) || path.includes(edge.toPath)) {
+            if (findCycle(edge.toPath)) {
+              return true;
+            }
+          }
+        }
+      }
+
+      path.pop();
+      return false;
+    };
+
+    for (const [nodePath] of this.nodes.entries()) {
+      if (!visited.has(nodePath)) {
+        if (findCycle(nodePath)) {
+          const cycleIndex = path.indexOf(path[path.length - 1]);
+          return cycleIndex >= 0 ? path.slice(cycleIndex) : [...path];
+        }
+      }
+    }
+
+    return null;
   }
 
   private topologicalSortNodes(): DependencyNode[] {

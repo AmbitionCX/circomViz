@@ -239,6 +239,36 @@ export class CircomParser {
   private parseComponentInstantiation(): ComponentInstantiationNode {
     const line = this.previous().line;
     const name = this.consumeIdentifier();
+    
+    // Skip optional { public [...] } block
+    if (this.checkPunctuation('{')) {
+      this.consumePunctuation('{');
+      
+      // Check for 'public' keyword (may not be a keyword in all contexts)
+      if (this.checkPunctuation('[') || this.checkType('KEYWORD')) {
+        // Skip 'public' keyword if present
+        if (this.checkType('KEYWORD') && this.peek().value === 'public') {
+          this.advance();
+        }
+        this.consumePunctuation('[');
+        
+        // Skip signal names
+        while (!this.checkPunctuation(']')) {
+          if (this.matchType('IDENTIFIER')) {
+            this.advance(); // Skip signal name
+          } else if (this.matchPunctuation(',')) {
+            this.advance(); // Skip comma
+          }
+        }
+        
+        this.consumePunctuation(']');
+        this.consumePunctuation('}');
+      } else {
+        // If no 'public' keyword, just skip the braces
+        this.skipBraces();
+      }
+    }
+
     const templateName = this.consumeIdentifier();
 
     this.consumePunctuation('(');
@@ -260,6 +290,22 @@ export class CircomParser {
       sourceFile: this.sourceFile,
       line
     };
+  }
+
+  private skipBraces(): void {
+    let depth = 1;
+    while (depth > 0 && !this.isAtEnd()) {
+      const char = this.peek().value;
+      if (char === '{') {
+        depth++;
+        this.advance();
+      } else if (char === '}') {
+        depth--;
+        this.advance();
+      } else {
+        this.advance();
+      }
+    }
   }
 
   private parseFunctionDefinition(): FunctionDefinitionNode {

@@ -68,21 +68,34 @@ export class IncludeResolver {
       const result = this.resolveCircomlibPath(originalPath);
       resolved = result;
       exists = await FsUtils.fileExists(result);
-    } else if (originalPath.startsWith('./') || originalPath.startsWith('../')) {
-      type = 'relative';
-      const result = this.resolveRelativePath(originalPath);
-      resolved = result;
-      exists = await FsUtils.fileExists(result);
-    } else if (path.isAbsolute(originalPath)) {
-      type = 'absolute';
-      resolved = originalPath;
-      exists = await FsUtils.fileExists(originalPath);
-    } else {
-      type = 'npm';
-      const result = await this.resolveNpmPath(originalPath);
-      if (result) {
+    } else if (originalPath.startsWith('./') || originalPath.startsWith('../') || path.isAbsolute(originalPath)) {
+      // Explicit relative or absolute path
+      if (originalPath.startsWith('./') || originalPath.startsWith('../')) {
+        type = 'relative';
+        const result = this.resolveRelativePath(originalPath);
         resolved = result;
         exists = await FsUtils.fileExists(result);
+      } else {
+        type = 'absolute';
+        resolved = originalPath;
+        exists = await FsUtils.fileExists(originalPath);
+      }
+    } else {
+      // Try relative path first (for circomlib internal includes)
+      const relativeResult = this.resolveRelativePath(originalPath);
+      if (await FsUtils.fileExists(relativeResult)) {
+        type = 'relative';
+        resolved = relativeResult;
+        exists = true;
+        logger.debug(`Resolved as relative path: ${originalPath} -> ${resolved}`);
+      } else {
+        // Try npm package path
+        type = 'npm';
+        const result = await this.resolveNpmPath(originalPath);
+        if (result) {
+          resolved = result;
+          exists = await FsUtils.fileExists(result);
+        }
       }
     }
 
@@ -96,33 +109,87 @@ export class IncludeResolver {
 
   private async resolveNpmPath(pkgPath: string): Promise<string | null> {
     const parts = pkgPath.split('/');
-    let pkgName: string;
-    let subPath: string;
 
-    if (pkgPath.startsWith('@')) {
-      pkgName = `${parts[0]}/${parts[1]}`;
-      subPath = parts.slice(2).join('/');
-    } else {
-      pkgName = parts[0];
-      subPath = parts.slice(1).join('/');
+    if (!pkgPath.startsWith('@')) {
+      // Non-scoped package
+      const pkgName = parts[0];
+      const subPath = parts.slice(1).join('/');
+
+      const npmPath = this.pathGuard.getNpmPackagePath(pkgName, subPath);
+      if (npmPath && await FsUtils.fileExists(npmPath)) {
+        logger.debug(`Resolved npm package: ${pkgPath} -> ${npmPath}`);
+        return npmPath;
+      }
+
+      const submodulePath = path.join(
+        this.pathGuard['submodulesRoot'],
+        'node_modules',
+        pkgName,
+        subPath
+      );
+
+      if (await FsUtils.fileExists(submodulePath)) {
+        logger.debug(`Resolved from submodules: ${pkgPath} -> ${submodulePath}`);
+        return submodulePath;
+      }
+
+      return null;
     }
 
-    const npmPath = this.pathGuard.getNpmPackagePath(pkgName, subPath);
-    if (npmPath && await FsUtils.fileExists(npmPath)) {
-      logger.debug(`Resolved npm package: ${pkgPath} -> ${npmPath}`);
-      return npmPath;
+    // Scoped package: try to find the actual package by checking which scope exists
+    // For example: @zk-email/circuits/lib/sha.circom
+    // The package could be @zk-email or @zk-email/circuits
+
+    let foundPkgName: string | null = null;
+    let foundSubPath: string = '';
+
+    // Try @zk-email, @zk-email/circuits, @zk-email/circuits/lib, etc.
+    for (let i = 2; i <= parts.length; i++) {
+      const potentialPkgName = parts.slice(0, i).join('/');
+      const potentialSubPath = parts.slice(i).join('/');
+
+      // Check if this package exists in node_modules
+      const npmPath = this.pathGuard.getNpmPackagePath(potentialPkgName, '');
+      if (npmPath && await FsUtils.fileExists(npmPath)) {
+        foundPkgName = potentialPkgName;
+        foundSubPath = potentialSubPath;
+        logger.debug(`Found package: ${potentialPkgName}, subPath: ${potentialSubPath}`);
+        break;
+      }
+
+      // Also check in submodules node_modules
+      const submodulePath = path.join(
+        this.pathGuard['submodulesRoot'],
+        'node_modules',
+        potentialPkgName
+      );
+
+      if (await FsUtils.fileExists(submodulePath)) {
+        foundPkgName = potentialPkgName;
+        foundSubPath = potentialSubPath;
+        logger.debug(`Found package in submodules: ${potentialPkgName}, subPath: ${potentialSubPath}`);
+        break;
+      }
     }
 
-    const submodulePath = path.join(
-      this.pathGuard['submodulesRoot'],
-      'node_modules',
-      pkgName,
-      subPath
-    );
+    if (foundPkgName) {
+      const npmPath = this.pathGuard.getNpmPackagePath(foundPkgName, foundSubPath);
+      if (npmPath && await FsUtils.fileExists(npmPath)) {
+        logger.debug(`Resolved npm package: ${pkgPath} -> ${npmPath}`);
+        return npmPath;
+      }
 
-    if (await FsUtils.fileExists(submodulePath)) {
-      logger.debug(`Resolved from submodules: ${pkgPath} -> ${submodulePath}`);
-      return submodulePath;
+      const submodulePath = path.join(
+        this.pathGuard['submodulesRoot'],
+        'node_modules',
+        foundPkgName,
+        foundSubPath
+      );
+
+      if (await FsUtils.fileExists(submodulePath)) {
+        logger.debug(`Resolved from submodules: ${pkgPath} -> ${submodulePath}`);
+        return submodulePath;
+      }
     }
 
     return null;

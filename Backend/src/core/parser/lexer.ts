@@ -29,7 +29,7 @@ export class CircomLexer {
   private operators = new Set([
     '<==', '==>', '===', '<=', '>=', '==', '!=', '=',
     '&&', '||', '++', '--', '+', '-', '*', '/', '%',
-    '&', '|', '^', '~', '<<', '>>', '\\', '<', '>', '?', ':'
+    '&', '|', '^', '~', '<<', '>>', '\\', '<', '>', '?', ':', '=>'
   ]);
 
   private source: string;
@@ -53,6 +53,8 @@ export class CircomLexer {
 
       if (/\s/.test(char)) {
         this.skipWhitespace();
+      } else if (char === '/' && this.peekChar() === '*') {
+        this.skipMultiLineComment();
       } else if (char === '/' && this.peekChar() === '/') {
         this.skipLineComment();
       } else if (char === '"') {
@@ -106,6 +108,22 @@ export class CircomLexer {
     while (this.pos < this.source.length && this.source[this.pos] !== '\n') {
       this.advance();
     }
+  }
+
+  private skipMultiLineComment(): void {
+    this.advance(); // Skip /
+    this.advance(); // Skip *
+
+    while (this.pos < this.source.length) {
+      if (this.source[this.pos] === '*' && this.peekChar() === '/') {
+        this.advance(); // Skip *
+        this.advance(); // Skip /
+        return;
+      }
+      this.advance();
+    }
+
+    throw new Error('Unterminated multi-line comment');
   }
 
   private readString(): void {
@@ -165,7 +183,7 @@ export class CircomLexer {
   }
 
   private isOperatorStart(char: string): boolean {
-    return /[+\-*/%=!<>&|^~]/.test(char) || char === '<' || char === '>' || char === '\\';
+    return /[+\-*/%=!<>&|^~]/.test(char) || char === '<' || char === '>' || char === '\\' || char === '?' || char === ':';
   }
 
   private readOperator(): void {

@@ -101,8 +101,9 @@ export async function parseCircuitHandler(
       }
     }
 
-    const rootTemplate = findTemplate(parsedFiles, rootComponent);
+    const rootTemplate = findTemplate(parsedFiles, rootComponent);    
     logger.info(`Root template search: ${rootComponent}, found: ${rootTemplate ? 'yes' : 'no'}`);
+
     if (!rootTemplate) {
       const allTemplates: string[] = [];
       for (const [path, file] of parsedFiles.entries()) {
@@ -113,7 +114,7 @@ export async function parseCircuitHandler(
       logger.info(`All templates found: ${JSON.stringify(allTemplates, null, 2)}`);
     }
     const tree = rootTemplate ? buildTemplateTree(rootTemplate, parsedFiles, dependencyGraph) : null;
-
+    
     const errors: ParseMessage[] = errorCollector.getAll()
       .filter(err => err.level === 'error' || err.level === 'warning')
       .map(err => ({
@@ -162,21 +163,39 @@ export async function parseCircuitHandler(
 
 function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
   for (const file of parsedFiles.values()) {
+    // First try to find a template with this name
     const template = file.templates.find((t: any) => t.name === name);
     if (template) {
       return template;
+    }
+
+    // If not found as template, try to find a component instantiation
+    const component = file.components.find((c: any) => c.name === name);
+    if (component) {
+      return component;
     }
   }
   return null;
 }
 
 function buildTemplateTree(
-  template: any,
+  templateOrComponent: any,
   parsedFiles: Map<string, any>,
   dependencyGraph: DependencyGraph
 ): any {
+  const isComponent = templateOrComponent.type === 'ComponentInstantiation';
+
+  const template = isComponent
+    ? findTemplate(parsedFiles, templateOrComponent.templateName)
+    : templateOrComponent;
+
+  if (!template) {
+    return null;
+  }
+
   const tree: any = {
-    name: template.name,
+    name: templateOrComponent.name,
+    templateName: isComponent ? templateOrComponent.templateName : template.name,
     parameters: template.parameters,
     signals: template.signals,
     variables: template.variables,

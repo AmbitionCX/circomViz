@@ -127,8 +127,6 @@ const parseCircuit = async () => {
     };
 
     const response = await parseCircuitRequest(request);
-    console.log('Parse response:', response);
-
     ElMessage.success(`Successfully parsed ${selectedSubmoduleConfig.value.name}`);
     
     emit('parse-complete', response);

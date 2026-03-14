@@ -70,13 +70,42 @@ export class PathGuard {
     const frontendNodeModules = path.join(this.backendRoot, '../Frontend/node_modules', packageName);
     const submoduleNodeModules = path.join(this.submodulesRoot, 'node_modules', packageName);
 
+    let packageRoot: string | null = null;
+
     if (fs.existsSync(frontendNodeModules)) {
-      return path.join(frontendNodeModules, subPath);
+      packageRoot = frontendNodeModules;
     } else if (fs.existsSync(submoduleNodeModules)) {
-      return path.join(submoduleNodeModules, subPath);
+      packageRoot = submoduleNodeModules;
+    } else {
+      // Search in each submodule's node_modules
+      const submodules = this.listSubmodules();
+      for (const submod of submodules) {
+        const submodNodeModules = path.join(this.submodulesRoot, submod, 'node_modules', packageName);
+        if (fs.existsSync(submodNodeModules)) {
+          packageRoot = submodNodeModules;
+          logger.debug(`Found package in submodule: ${submod}, package: ${packageName}`);
+          break;
+        }
+      }
+    }
+
+    if (packageRoot) {
+      return path.join(packageRoot, subPath);
     }
 
     return null;
+  }
+
+  private listSubmodules(): string[] {
+    try {
+      return fs.readdirSync(this.submodulesRoot).filter(item => {
+        const itemPath = path.join(this.submodulesRoot, item);
+        return fs.statSync(itemPath).isDirectory() && !item.startsWith('.');
+      });
+    } catch (error) {
+      logger.error(`Failed to list submodules: ${error}`);
+      return [];
+    }
   }
 
   normalizePath(filePath: string): string {
