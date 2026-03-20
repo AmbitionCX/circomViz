@@ -182,7 +182,8 @@ export type ExpressionNode =
   | MemberAccessNode
   | FunctionCallNode
   | ComponentCallNode
-  | TernaryNode;
+  | TernaryNode
+  | TupleNode;
 
 export interface LiteralNode {
   type: 'Literal';
@@ -252,6 +253,12 @@ export interface TernaryNode {
   condition: ExpressionNode;
   thenExpr: ExpressionNode;
   elseExpr: ExpressionNode;
+  line: number;
+}
+
+export interface TupleNode {
+  type: 'Tuple';
+  elements: ExpressionNode[];
   line: number;
 }
 

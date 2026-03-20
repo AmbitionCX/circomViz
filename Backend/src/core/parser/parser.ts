@@ -2,7 +2,7 @@
 // Construct the tree structure based on circom grammar rules.
 
 import { CircomLexer, Token, TokenType } from './lexer.js';
-import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode } from './ast.js';
+import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode, TupleNode } from './ast.js';
 
 export class CircomParser {
   private lexer: CircomLexer;
@@ -534,6 +534,81 @@ export class CircomParser {
       };
     }
     
+    // Check for tuple assignment: (a, b) <== expr
+    if (this.checkPunctuation('(')) {
+      const savedPos = this.current;
+      
+      // Try to parse as tuple assignment
+      try {
+        // Parse the tuple
+        this.consumePunctuation('(');
+        const elements: ExpressionNode[] = [];
+        elements.push(this.parseExpression());
+        
+        // Check if this is a tuple (has comma)
+        if (this.matchPunctuation(',')) {
+          do {
+            elements.push(this.parseExpression());
+          } while (this.matchPunctuation(','));
+          
+          this.consumePunctuation(')');
+          
+          // Now check for assignment operator
+          let operator: '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=' = '=';
+          if (this.matchOperator('<==')) {
+            operator = '<==';
+          } else if (this.matchOperator('==>')) {
+            operator = '==>';
+          } else if (this.matchOperator('===')) {
+            operator = '===';
+          } else if (this.matchOperator('<--')) {
+            operator = '<--';
+          } else if (this.matchOperator('-->')) {
+            operator = '-->';
+          } else if (this.matchOperator('+=')) {
+            operator = '+=';
+          } else if (this.matchOperator('-=')) {
+            operator = '-=';
+          } else if (this.matchOperator('*=')) {
+            operator = '*=';
+          } else if (this.matchOperator('/=')) {
+            operator = '/=';
+          } else if (this.matchOperator('&=')) {
+            operator = '&=';
+          } else if (this.matchOperator('|=')) {
+            operator = '|=';
+          } else if (this.matchOperator('^=')) {
+            operator = '^=';
+          } else if (this.matchOperator('\\=')) {
+            operator = '\\=';
+          } else {
+            this.consumeOperator('=');
+          }
+          
+          const right = this.parseExpression();
+          this.consumePunctuation(';');
+          
+          return {
+            type: 'Assignment',
+            left: {
+              type: 'Tuple',
+              elements,
+              line: this.previous().line
+            },
+            operator,
+            right,
+            line: (elements[0] as any).line
+          };
+        } else {
+          // Not a tuple, just a parenthesized expression, restore and parse normally
+          this.current = savedPos;
+        }
+      } catch (error) {
+        // If parsing fails, restore position and parse normally
+        this.current = savedPos;
+      }
+    }
+    
     // Parse expression first
     const expr = this.parseExpression();
     console.log(`[Parser DEBUG] position after parseExpression: ${this.current}, next token: ${this.peek().type}:${this.peek().value}`);
@@ -674,7 +749,27 @@ export class CircomParser {
     
     let step: ExpressionNode | undefined;
     if (!this.checkPunctuation(')')) {
-      step = this.parseExpression();
+      // Parse step expression (may be a compound assignment like i += 4)
+      const stepLeft = this.parseExpression();
+      
+      // Check for compound assignment operator
+      if (this.matchOperator('+=') || this.matchOperator('-=') || this.matchOperator('*=') ||
+          this.matchOperator('/=') || this.matchOperator('&=') || this.matchOperator('|=') ||
+          this.matchOperator('^=') || this.matchOperator('\\=')) {
+        // This is a compound assignment, create a BinaryOp to represent it
+        const operator = this.previous().value;
+        const stepRight = this.parseExpression();
+        step = {
+          type: 'BinaryOp',
+          operator,
+          left: stepLeft,
+          right: stepRight,
+          line: (stepLeft as any).line
+        };
+      } else {
+        // Simple expression (e.g., just "1" or "i")
+        step = stepLeft;
+      }
     }
     this.consumePunctuation(')');
 
@@ -1100,6 +1195,43 @@ export class CircomParser {
       };
     }
 
+    // Handle tuple expressions: (a, b, c)
+    if (this.matchPunctuation('(')) {
+      // Check if this is a tuple by looking ahead for a comma after parsing the first element
+      const savedPos = this.current;
+      try {
+        const firstElement = this.parseExpression();
+        
+        // If we see a comma, this is a tuple
+        if (this.matchPunctuation(',')) {
+          const elements: ExpressionNode[] = [firstElement];
+          
+          // Parse remaining elements
+          do {
+            elements.push(this.parseExpression());
+          } while (this.matchPunctuation(','));
+          
+          this.consumePunctuation(')');
+          
+          return {
+            type: 'Tuple',
+            elements,
+            line: this.previous().line
+          };
+        } else {
+          // Not a tuple, just a parenthesized expression
+          this.consumePunctuation(')');
+          return firstElement;
+        }
+      } catch (error) {
+        // If parsing fails, restore position and try as simple parenthesized expression
+        this.current = savedPos;
+        const expr = this.parseExpression();
+        this.consumePunctuation(')');
+        return expr;
+      }
+    }
+
     if (this.matchPunctuation('[')) {
       const elements: ExpressionNode[] = [];
       if (!this.checkPunctuation(']')) {
@@ -1113,12 +1245,6 @@ export class CircomParser {
         elements,
         line: this.previous().line
       };
-    }
-
-    if (this.matchPunctuation('(')) {
-      const expr = this.parseExpression();
-      this.consumePunctuation(')');
-      return expr;
     }
 
     throw new Error(`Unexpected token: ${this.peek().value} at line ${this.peek().line}`);

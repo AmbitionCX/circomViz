@@ -206,6 +206,83 @@ function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
   return null;
 }
 
+function extractComponentCallsFromStatements(statements: any[]): any[] {
+  const componentCalls: any[] = [];
+  let anonymousComponentIndex = 0;
+
+  function visitNode(node: any): void {
+    if (!node) return;
+
+    if (node.type === 'ComponentCall') {
+      componentCalls.push({
+        type: 'ComponentInstantiationNode',
+        name: `<anon_${anonymousComponentIndex++}>`,
+        templateName: node.template,
+        templateArgs: node.templateArgs,
+        callArgs: node.callArgs,
+        arguments: node.callArgs,
+        isAnonymous: true
+      });
+    }
+
+    if (node.left) visitNode(node.left);
+    if (node.right) visitNode(node.right);
+    if (node.condition) visitNode(node.condition);
+    if (node.thenExpr) visitNode(node.thenExpr);
+    if (node.elseExpr) visitNode(node.elseExpr);
+    if (node.operand) visitNode(node.operand);
+    if (node.elements) {
+      node.elements.forEach((el: any) => visitNode(el));
+    }
+    if (node.array) visitNode(node.array);
+    if (node.index) visitNode(node.index);
+    if (node.object) visitNode(node.object);
+    if (node.value) visitNode(node.value);
+    if (node.message) visitNode(node.message);
+
+    if (node.type === 'Assignment') {
+      visitNode(node.left);
+      visitNode(node.right);
+    }
+
+    if (node.type === 'IfStatement') {
+      node.thenBranch?.forEach((stmt: any) => visitNode(stmt));
+      node.elseBranch?.forEach((stmt: any) => visitNode(stmt));
+    }
+
+    if (node.type === 'ForLoop' || node.type === 'WhileLoop') {
+      node.body?.forEach((stmt: any) => visitNode(stmt));
+      if (node.type === 'ForLoop') {
+        visitNode(node.start);
+        visitNode(node.end);
+        visitNode(node.step);
+      } else {
+        visitNode(node.condition);
+      }
+    }
+
+    if (node.type === 'Return') {
+      visitNode(node.value);
+    }
+
+    if (node.type === 'Assert') {
+      visitNode(node.condition);
+      visitNode(node.message);
+    }
+
+    if (node.type === 'ExpressionStatement') {
+      visitNode(node.expression);
+    }
+
+    if (node.type === 'BlockStatement') {
+      node.body?.forEach((stmt: any) => visitNode(stmt));
+    }
+  }
+
+  statements.forEach(stmt => visitNode(stmt));
+  return componentCalls;
+}
+
 function buildTemplateTree(
   templateOrComponent: any,
   parsedFiles: Map<string, any>,
@@ -237,6 +314,20 @@ function buildTemplateTree(
       name: component.name,
       templateName: component.templateName,
       arguments: component.arguments,
+      template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
+    };
+    tree.components.push(componentTree);
+  }
+
+  const anonymousComponentCalls = extractComponentCallsFromStatements(template.statements);
+  for (const anonComponent of anonymousComponentCalls) {
+    const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
+    const componentTree: any = {
+      name: anonComponent.name,
+      templateName: anonComponent.templateName,
+      arguments: anonComponent.callArgs,
+      templateArgs: anonComponent.templateArgs,
+      isAnonymous: true,
       template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
     };
     tree.components.push(componentTree);
