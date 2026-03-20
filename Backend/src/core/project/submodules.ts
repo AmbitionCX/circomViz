@@ -21,7 +21,7 @@ const SUBMODULES: SubmodulesMap = {
     id: 'anon-aadhaar',
     name: 'Anon Aadhaar',
     entry: 'packages/circuits/src/aadhaar-verifier.circom',
-    rootComponent: 'main',
+    rootComponent: 'AadhaarQRVerifier',
     description: 'Aadhaar identity proof circuit'
   },
   'zksync-social-login-circuit': {

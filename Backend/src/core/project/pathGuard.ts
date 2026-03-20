@@ -8,13 +8,36 @@ import { logger } from '../../utils/logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Calculate backend root by going up to the Backend directory
+// Works from both source (src/core/project) and compiled (dist/core/project) paths
+const getBackendRoot = (): string => {
+  const dirParts = __dirname.split(path.sep);
+  const backendIndex = dirParts.lastIndexOf('Backend');
+  
+  if (backendIndex !== -1) {
+    return dirParts.slice(0, backendIndex + 1).join(path.sep);
+  }
+  
+  // Fallback: go up until we find package.json
+  let currentDir = __dirname;
+  while (currentDir !== path.sep && currentDir !== path.dirname(currentDir)) {
+    if (fs.existsSync(path.join(currentDir, 'package.json'))) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  
+  // Ultimate fallback
+  return path.resolve(__dirname, '../..');
+};
+
 export class PathGuard {
   private backendRoot: string;
   private submodulesRoot: string;
 
   constructor() {
-    this.backendRoot = path.resolve(__dirname, '../..');
-    this.submodulesRoot = path.resolve(__dirname, '../../../../submodules');
+    this.backendRoot = getBackendRoot();
+    this.submodulesRoot = path.resolve(this.backendRoot, '..', 'submodules');
     logger.info(`PathGuard initialized: backendRoot=${this.backendRoot}, submodulesRoot=${this.submodulesRoot}`);
   }
 
@@ -63,7 +86,7 @@ export class PathGuard {
   }
 
   getCircomlibPath(subPath: string): string {
-    return path.join(path.resolve(this.backendRoot, '..'), 'circomlib', subPath);
+    return path.join(this.backendRoot, 'circomlib', subPath);
   }
 
   getNpmPackagePath(packageName: string, subPath: string): string | null {

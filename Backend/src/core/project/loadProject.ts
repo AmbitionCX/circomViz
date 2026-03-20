@@ -20,7 +20,7 @@ export class ProjectLoader {
     entryFile: ResolvedFile;
     error?: string;
   }> {
-    const { repoName, entryPath, rootComponent = 'main' } = config;
+    const { repoName, entryPath } = config;
 
     const repoValidation = this.pathGuard.validateRepoPath(repoName);
     if (!repoValidation.valid) {
@@ -75,7 +75,7 @@ export class ProjectLoader {
         templates.push(node);
       } else if (node.type === 'FunctionDefinition') {
         functions.push(node);
-      } else if (node.type === 'ComponentInstantiation') {
+      } else if (node.type === 'ComponentInstantiationNode') {
         components.push(node);
       }
     }
@@ -117,7 +117,7 @@ export class ProjectLoader {
         const parsedFile = await this.parseFile(filePath);
         
         for (const node of parsedFile.ast) {
-          if (node.type === 'ComponentInstantiation' && node.name === 'main') {
+          if (node.type === 'ComponentInstantiationNode' && node.name === 'main') {
             mainEntry = this.pathGuard.getRelativePath(repoPath, filePath);
             break;
           }

@@ -1,5 +1,6 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
+import type { ParseCircuitResponse } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
@@ -20,32 +21,6 @@ export interface parse_circuit_request {
   rootComponent?: string;
 }
 
-export interface parse_circuit_response {
-  repo: string;
-  entry: string;
-  files: FileSummary[];
-  tree: any;
-  errors: ParseMessage[];
-  statistics: {
-    totalFiles: number;
-    totalTemplates: number;
-    totalInstances: number;
-    maxDepth: number;
-  };
-}
-
-export interface FileSummary {
-  id: string;
-  path: string;
-  includes: string[];
-}
-
-export interface ParseMessage {
-  level: 'warning' | 'error';
-  file?: string;
-  message: string;
-}
-
 export const getSubmodules = () =>
   request.get<getSubmodules_response>(API.submodules);
 
@@ -53,7 +28,7 @@ export const getSubmoduleById = (id: string) =>
   request.get<getSubmoduleById_response>(`${API.submodules}/${id}`);
 
 export const parseCircuitRequest = (data: parse_circuit_request) =>
-  request.post<any, parse_circuit_response>(API.parse_circuit, data, {
+  request.post<any, ParseCircuitResponse>(API.parse_circuit, data, {
     headers: {
       'Access-Control-Allow-Origin': '*'
     },

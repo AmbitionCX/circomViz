@@ -1,116 +1,236 @@
 import { defineStore } from 'pinia';
-
-import { SymbolObject, ConstraintObject, QAPData, QAPNode, QAPLink } from '@/types/circuitTypes';
+import type {
+  TemplateInfo,
+  SignalInfo,
+  FileSummary,
+  ParseError,
+  CircuitStatistics,
+  CompilationConstraints,
+  ConstraintVerification
+} from '@/types/circuitTypes';
 
 interface CircuitState {
-  circomCode: string;
-  compilationId: string;
-  symbols: SymbolObject[];
-  constraints: ConstraintObject[];
-  substitutions: Record<string, any>;
-  selectedSignals: any[];
-  code: string;
-  qapData: {
-    numVars: number;
-    numConstraints: number;
-    qapPolysA: any[];
-    qapPolysB: any[];
-    qapPolysC: any[];
-    zPoly: any[];
-    evaluationPoints: any[];
+  parseData: {
+    repo: string;
+    entry: string;
+    files: FileSummary[];
+    tree: TemplateInfo | null;
+    errors: ParseError[];
+    statistics: CircuitStatistics;
   };
-  nodes_list: QAPNode[];
-  links_list: QAPLink[];
-  componentNameColorMap: Record<string, string>;
-  componentIdColorMap: Record<number, string>;
-  selectedElements: Set<string>;
-  templateTree: any;
-  parseFiles: any[];
-  parseErrors: any[];
+  
+  selectedTemplate: TemplateInfo | null;
+  selectedTemplatePath: string[];
+  
+  compilationData: {
+    isCompiling: boolean;
+    constraints: CompilationConstraints | null;
+    verifications: ConstraintVerification[];
+    error: string | null;
+  };
+  
+  signalFilter: {
+    selectedSignals: Set<string>;
+    filterByType: 'input' | 'output' | 'intermediate' | 'all';
+    searchTerm: string;
+  };
 }
 
 export const useCircuitStore = defineStore('circuit', {
   state: (): CircuitState => ({
-    circomCode: '',
-    compilationId: '',
-    symbols: [],
-    constraints: [],
-    substitutions: {},
-    selectedSignals: [],
-    code: '',
-    qapData: {
-      numVars: 0,
-      numConstraints: 0,
-      qapPolysA: [],
-      qapPolysB: [],
-      qapPolysC: [],
-      zPoly: [],
-      evaluationPoints: []
-    },
-    nodes_list: [],
-    links_list: [],
-    componentNameColorMap: {},
-    componentIdColorMap: {},
-    selectedElements: new Set<string>(),
-    templateTree: null,
-    parseFiles: [],
-    parseErrors: []
-  }),
-  getters: {
-    isCodeEmpty(): boolean {
-      return this.code === '';
-    },
-  },
-  actions: {
-    setCompilationId(id: string) {
-      this.compilationId = id;
-    },
-    setSymbols(symbol: any[]) {
-      this.symbols = symbol;
-    },
-    setConstraints(constraint: any[]) {
-      this.constraints = constraint;
-    },
-    setSubstitutions(substitution: {}) {
-      this.substitutions = substitution;
-    },
-    pushSignal(signal: any) {
-      if (!this.selectedSignals.some(s => s.symbol_id === signal.symbol_id)) {
-        this.selectedSignals.push(signal);
+    parseData: {
+      repo: '',
+      entry: '',
+      files: [],
+      tree: null,
+      errors: [],
+      statistics: {
+        totalFiles: 0,
+        totalTemplates: 0,
+        totalInstances: 0,
+        maxDepth: 0
       }
     },
-    popSignal(signal: any) {
-      this.selectedSignals = this.selectedSignals.filter(s => s.symbol_id !== signal.symbol_id);
+    
+    selectedTemplate: null,
+    selectedTemplatePath: [],
+    
+    compilationData: {
+      isCompiling: false,
+      constraints: null,
+      verifications: [],
+      error: null
     },
-    resetCompilationId() {
-      this.compilationId = '';
+    
+    signalFilter: {
+      selectedSignals: new Set<string>(),
+      filterByType: 'all',
+      searchTerm: ''
+    }
+  }),
+  
+  getters: {
+    isParsed(): boolean {
+      return this.parseData.tree !== null;
     },
-    setCode(newCode: string) {
-      this.code = newCode;
+    
+    filteredSignals(): SignalInfo[] {
+      if (!this.parseData.tree) return [];
+      let signals: SignalInfo[] = [];
+      
+      const extractSignals = (template: TemplateInfo) => {
+        signals = signals.concat(template.signals);
+        template.components.forEach(comp => {
+          if (comp.template) {
+            extractSignals(comp.template);
+          }
+        });
+      };
+      
+      extractSignals(this.parseData.tree);
+      
+      if (this.signalFilter.filterByType !== 'all') {
+        signals = signals.filter((s: SignalInfo) => s.kind === this.signalFilter.filterByType);
+      }
+      
+      if (this.signalFilter.searchTerm) {
+        const term = this.signalFilter.searchTerm.toLowerCase();
+        signals = signals.filter((s: SignalInfo) => s.name.toLowerCase().includes(term));
+      }
+      
+      return signals;
     },
-    setQAPData(qapData: QAPData) {
-      this.qapData = qapData;
+    
+    templateHierarchy(): TemplateInfo[] {
+      if (!this.selectedTemplate) return [];
+      
+      const hierarchy: TemplateInfo[] = [];
+      
+      const buildHierarchy = (template: TemplateInfo) => {
+        hierarchy.push(template);
+        template.components.forEach(comp => {
+          if (comp.template) {
+            buildHierarchy(comp.template);
+          }
+        });
+      };
+      
+      buildHierarchy(this.selectedTemplate);
+      return hierarchy;
+    }
+  },
+  
+  actions: {
+    setParseData(data: CircuitState['parseData']) {
+      this.parseData = data;
     },
-    setNodesList(nodes_list: QAPNode[]) {
-      this.nodes_list = nodes_list;
+    
+    resetParseData() {
+      this.parseData = {
+        repo: '',
+        entry: '',
+        files: [],
+        tree: null,
+        errors: [],
+        statistics: {
+          totalFiles: 0,
+          totalTemplates: 0,
+          totalInstances: 0,
+          maxDepth: 0
+        }
+      };
+      this.selectedTemplate = null;
+      this.selectedTemplatePath = [];
     },
-    setLinksList(links_list: QAPLink[]) {
-      this.links_list = links_list;
+    
+    setSelectedTemplate(template: TemplateInfo, path: string[]) {
+      this.selectedTemplate = template;
+      this.selectedTemplatePath = path;
     },
-    setComponentNameColors(colorMap: Record<string, string>) {
-      this.componentNameColorMap = colorMap;
+    
+    clearSelectedTemplate() {
+      this.selectedTemplate = null;
+      this.selectedTemplatePath = [];
     },
-    setComponentIdColors(colorMap: Record<string, string>) {
-      this.componentIdColorMap = colorMap;
+    
+    setSignalFilter(filter: Partial<CircuitState['signalFilter']>) {
+      this.signalFilter = { ...this.signalFilter, ...filter };
     },
-    setTemplateTree(tree: any) {
-      this.templateTree = tree;
+    
+    toggleSignalSelection(signalName: string) {
+      if (this.signalFilter.selectedSignals.has(signalName)) {
+        this.signalFilter.selectedSignals.delete(signalName);
+      } else {
+        this.signalFilter.selectedSignals.add(signalName);
+      }
     },
-    setParseFiles(files: any[]) {
-      this.parseFiles = files;
+    
+    clearSignalSelection() {
+      this.signalFilter.selectedSignals.clear();
     },
-    setParseErrors(errors: any[]) {
-      this.parseErrors = errors;
+    
+    setCompiling(isCompiling: boolean) {
+      this.compilationData.isCompiling = isCompiling;
+    },
+    
+    setCompilationResult(constraints: CompilationConstraints) {
+      this.compilationData.constraints = constraints;
+    },
+    
+    setVerification(verifications: ConstraintVerification[]) {
+      this.compilationData.verifications = verifications;
+    },
+    
+    setCompilationError(error: string | null) {
+      this.compilationData.error = error;
+    },
+    
+    resetCompilationData() {
+      this.compilationData = {
+        isCompiling: false,
+        constraints: null,
+        verifications: [],
+        error: null
+      };
+    },
+    
+    flattenSignals(template: TemplateInfo): SignalInfo[] {
+      let signals: SignalInfo[] = [...template.signals];
+      
+      for (const component of template.components) {
+        if (component.template) {
+          signals = signals.concat(this.flattenSignals(component.template));
+        }
+      }
+      
+      return signals;
+    },
+    
+    buildTemplateHierarchy(template: TemplateInfo): TemplateInfo[] {
+      const hierarchy: TemplateInfo[] = [template];
+      
+      for (const component of template.components) {
+        if (component.template) {
+          hierarchy.push(...this.buildTemplateHierarchy(component.template));
+        }
+      }
+      
+      return hierarchy;
+    },
+    
+    findTemplateByName(template: TemplateInfo, name: string): TemplateInfo | null {
+      if (template.templateName === name) {
+        return template;
+      }
+      
+      for (const component of template.components) {
+        if (component.template) {
+          const found = this.findTemplateByName(component.template, name);
+          if (found) return found;
+        }
+      }
+      
+      return null;
     }
   }
 });

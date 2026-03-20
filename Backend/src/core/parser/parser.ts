@@ -2,7 +2,7 @@
 // Construct the tree structure based on circom grammar rules.
 
 import { CircomLexer, Token, TokenType } from './lexer.js';
-import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, AssignmentNode, IfStatementNode, ForLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode } from './ast.js';
+import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode } from './ast.js';
 
 export class CircomParser {
   private lexer: CircomLexer;
@@ -17,23 +17,34 @@ export class CircomParser {
 
   // parse 
   parse(content: string, filePath: string = ''): ASTNode[] {
+    console.log(`[Parser DEBUG] ========== PARSE START ===========`);
+    console.log(`[Parser DEBUG] File: ${filePath}`);
+    console.log(`[Parser DEBUG] Tokens: ${this.tokens.length}`);
+    
     this.sourceFile = filePath || this.sourceFile;
     this.lexer = new CircomLexer(content);
     this.tokens = this.lexer.tokenize(); // token sequence
     this.current = 0;
 
     const nodes: ASTNode[] = [];
+    let nodeCount = 0;
 
     while (!this.isAtEnd()) {
       try {
         const node = this.parseTopLevel(); // grammar analysis
         if (node) {
+          nodeCount++;
+          console.log(`[Parser DEBUG] Node ${nodeCount}: ${node.type}${(node as any).name ? `:${(node as any).name}` : ''}`);
           nodes.push(node);
         }
-      } catch (error) {
+      } catch (error: any) {
+        console.log(`[Parser DEBUG] ERROR parsing node: ${error.message}`);
         this.synchronize();
       }
     }
+
+    console.log(`[Parser DEBUG] Total nodes parsed: ${nodes.length}`);
+    console.log(`[Parser DEBUG] ========== PARSE END ============`);
 
     return nodes; // AST Nodes
   }
@@ -115,8 +126,10 @@ export class CircomParser {
   }
 
   private parseTemplateDefinition(): TemplateDefinitionNode {
+    console.log(`[Parser DEBUG] parseTemplateDefinition called at line ${this.peek().line}`);
     const line = this.previous().line;
     const name = this.consumeIdentifier();
+    console.log(`[Parser DEBUG] Template name: ${name}`);
 
     this.consumePunctuation('(');
     const parameters: Parameter[] = [];
@@ -126,27 +139,40 @@ export class CircomParser {
       } while (this.matchPunctuation(','));
     }
     this.consumePunctuation(')');
+    console.log(`[Parser DEBUG] Parsed ${parameters.length} parameters`);
 
     this.consumePunctuation('{');
+    console.log(`[Parser DEBUG] Starting template body parsing`);
 
     const signals: SignalNode[] = [];
     const variables: VariableNode[] = [];
-    const components: ComponentInstantiationNode[] = [];
+    const components: (ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode)[] = [];
     const statements: StatementNode[] = [];
 
+    let statementCount = 0;
     while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+      statementCount++;
+      const token = this.peek();
+      console.log(`[Parser DEBUG] Statement ${statementCount}: token type=${token.type}, value=${token.value}`);
+      
       if (this.matchKeyword('signal')) {
+        console.log(`[Parser DEBUG]   -> parsing signal`);
         signals.push(this.parseSignal());
       } else if (this.matchKeyword('var')) {
+        console.log(`[Parser DEBUG]   -> parsing variable`);
         variables.push(this.parseVariable());
       } else if (this.matchKeyword('component')) {
+        console.log(`[Parser DEBUG]   -> parsing component`);
         components.push(this.parseComponentInstantiation());
       } else {
+        console.log(`[Parser DEBUG]   -> parsing statement`);
         statements.push(this.parseStatement());
       }
     }
+    console.log(`[Parser DEBUG] Parsed ${statementCount} statements in template body`);
 
     this.consumePunctuation('}');
+    console.log(`[Parser DEBUG] Template ${name} parsed successfully: ${signals.length} signals, ${components.length} components, ${statements.length} statements`);
 
     return {
       type: 'TemplateDefinition',
@@ -164,15 +190,24 @@ export class CircomParser {
   private parseParameter(): Parameter {
     const name = this.consumeIdentifier();
     let isArray = false;
-    let arraySize: number | undefined;
+    let arraySizes: (number | ExpressionNode)[] | undefined;
 
     if (this.matchPunctuation('[')) {
       isArray = true;
-      arraySize = this.parseNumberLiteral();
+      arraySizes = [];
+      
+      // Parse the first dimension
+      arraySizes.push(this.parseExpression());
       this.consumePunctuation(']');
+      
+      // Check for additional dimensions (e.g., a[2][3])
+      while (this.matchPunctuation('[')) {
+        arraySizes.push(this.parseExpression());
+        this.consumePunctuation(']');
+      }
     }
 
-    return { name, isArray, arraySize };
+    return { name, isArray, arraySizes };
   }
 
   private parseSignal(): SignalNode {
@@ -187,14 +222,29 @@ export class CircomParser {
 
     const name = this.consumeIdentifier();
     let isArray = false;
-    let arraySize: number | undefined;
+    let arraySizes: (number | ExpressionNode)[] | undefined;
 
     if (this.matchPunctuation('[')) {
       isArray = true;
-      arraySize = this.parseNumberLiteral();
+      arraySizes = [];
+      
+      // Parse the first dimension
+      arraySizes.push(this.parseExpression());
       this.consumePunctuation(']');
+      
+      // Check for additional dimensions (e.g., a[2][3])
+      while (this.matchPunctuation('[')) {
+        arraySizes.push(this.parseExpression());
+        this.consumePunctuation(']');
+      }
     }
 
+    // Check for initial value assignment (e.g., signal x[5] <== y;)
+    let initialValue: ExpressionNode | undefined;
+    if (this.matchOperator('<==')) {
+      initialValue = this.parseExpression();
+    }
+    
     this.consumePunctuation(';');
 
     return {
@@ -202,7 +252,8 @@ export class CircomParser {
       name,
       kind,
       isArray,
-      arraySize,
+      arraySizes,
+      initialValue,
       line
     };
   }
@@ -211,13 +262,22 @@ export class CircomParser {
     const line = this.previous().line;
     const name = this.consumeIdentifier();
     let isArray = false;
-    let arraySize: number | undefined;
+    let arraySizes: (number | ExpressionNode)[] | undefined;
     let initialValue: ExpressionNode | undefined;
 
     if (this.matchPunctuation('[')) {
       isArray = true;
-      arraySize = this.parseNumberLiteral();
+      arraySizes = [];
+      
+      // Parse the first dimension
+      arraySizes.push(this.parseExpression());
       this.consumePunctuation(']');
+      
+      // Check for additional dimensions (e.g., a[2][3])
+      while (this.matchPunctuation('[')) {
+        arraySizes.push(this.parseExpression());
+        this.consumePunctuation(']');
+      }
     }
 
     if (this.matchOperator('=')) {
@@ -230,18 +290,101 @@ export class CircomParser {
       type: 'Variable',
       name,
       isArray,
-      arraySize,
+      arraySizes,
       initialValue,
       line
     };
   }
 
-  private parseComponentInstantiation(): ComponentInstantiationNode {
+  private parseComponentInstantiation(): ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode {
+    console.log(`[Parser DEBUG] parseComponentInstantiation called, next token: ${this.peek().type}:${this.peek().value}`);
     const line = this.previous().line;
     const name = this.consumeIdentifier();
+    console.log(`[Parser DEBUG] Component name: ${name}`);
     
+    // Check for array syntax: component name[expr]
+    let arraySizes: (number | ExpressionNode)[] | undefined;
+    if (this.matchPunctuation('[')) {
+      arraySizes = [];
+      arraySizes.push(this.parseExpression());
+      this.consumePunctuation(']');
+      
+      // Check for additional dimensions (e.g., a[2][3])
+      while (this.matchPunctuation('[')) {
+        arraySizes.push(this.parseExpression());
+        this.consumePunctuation(']');
+      }
+    }
+
+    // If it's an array, handle differently
+    if (arraySizes) {
+      // Simple component array declaration without initialization
+      this.consumePunctuation(';');
+
+      // Check for optional initialization block
+      // In circom, component arrays can have initialization blocks like:
+      // component c[5];
+      // {
+      //     c[0] = A();
+      //     c[1] = B();
+      // }
+      // The block must start with an assignment to component
+      if (this.checkPunctuation('{')) {
+        // Check if this looks like an initialization block
+        // Look ahead to see if first statement is an assignment to component
+        const savedPos = this.current;
+        this.consumePunctuation('{');
+        const isInitBlock = this.checkType('IDENTIFIER') && this.peek().value === name;
+        this.current = savedPos;
+
+        if (isInitBlock) {
+          // Parse as initialization block
+          this.consumePunctuation('{');
+          const body: StatementNode[] = [];
+          while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+            body.push(this.parseStatement());
+          }
+          this.consumePunctuation('}');
+          return {
+            type: 'ComponentInstantiationWithInitNode',
+            name,
+            arraySizes,
+            initBlock: body,
+            line
+          };
+        }
+        // Otherwise, treat as a regular block statement (will be parsed separately)
+        return {
+          type: 'ComponentDeclaration',
+          name,
+          arraySizes,
+          line
+        };
+      }
+
+      return {
+        type: 'ComponentDeclaration',
+        name,
+        arraySizes,
+        line
+      };
+    }
+
+    // Check if this is a component declaration without initialization: component name;
+    if (this.checkPunctuation(';')) {
+      console.log(`[Parser DEBUG] -> component declaration without initialization`);
+      this.consumePunctuation(';');
+      return {
+        type: 'ComponentDeclaration',
+        name,
+        line
+      };
+    }
+
+    // Component instantiation: component name = Template(args);
     // Skip optional { public [...] } block
     if (this.checkPunctuation('{')) {
+      console.log(`[Parser DEBUG] -> skipping public block`);
       this.consumePunctuation('{');
       
       // Check for 'public' keyword (may not be a keyword in all contexts)
@@ -268,8 +411,13 @@ export class CircomParser {
         this.skipBraces();
       }
     }
+    
+    // Consume the '=' operator
+    this.consumeOperator('=');
+    console.log(`[Parser DEBUG] Consumed = operator`);
 
     const templateName = this.consumeIdentifier();
+    console.log(`[Parser DEBUG] Template name: ${templateName}`);
 
     this.consumePunctuation('(');
     const args: ExpressionNode[] = [];
@@ -279,15 +427,16 @@ export class CircomParser {
       } while (this.matchPunctuation(','));
     }
     this.consumePunctuation(')');
+    console.log(`[Parser DEBUG] Parsed ${args.length} arguments`);
 
     this.consumePunctuation(';');
 
+    console.log(`[Parser DEBUG] Component parsed successfully: ${name} = ${templateName}`);
     return {
-      type: 'ComponentInstantiation',
+      type: 'ComponentInstantiationNode',
       name,
       templateName,
       arguments: args,
-      sourceFile: this.sourceFile,
       line
     };
   }
@@ -347,31 +496,95 @@ export class CircomParser {
   }
 
   private parseStatement(): StatementNode {
+    console.log(`[Parser DEBUG] parseStatement called, next token: ${this.peek().type}:${this.peek().value}`);
+    console.log(`[Parser DEBUG] current position before parsing: ${this.current}`);
+    
     if (this.matchKeyword('if')) {
+      console.log(`[Parser DEBUG] -> parsing if statement`);
       return this.parseIfStatement();
     }
     if (this.matchKeyword('for')) {
+      console.log(`[Parser DEBUG] -> parsing for loop`);
       return this.parseForLoop();
     }
+    if (this.matchKeyword('while')) {
+      console.log(`[Parser DEBUG] -> parsing while loop`);
+      return this.parseWhileLoop();
+    }
     if (this.matchKeyword('return')) {
+      console.log(`[Parser DEBUG] -> parsing return`);
       return this.parseReturn();
     }
     if (this.matchKeyword('assert')) {
+      console.log(`[Parser DEBUG] -> parsing assert`);
       return this.parseAssert();
     }
+    if (this.matchKeyword('var')) {
+      console.log(`[Parser DEBUG] -> parsing variable`);
+      return this.parseVariable();
+    }
+    if (this.checkPunctuation('{')) {
+      // Handle block statement
+      console.log(`[Parser DEBUG] -> parsing block statement`);
+      const body = this.parseBlock();
+      return {
+        type: 'BlockStatement',
+        body,
+        line: this.peek().line
+      };
+    }
+    
+    // Parse expression first
+    const expr = this.parseExpression();
+    console.log(`[Parser DEBUG] position after parseExpression: ${this.current}, next token: ${this.peek().type}:${this.peek().value}`);
+    
+    // Check if the NEXT token is a semicolon (standalone expression statement)
+    if (this.checkPunctuation(';')) {
+      console.log(`[Parser DEBUG] -> found standalone expression statement`);
+      this.consumePunctuation(';');
+      return {
+        type: 'ExpressionStatement',
+        expression: expr,
+        line: (expr as any).line
+      };
+    }
+    
+    // Otherwise, let parseAssignment handle the operator and semicolon
+    console.log(`[Parser DEBUG] -> parsing assignment`);
     return this.parseAssignment();
   }
 
   private parseAssignment(): AssignmentNode {
-    const left = this.parseExpression();
+    // Left side should already be parsed (we're positioned at it from parseStatement)
+    const left = this.previous() as any;
     
-    let operator: '<==' | '==>' | '===' | '=' = '=';
+    let operator: '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=' = '=';
     if (this.matchOperator('<==')) {
       operator = '<==';
     } else if (this.matchOperator('==>')) {
       operator = '==>';
     } else if (this.matchOperator('===')) {
       operator = '===';
+    } else if (this.matchOperator('<--')) {
+      operator = '<--';
+    } else if (this.matchOperator('-->')) {
+      operator = '-->';
+    } else if (this.matchOperator('+=')) {
+      operator = '+=';
+    } else if (this.matchOperator('-=')) {
+      operator = '-=';
+    } else if (this.matchOperator('*=')) {
+      operator = '*=';
+    } else if (this.matchOperator('/=')) {
+      operator = '/=';
+    } else if (this.matchOperator('&=')) {
+      operator = '&=';
+    } else if (this.matchOperator('|=')) {
+      operator = '|=';
+    } else if (this.matchOperator('^=')) {
+      operator = '^=';
+    } else if (this.matchOperator('\\=')) {
+      operator = '\\=';
     } else {
       this.consumeOperator('=');
     }
@@ -384,12 +597,29 @@ export class CircomParser {
       left,
       operator,
       right,
-      line: left.line
+      line: (left as any).line
     };
+  }
+
+  private parseBlock(): StatementNode[] {
+    console.log(`[Parser DEBUG] parseBlock called`);
+    this.consumePunctuation('{');
+    const body: StatementNode[] = [];
+    while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+      body.push(this.parseStatement());
+    }
+    this.consumePunctuation('}');
+    console.log(`[Parser DEBUG] parseBlock parsed ${body.length} statements`);
+    return body;
   }
 
   private parseIfStatement(): IfStatementNode {
     const line = this.previous().line;
+    return this.parseIfStatementBody(line);
+  }
+
+  private parseIfStatementBody(startLine: number): IfStatementNode {
+    const line = startLine;
     this.consumePunctuation('(');
     const condition = this.parseExpression();
     this.consumePunctuation(')');
@@ -403,12 +633,19 @@ export class CircomParser {
 
     let elseBranch: StatementNode[] | undefined;
     if (this.matchKeyword('else')) {
-      this.consumePunctuation('{');
-      elseBranch = [];
-      while (!this.checkPunctuation('}') && !this.isAtEnd()) {
-        elseBranch.push(this.parseStatement());
+      // Check for 'else if' pattern
+      if (this.matchKeyword('if')) {
+        // Parse else if as a nested if statement
+        elseBranch = [this.parseIfStatementBody(this.previous().line)];
+      } else {
+        // Parse else block
+        this.consumePunctuation('{');
+        elseBranch = [];
+        while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+          elseBranch.push(this.parseStatement());
+        }
+        this.consumePunctuation('}');
       }
-      this.consumePunctuation('}');
     }
 
     return {
@@ -423,24 +660,36 @@ export class CircomParser {
   private parseForLoop(): ForLoopNode {
     const line = this.previous().line;
     this.consumePunctuation('(');
+    
+    // Handle optional 'var' keyword
+    if (this.matchKeyword('var')) {
+    }
+    
     const variable = this.consumeIdentifier();
-    this.consumePunctuation('=');
+    this.consumeOperator('=');
     const start = this.parseExpression();
     this.consumePunctuation(';');
     const end = this.parseExpression();
+    this.consumePunctuation(';');
     
     let step: ExpressionNode | undefined;
     if (!this.checkPunctuation(')')) {
       step = this.parseExpression();
     }
     this.consumePunctuation(')');
-    this.consumePunctuation('{');
 
+    // Handle both braced and non-braced for loops
     const body: StatementNode[] = [];
-    while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+    if (this.matchPunctuation('{')) {
+      // Braced version
+      while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+        body.push(this.parseStatement());
+      }
+      this.consumePunctuation('}');
+    } else {
+      // Single statement version
       body.push(this.parseStatement());
     }
-    this.consumePunctuation('}');
 
     return {
       type: 'ForLoop',
@@ -448,6 +697,33 @@ export class CircomParser {
       start,
       end,
       step,
+      body,
+      line
+    };
+  }
+
+  private parseWhileLoop(): WhileLoopNode {
+    const line = this.previous().line;
+    this.consumePunctuation('(');
+    const condition = this.parseExpression();
+    this.consumePunctuation(')');
+
+    // Handle both braced and non-braced while loops
+    const body: StatementNode[] = [];
+    if (this.matchPunctuation('{')) {
+      // Braced version
+      while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+        body.push(this.parseStatement());
+      }
+      this.consumePunctuation('}');
+    } else {
+      // Single statement version
+      body.push(this.parseStatement());
+    }
+
+    return {
+      type: 'WhileLoop',
+      condition,
       body,
       line
     };
@@ -565,10 +841,82 @@ export class CircomParser {
   }
 
   private parseComparison(): ExpressionNode {
-    let expr = this.parseTerm();
+    let expr = this.parseBitwiseOr();
 
     while (this.matchOperator('<') || this.matchOperator('>') ||
            this.matchOperator('<=') || this.matchOperator('>=')) {
+      const operator = this.previous().value;
+      const right = this.parseBitwiseOr();
+      expr = {
+        type: 'BinaryOp',
+        operator,
+        left: expr,
+        right,
+        line: (expr as any).line
+      };
+    }
+
+    return expr;
+  }
+
+  private parseBitwiseOr(): ExpressionNode {
+    let expr = this.parseBitwiseXor();
+
+    while (this.matchOperator('|')) {
+      const operator = this.previous().value;
+      const right = this.parseBitwiseXor();
+      expr = {
+        type: 'BinaryOp',
+        operator,
+        left: expr,
+        right,
+        line: (expr as any).line
+      };
+    }
+
+    return expr;
+  }
+
+  private parseBitwiseXor(): ExpressionNode {
+    let expr = this.parseBitwiseAnd();
+
+    while (this.matchOperator('^')) {
+      const operator = this.previous().value;
+      const right = this.parseBitwiseAnd();
+      expr = {
+        type: 'BinaryOp',
+        operator,
+        left: expr,
+        right,
+        line: (expr as any).line
+      };
+    }
+
+    return expr;
+  }
+
+  private parseBitwiseAnd(): ExpressionNode {
+    let expr = this.parseShift();
+
+    while (this.matchOperator('&')) {
+      const operator = this.previous().value;
+      const right = this.parseShift();
+      expr = {
+        type: 'BinaryOp',
+        operator,
+        left: expr,
+        right,
+        line: (expr as any).line
+      };
+    }
+
+    return expr;
+  }
+
+  private parseShift(): ExpressionNode {
+    let expr = this.parseTerm();
+
+    while (this.matchOperator('<<') || this.matchOperator('>>')) {
       const operator = this.previous().value;
       const right = this.parseTerm();
       expr = {
@@ -602,9 +950,27 @@ export class CircomParser {
   }
 
   private parseFactor(): ExpressionNode {
+    let expr = this.parsePower();
+
+    while (this.matchOperator('*') || this.matchOperator('/') || this.matchOperator('%') || this.matchOperator('\\')) {
+      const operator = this.previous().value;
+      const right = this.parsePower();
+      expr = {
+        type: 'BinaryOp',
+        operator,
+        left: expr,
+        right,
+        line: (expr as any).line
+      };
+    }
+
+    return expr;
+  }
+
+  private parsePower(): ExpressionNode {
     let expr = this.parseUnary();
 
-    while (this.matchOperator('*') || this.matchOperator('/') || this.matchOperator('%')) {
+    while (this.matchOperator('**')) {
       const operator = this.previous().value;
       const right = this.parseUnary();
       expr = {
@@ -637,15 +1003,43 @@ export class CircomParser {
   private parsePostfix(): ExpressionNode {
     let expr = this.parsePrimary();
 
-    while (this.matchPunctuation('[')) {
-      const index = this.parseExpression();
-      this.consumePunctuation(']');
-      expr = {
-        type: 'ArrayAccess',
-        array: expr,
-        index,
-        line: (expr as any).line
-      };
+    while (true) {
+      if (this.matchPunctuation('[')) {
+        const index = this.parseExpression();
+        this.consumePunctuation(']');
+        expr = {
+          type: 'ArrayAccess',
+          array: expr,
+          index,
+          line: (expr as any).line
+        };
+      } else if (this.matchPunctuation('.')) {
+        const property = this.consumeIdentifier();
+        expr = {
+          type: 'MemberAccess',
+          object: expr,
+          property,
+          line: (expr as any).line
+        };
+      } else if (this.matchOperator('++')) {
+        expr = {
+          type: 'UnaryOp',
+          operator: '++',
+          operand: expr,
+          isPostfix: true,
+          line: this.previous().line
+        };
+      } else if (this.matchOperator('--')) {
+        expr = {
+          type: 'UnaryOp',
+          operator: '--',
+          operand: expr,
+          isPostfix: true,
+          line: this.previous().line
+        };
+      } else {
+        break;
+      }
     }
 
     return expr;
@@ -672,6 +1066,25 @@ export class CircomParser {
         }
         this.consumePunctuation(')');
 
+        // Check for immediate function call - e.g., Func()(args)
+        if (this.matchPunctuation('(')) {
+          const callArgs: ExpressionNode[] = [];
+          if (!this.checkPunctuation(')')) {
+            do {
+              callArgs.push(this.parseExpression());
+            } while (this.matchPunctuation(','));
+          }
+          this.consumePunctuation(')');
+
+          return {
+            type: 'ComponentCall',
+            template: name,
+            templateArgs: args,
+            callArgs,
+            line: this.previous().line
+          };
+        }
+
         return {
           type: 'FunctionCall',
           function: name,
@@ -683,6 +1096,21 @@ export class CircomParser {
       return {
         type: 'Identifier',
         name,
+        line: this.previous().line
+      };
+    }
+
+    if (this.matchPunctuation('[')) {
+      const elements: ExpressionNode[] = [];
+      if (!this.checkPunctuation(']')) {
+        do {
+          elements.push(this.parseExpression());
+        } while (this.matchPunctuation(','));
+      }
+      this.consumePunctuation(']');
+      return {
+        type: 'ArrayLiteral',
+        elements,
         line: this.previous().line
       };
     }
@@ -800,10 +1228,13 @@ export class CircomParser {
   }
 
   private synchronize(): void {
+    console.log(`[Parser DEBUG] synchronize() called, current position: ${this.current}, previous token: ${this.previous().type}:${this.previous().value}`);
     this.advance();
 
+    let syncCount = 0;
     while (!this.isAtEnd()) {
       if (this.previous().type === 'PUNCTUATION' && this.previous().value === ';') {
+        console.log(`[Parser DEBUG] synchronize() found semicolon, syncing after ${syncCount} tokens`);
         return;
       }
 
@@ -811,11 +1242,15 @@ export class CircomParser {
       if (type === 'KEYWORD') {
         const value = this.peek().value;
         if (['template', 'function', 'component', 'signal', 'pragma', 'include'].includes(value)) {
+          console.log(`[Parser DEBUG] synchronize() found keyword: ${value}, stopping`);
           return;
         }
       }
 
+      syncCount++;
       this.advance();
     }
+    
+    console.log(`[Parser DEBUG] synchronize() reached end of file without finding sync point`);
   }
 }

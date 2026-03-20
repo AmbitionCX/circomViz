@@ -6,6 +6,9 @@ import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { parse_circuit_request, parse_circuit_response, FileSummary, ParseMessage } from '../../types/circuitParser.js';
 
+import { writeFile, appendFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+
 export async function parseCircuitHandler(
   request: FastifyRequest<{ Body: parse_circuit_request }>,
   reply: FastifyReply
@@ -57,19 +60,23 @@ export async function parseCircuitHandler(
 
       // read file content and parse
       try {
+        logger.info(`Parsing file: ${normalizedPath}`);
         const parsedFile = await projectLoader.parseFile(currentFile.path);
         parsedFiles.set(normalizedPath, parsedFile);
+        logger.info(`Parsed file ${normalizedPath}: ${parsedFile.templates.length} templates, ${parsedFile.components.length} components, ${parsedFile.includes.length} includes`);
 
         dependencyGraph.addFile(normalizedPath);
 
         // Recursive parsing include files
         for (const include of parsedFile.includes) {
+          logger.info(`Resolving include: ${include.path} from ${normalizedPath}`);
           includeResolver.setCurrentFile(normalizedPath);
           const resolvedPath = await includeResolver.resolveInclude(include);
 
           if (resolvedPath) {
             const normalizedIncludePath = resolvedPath.replace(/\\/g, '/');
             dependencyGraph.addDependency(normalizedPath, normalizedIncludePath);
+            logger.info(`Resolved include: ${include.path} -> ${normalizedIncludePath}`);
 
             if (!processedPaths.has(normalizedIncludePath)) {
               const content = await (await import('fs/promises')).readFile(resolvedPath, 'utf-8');
@@ -78,10 +85,14 @@ export async function parseCircuitHandler(
                 content,
                 relativePath: include.path
               });
+              logger.info(`Added to processing queue: ${normalizedIncludePath}`);
             }
+          } else {
+            logger.warn(`Failed to resolve include: ${include.path}`);
           }
         }
       } catch (error: any) {
+        logger.error(`Failed to parse file ${normalizedPath}: ${error.message}`);
         errorCollector.error(`Failed to parse file: ${error.message}`, currentFile.path);
       }
     }
@@ -101,7 +112,7 @@ export async function parseCircuitHandler(
       }
     }
 
-    const rootTemplate = findTemplate(parsedFiles, rootComponent);    
+    const rootTemplate = findTemplate(parsedFiles, rootComponent);
     logger.info(`Root template search: ${rootComponent}, found: ${rootTemplate ? 'yes' : 'no'}`);
 
     if (!rootTemplate) {
@@ -110,8 +121,11 @@ export async function parseCircuitHandler(
         for (const template of file.templates) {
           allTemplates.push(`${path}: ${template.name}`);
         }
+        for (const component of file.components) {
+          allTemplates.push(`${path}: component ${component.name} = ${component.templateName}`);
+        }
       }
-      logger.info(`All templates found: ${JSON.stringify(allTemplates, null, 2)}`);
+      logger.info(`All templates and components found: ${JSON.stringify(allTemplates, null, 2)}`);
     }
     const tree = rootTemplate ? buildTemplateTree(rootTemplate, parsedFiles, dependencyGraph) : null;
     
@@ -149,6 +163,11 @@ export async function parseCircuitHandler(
       }
     };
 
+    // save the response
+    logResponseToDisk(response, repo, entry).catch(err => {
+      logger.error(`Background logging failed: ${err.message}`);
+    });
+
     logger.info(`Successfully parsed circuit: ${fileSummaries.length} files, ${totalTemplates} templates`);
     reply.send(response); // Return parsing results to Frontend
 
@@ -162,19 +181,28 @@ export async function parseCircuitHandler(
 }
 
 function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
-  for (const file of parsedFiles.values()) {
+  logger.info(`findTemplate searching for: ${name}`);
+  logger.info(`Parsed files count: ${parsedFiles.size}`);
+  
+  for (const [filePath, file] of parsedFiles.entries()) {
+    logger.info(`Checking file: ${filePath}, templates: ${file.templates.length}, components: ${file.components.length}`);
+    
     // First try to find a template with this name
     const template = file.templates.find((t: any) => t.name === name);
     if (template) {
+      logger.info(`Found template: ${name} in ${filePath}`);
       return template;
     }
 
     // If not found as template, try to find a component instantiation
     const component = file.components.find((c: any) => c.name === name);
     if (component) {
+      logger.info(`Found component: ${name} (templateName: ${component.templateName}) in ${filePath}`);
       return component;
     }
   }
+  
+  logger.info(`Template/component not found: ${name}`);
   return null;
 }
 
@@ -183,7 +211,7 @@ function buildTemplateTree(
   parsedFiles: Map<string, any>,
   dependencyGraph: DependencyGraph
 ): any {
-  const isComponent = templateOrComponent.type === 'ComponentInstantiation';
+  const isComponent = templateOrComponent.type === 'ComponentInstantiationNode';
 
   const template = isComponent
     ? findTemplate(parsedFiles, templateOrComponent.templateName)
@@ -215,4 +243,28 @@ function buildTemplateTree(
   }
 
   return tree;
+}
+
+async function logResponseToDisk(
+  response: parse_circuit_response,
+  repo: string,
+  entry: string
+): Promise<void> {
+  try {
+    const logDir = join(process.cwd(), 'logs', 'circuit-parsing');
+    await mkdir(logDir, { recursive: true });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeRepo = repo.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeEntry = entry.replace(/[^a-zA-Z0-9_-]/g, '_');
+    
+    // One file per request 
+    const filename = `response_${safeRepo}_${safeEntry}_${timestamp}.json`;
+    const filepath = join(logDir, filename);
+    
+    await writeFile(filepath, JSON.stringify(response, null, 2), 'utf-8');
+    
+  } catch (err) {
+    console.error(`Failed to write response log: ${err instanceof Error ? err.message : err}`);
+  }
 }

@@ -96,10 +96,10 @@ const handleSubmoduleChange = () => {
 const loadSubmodules = async () => {
   isLoading.value = true;
   try {
-    const response = await getSubmodules();
-    console.log("Fetch submodules: ", response.submodules);
+    const response = await getSubmodules() as any;
+    console.log("Fetch submodules: ", response);
     
-    submodules.value = response.submodules; // This is not an error
+    submodules.value = response.submodules;
     ElMessage.success('Successfully loaded submodules list');
   } catch (error: any) {
     console.error('Failed to load submodules:', error);

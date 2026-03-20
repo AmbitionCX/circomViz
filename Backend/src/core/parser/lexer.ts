@@ -22,14 +22,15 @@ export interface Token {
 export class CircomLexer {
   private keywords = new Set([
     'pragma', 'template', 'component', 'signal', 'input', 'output', 
-    'include', 'function', 'return', 'if', 'else', 'for', 'var',
+    'include', 'function', 'return', 'if', 'else', 'for', 'while', 'var',
     'assert'
   ]);
 
   private operators = new Set([
-    '<==', '==>', '===', '<=', '>=', '==', '!=', '=',
-    '&&', '||', '++', '--', '+', '-', '*', '/', '%',
-    '&', '|', '^', '~', '<<', '>>', '\\', '<', '>', '?', ':', '=>'
+    '<==', '==>', '===', '<--', '-->', '<=', '>=', '==', '!=', '=',
+    '&&', '||', '++', '--', '+', '-', '*', '/', '%', '**',
+    '&', '|', '^', '~', '<<', '>>', '\\', '<', '>', '?', ':', '=>',
+    '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '\\='
   ]);
 
   private source: string;
@@ -56,7 +57,12 @@ export class CircomLexer {
       } else if (char === '/' && this.peekChar() === '*') {
         this.skipMultiLineComment();
       } else if (char === '/' && this.peekChar() === '/') {
-        this.skipLineComment();
+        // Check for documentation comment (///)
+        if (this.peekChar(1) === '/') {
+          this.skipDocumentationComment();
+        } else {
+          this.skipLineComment();
+        }
       } else if (char === '"') {
         this.readString();
       } else if (/[a-zA-Z_]/.test(char)) {
@@ -105,6 +111,18 @@ export class CircomLexer {
   }
 
   private skipLineComment(): void {
+    while (this.pos < this.source.length && this.source[this.pos] !== '\n') {
+      this.advance();
+    }
+  }
+
+  private skipDocumentationComment(): void {
+    // Skip all three slashes
+    this.advance();
+    this.advance();
+    this.advance();
+    
+    // Skip the rest of the line
     while (this.pos < this.source.length && this.source[this.pos] !== '\n') {
       this.advance();
     }
@@ -161,11 +179,33 @@ export class CircomLexer {
     let value = '';
     const startColumn = this.column;
 
+    // Check for hexadecimal number (0x or 0X)
+    if (this.pos < this.source.length && this.source[this.pos] === '0') {
+      const nextChar = this.peekChar(1);
+      if (nextChar && (nextChar === 'x' || nextChar === 'X')) {
+        value += this.source[this.pos];
+        this.advance();
+        value += this.source[this.pos];
+        this.advance();
+
+        // Read hexadecimal digits (0-9, a-f, A-F)
+        while (this.pos < this.source.length && /[0-9a-fA-F]/.test(this.source[this.pos])) {
+          value += this.source[this.pos];
+          this.advance();
+        }
+
+        this.addToken('NUMBER', value);
+        return;
+      }
+    }
+
+    // Read decimal number
     while (this.pos < this.source.length && /[0-9]/.test(this.source[this.pos])) {
       value += this.source[this.pos];
       this.advance();
     }
 
+    // Check for decimal point
     if (this.pos < this.source.length && this.source[this.pos] === '.') {
       const nextChar = this.peekChar(1);
       if (nextChar && /[0-9]/.test(nextChar)) {

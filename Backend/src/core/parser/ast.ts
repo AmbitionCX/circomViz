@@ -9,9 +9,12 @@ export type ASTNode =
   | SignalNode
   | VariableNode
   | ComponentInstantiationNode
+  | ComponentDeclarationNode
+  | ComponentInstantiationWithInitNode
   | AssignmentNode
   | IfStatementNode
   | ForLoopNode
+  | WhileLoopNode
   | ReturnNode
   | AssertNode;
 
@@ -34,7 +37,7 @@ export interface TemplateDefinitionNode {
   parameters: Parameter[];
   signals: SignalNode[];
   variables: VariableNode[];
-  components: ComponentInstantiationNode[];
+  components: (ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode)[];
   statements: StatementNode[];
   sourceFile: string;
   line: number;
@@ -43,7 +46,7 @@ export interface TemplateDefinitionNode {
 export interface Parameter {
   name: string;
   isArray?: boolean;
-  arraySize?: number;
+  arraySizes?: (number | ExpressionNode)[];
 }
 
 export interface FunctionDefinitionNode {
@@ -61,7 +64,8 @@ export interface SignalNode {
   name: string;
   kind: 'input' | 'output' | 'intermediate';
   isArray?: boolean;
-  arraySize?: number;
+  arraySizes?: (number | ExpressionNode)[];
+  initialValue?: ExpressionNode;
   line: number;
 }
 
@@ -69,32 +73,64 @@ export interface VariableNode {
   type: 'Variable';
   name: string;
   isArray?: boolean;
-  arraySize?: number;
+  arraySizes?: (number | ExpressionNode)[];
   initialValue?: ExpressionNode;
   line: number;
 }
 
 export interface ComponentInstantiationNode {
-  type: 'ComponentInstantiation';
+  type: 'ComponentInstantiationNode';
   name: string;
   templateName: string;
   arguments: ExpressionNode[];
-  sourceFile: string;
   line: number;
 }
 
-export type StatementNode = 
+export interface ComponentDeclarationNode {
+  type: 'ComponentDeclaration';
+  name: string;
+  arraySizes?: (number | ExpressionNode)[];
+  line: number;
+}
+
+export interface ComponentInstantiationWithInitNode {
+  type: 'ComponentInstantiationWithInitNode';
+  name: string;
+  arraySizes?: (number | ExpressionNode)[];
+  initBlock: StatementNode[];
+  line: number;
+}
+
+export type StatementNode =
   | AssignmentNode
+  | ExpressionStatementNode
+  | VariableNode
+  | BlockStatementNode
+  | ComponentDeclarationNode
+  | ComponentInstantiationWithInitNode
   | IfStatementNode
   | ForLoopNode
+  | WhileLoopNode
   | ReturnNode
   | AssertNode;
 
 export interface AssignmentNode {
   type: 'Assignment';
   left: ExpressionNode;
-  operator: '<==' | '==>' | '===' | '=';
+  operator: '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=';
   right: ExpressionNode;
+  line: number;
+}
+
+export interface ExpressionStatementNode {
+  type: 'ExpressionStatement';
+  expression: ExpressionNode;
+  line: number;
+}
+
+export interface BlockStatementNode {
+  type: 'BlockStatement';
+  body: StatementNode[];
   line: number;
 }
 
@@ -112,6 +148,13 @@ export interface ForLoopNode {
   start: ExpressionNode;
   end: ExpressionNode;
   step?: ExpressionNode;
+  body: StatementNode[];
+  line: number;
+}
+
+export interface WhileLoopNode {
+  type: 'WhileLoop';
+  condition: ExpressionNode;
   body: StatementNode[];
   line: number;
 }
@@ -135,7 +178,10 @@ export type ExpressionNode =
   | BinaryOpNode
   | UnaryOpNode
   | ArrayAccessNode
+  | ArrayLiteralNode
+  | MemberAccessNode
   | FunctionCallNode
+  | ComponentCallNode
   | TernaryNode;
 
 export interface LiteralNode {
@@ -162,6 +208,7 @@ export interface UnaryOpNode {
   type: 'UnaryOp';
   operator: string;
   operand: ExpressionNode;
+  isPostfix?: boolean;
   line: number;
 }
 
@@ -172,10 +219,31 @@ export interface ArrayAccessNode {
   line: number;
 }
 
+export interface ArrayLiteralNode {
+  type: 'ArrayLiteral';
+  elements: ExpressionNode[];
+  line: number;
+}
+
+export interface MemberAccessNode {
+  type: 'MemberAccess';
+  object: ExpressionNode;
+  property: string;
+  line: number;
+}
+
 export interface FunctionCallNode {
   type: 'FunctionCall';
   function: string;
   arguments: ExpressionNode[];
+  line: number;
+}
+
+export interface ComponentCallNode {
+  type: 'ComponentCall';
+  template: string;
+  templateArgs: ExpressionNode[];
+  callArgs: ExpressionNode[];
   line: number;
 }
 
