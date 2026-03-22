@@ -85,8 +85,70 @@ export class PathGuard {
     return path.join(this.submodulesRoot, repoName, subPath);
   }
 
-  getCircomlibPath(subPath: string): string {
-    return path.join(this.backendRoot, 'circomlib', subPath);
+  private findWorkspaceRoot(startPath: string): string | null {
+    let currentDir = path.normalize(startPath);
+    const rootPath = path.parse(currentDir).root;
+    
+    while (currentDir !== rootPath && currentDir !== path.dirname(currentDir)) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
+      
+      if (fs.existsSync(packageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+          
+          // Check if this is a workspace root (has workspaces field)
+          if (packageJson.workspaces) {
+            logger.debug(`Found workspace root at: ${currentDir}`);
+            return currentDir;
+          }
+        } catch (err) {
+          // Invalid package.json, continue searching
+        }
+      }
+      
+      // Move up one directory
+      currentDir = path.dirname(currentDir);
+    }
+    
+    return null;
+  }
+
+  getCircomlibPath(repoPath: string, subPath: string): string | null {
+    const normalizedRepoPath = path.normalize(repoPath);
+    
+    // 1. Check in local node_modules (packages/circuits/node_modules/circomlib)
+    const localCircomlibPath = path.join(normalizedRepoPath, 'node_modules', 'circomlib', subPath);
+    if (fs.existsSync(localCircomlibPath)) {
+      logger.debug(`Found circomlib in local node_modules: ${localCircomlibPath}`);
+      return localCircomlibPath;
+    }
+    
+    // 2. Find workspace root and check there (workspace root node_modules/circomlib)
+    const workspaceRoot = this.findWorkspaceRoot(normalizedRepoPath);
+    if (workspaceRoot) {
+      const workspaceCircomlibPath = path.join(workspaceRoot, 'node_modules', 'circomlib', subPath);
+      if (fs.existsSync(workspaceCircomlibPath)) {
+        logger.debug(`Found circomlib in workspace root: ${workspaceCircomlibPath}`);
+        return workspaceCircomlibPath;
+      }
+    }
+    
+    // 3. Check common parent directories (for cases where workspace detection fails)
+    const parentDir = path.dirname(normalizedRepoPath);
+    const parentCircomlibPath = path.join(parentDir, 'node_modules', 'circomlib', subPath);
+    if (fs.existsSync(parentCircomlibPath)) {
+      logger.debug(`Found circomlib in parent node_modules: ${parentCircomlibPath}`);
+      return parentCircomlibPath;
+    }
+    
+    logger.warn(`circomlib not found at any of these locations:`);
+    logger.warn(`  - Local: ${localCircomlibPath}`);
+    if (workspaceRoot) {
+      logger.warn(`  - Workspace root: ${path.join(workspaceRoot, 'node_modules', 'circomlib', subPath)}`);
+    }
+    logger.warn(`  - Parent: ${parentCircomlibPath}`);
+    
+    return null;
   }
 
   getNpmPackagePath(packageName: string, subPath: string): string | null {

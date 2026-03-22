@@ -18,6 +18,7 @@ export class ProjectLoader {
 
   async loadProject(config: ProjectConfig): Promise<{
     entryFile: ResolvedFile;
+    repoPath?: string;
     error?: string;
   }> {
     const { repoName, entryPath } = config;
@@ -48,7 +49,7 @@ export class ProjectLoader {
       relativePath: entryPath
     };
 
-    return { entryFile };
+    return { entryFile, repoPath };
   }
 
   async parseFile(filePath: string): Promise<ParsedFile> {
@@ -76,7 +77,19 @@ export class ProjectLoader {
       } else if (node.type === 'FunctionDefinition') {
         functions.push(node);
       } else if (node.type === 'ComponentInstantiationNode') {
+        // CRITICAL: Validate templateName field exists
+        if (!node.templateName || node.templateName === undefined) {
+          console.error(`[Parser VALIDATION ERROR] ComponentInstantiationNode has undefined templateName at line ${node.line}`);
+          console.error(`[Parser VALIDATION ERROR] Component name: ${node.name}`);
+          console.error(`[Parser VALIDATION ERROR] File: ${filePath}`);
+          console.error(`[Parser VALIDATION ERROR] Full node structure: ${JSON.stringify(node, null, 2)}`);
+        }
         components.push(node);
+      } else if ((node as any).type === 'ComponentArrayInit') {
+        // Component array initialization - this contains init statements
+        const arrayInitNode = node as any;
+        console.log(`[Parser INFO] ComponentArrayInit found: ${arrayInitNode.name} with ${arrayInitNode.initStatements.length} init statements`);
+        // Don't add to components - init statements are in the file's AST
       }
     }
 

@@ -11,6 +11,8 @@ export type ASTNode =
   | ComponentInstantiationNode
   | ComponentDeclarationNode
   | ComponentInstantiationWithInitNode
+  | ComponentArrayInitNode
+  | FunctionCallNode
   | AssignmentNode
   | IfStatementNode
   | ForLoopNode
@@ -37,7 +39,7 @@ export interface TemplateDefinitionNode {
   parameters: Parameter[];
   signals: SignalNode[];
   variables: VariableNode[];
-  components: (ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode)[];
+  components: (ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode | ComponentArrayInitNode)[];
   statements: StatementNode[];
   sourceFile: string;
   line: number;
@@ -90,6 +92,14 @@ export interface ComponentDeclarationNode {
   type: 'ComponentDeclaration';
   name: string;
   arraySizes?: (number | ExpressionNode)[];
+  line: number;
+}
+
+export interface ComponentArrayInitNode {
+  type: 'ComponentArrayInit';
+  name: string;
+  arraySizes: (number | ExpressionNode)[];
+  initStatements: StatementNode[];
   line: number;
 }
 

@@ -173,7 +173,9 @@
 import { ref, computed } from 'vue';
 import { VideoPlay, Edit, Select, CircleCheck, CircleClose, QuestionFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
+import { compileTemplate } from '@/apis/index.js';
 import type { ConstraintVerification } from '@/types/circuitTypes';
+import { ElMessage } from 'element-plus';
 
 const circuitStore = useCircuitStore();
 
@@ -208,50 +210,55 @@ const filteredSignals = computed(() => {
 });
 
 const handleCompile = async () => {
+  if (!selectedTemplate.value || !circuitStore.parseData.repo || !circuitStore.parseData.entry) {
+    ElMessage.error('Please parse a circuit and select a template first');
+    return;
+  }
+
   circuitStore.setCompiling(true);
   circuitStore.setCompilationError(null);
   
   try {
-    console.log('Compiling template:', selectedTemplate.value?.templateName);
+    console.log('Compiling template:', selectedTemplate.value.templateName);
     
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const request = {
+      repo: circuitStore.parseData.repo,
+      entry: circuitStore.parseData.entry,
+      templatePath: circuitStore.selectedTemplatePath,
+      templateName: selectedTemplate.value.templateName
+    };
+
+    const response = await compileTemplate(request) as any;
     
-    const mockConstraints = {
-      constraints: [
-        'a * b = c',
-        'd <== e * f',
-        'g * h * i = j'
-      ],
-      signals: {
-        'a': 1,
-        'b': 2,
-        'c': 2,
-        'd': 3,
-        'e': 2,
-        'f': 4,
-        'g': 5,
-        'h': 6,
-        'i': 7,
-        'j': 210
-      },
-      templateName: selectedTemplate.value?.templateName || '',
+    if (!response.success) {
+      throw new Error(response.error || 'Compilation failed');
+    }
+
+    const compilationResult = {
+      constraints: response.constraints,
+      signals: response.signals,
+      templateName: selectedTemplate.value.templateName,
       componentPath: circuitStore.selectedTemplatePath
     };
     
-    circuitStore.setCompilationResult(mockConstraints);
+    circuitStore.setCompilationResult(compilationResult);
     
-    const mockVerifications: ConstraintVerification[] = mockConstraints.constraints.map((constraint, index) => ({
+    const verifications: ConstraintVerification[] = response.constraints.map((constraint: string, index: number) => ({
       constraintIndex: index,
       constraint: constraint,
       userSpecification: '',
       matches: false
     }));
     
-    circuitStore.setVerification(mockVerifications);
+    circuitStore.setVerification(verifications);
+    
+    ElMessage.success(`Successfully compiled template: ${selectedTemplate.value.templateName} (${response.stats.constraintCount} constraints)`);
     
   } catch (error: any) {
     console.error('Compilation error:', error);
-    circuitStore.setCompilationError(error.message || 'Compilation failed');
+    const errorMessage = error.response?.data?.error || error.message || 'Compilation failed';
+    circuitStore.setCompilationError(errorMessage);
+    ElMessage.error(errorMessage);
   } finally {
     circuitStore.setCompiling(false);
   }

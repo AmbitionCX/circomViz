@@ -40,7 +40,11 @@ export async function parseCircuitHandler(
     }
 
     const entryFile = loadResult.entryFile;
+    const repoPath = loadResult.repoPath;
 
+    if (repoPath) {
+      includeResolver.setCurrentRepoPath(repoPath);
+    }
     includeResolver.setCurrentFile(entryFile.path);
 
     const parsedFiles = new Map<string, any>();
@@ -183,11 +187,17 @@ export async function parseCircuitHandler(
 }
 
 function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
-  logger.info(`findTemplate searching for: ${name}`);
+  // CRITICAL: Log the actual name being searched for (including undefined)
+  logger.info(`findTemplate searching for: ${name} (type: ${typeof name})`);
   logger.info(`Parsed files count: ${parsedFiles.size}`);
   
+  if (!name || name === undefined || name === null) {
+    logger.error(`[findTemplate ERROR] Attempting to find template with undefined/null name`);
+    return null;
+  }
+  
   for (const [filePath, file] of parsedFiles.entries()) {
-    logger.info(`Checking file: ${filePath}, templates: ${file.templates.length}, components: ${file.components.length}`);
+    // logger.info(`Checking file: ${filePath}, templates: ${file.templates.length}, components: ${file.components.length}`);
     
     // First try to find a template with this name
     const template = file.templates.find((t: any) => t.name === name);
@@ -203,8 +213,8 @@ function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
       return component;
     }
   }
-  
-  logger.info(`Template/component not found: ${name}`);
+
+  logger.warn(`Template ${name} not found in any parsed file`);
   return null;
 }
 
@@ -251,19 +261,28 @@ function extractComponentCallsFromStatements(statements: any[]): any[] {
   const componentCalls: any[] = [];
   let anonymousComponentIndex = 0;
 
+  // logger.info(`[extractComponentCallsFromStatements] Called with ${statements.length} statements: ${statements.map((s: any) => s.type).join(', ')}`);
+
   function visitNode(node: any): void {
     if (!node) return;
 
     if (node.type === 'ComponentCall') {
+      if (!node.template) {
+        logger.error(`ComponentCall node has undefined template at line ${node.line}`);
+        logger.error(`Node structure: ${JSON.stringify(node, null, 2)}`);
+      }
+      
+      const templateName = node.template;
       componentCalls.push({
         type: 'ComponentInstantiationNode',
-        name: `<anon_${anonymousComponentIndex++}>`,
-        templateName: node.template,
-        templateArgs: node.templateArgs,
-        callArgs: node.callArgs,
-        arguments: node.callArgs,
+        name: `Anonymous_${anonymousComponentIndex++}`,
+        templateName: templateName,
+        templateArgs: node.templateArgs || [],
+        callArgs: node.callArgs || [],
+        arguments: node.callArgs || [],
         isAnonymous: true
       });
+      logger.debug(`Found anonymous component call: ${templateName} (line ${node.line})`);
     }
 
     if (node.left) visitNode(node.left);
@@ -272,6 +291,11 @@ function extractComponentCallsFromStatements(statements: any[]): any[] {
     if (node.thenExpr) visitNode(node.thenExpr);
     if (node.elseExpr) visitNode(node.elseExpr);
     if (node.operand) visitNode(node.operand);
+
+    // Handle ComponentArrayInit - visit its init statements
+    if (node.type === 'ComponentArrayInit' && node.initStatements) {
+      node.initStatements.forEach((stmt: any) => visitNode(stmt));
+    }
     if (node.elements) {
       node.elements.forEach((el: any) => visitNode(el));
     }
@@ -292,7 +316,9 @@ function extractComponentCallsFromStatements(statements: any[]): any[] {
     }
 
     if (node.type === 'ForLoop' || node.type === 'WhileLoop') {
-      node.body?.forEach((stmt: any) => visitNode(stmt));
+      node.body?.forEach((stmt: any, idx: number) => {
+        visitNode(stmt);
+      });
       if (node.type === 'ForLoop') {
         visitNode(node.start);
         visitNode(node.end);
@@ -350,28 +376,129 @@ function buildTemplateTree(
   };
 
   for (const component of template.components) {
+    // CRITICAL: Validate component type
+    if (component.type === 'ComponentDeclaration') {
+      // Component declarations don't have templateName - skip them
+      logger.debug(`Skipping ComponentDeclaration: ${component.name} (no template)`);
+      continue;
+    }
+    
+    if (component.type === 'ComponentArrayInit') {
+      // Component array initialization also doesn't have templateName
+      // It's just a declaration with initialization statements
+      logger.debug(`Skipping ComponentArrayInit: ${component.name} (no template)`);
+      continue;
+    }
+    
+    if (component.type === 'ComponentInstantiationWithInitNode') {
+      // Component with init block also doesn't have templateName
+      logger.debug(`Skipping ComponentInstantiationWithInitNode: ${component.name} (has init block)`);
+      continue;
+    }
+    
+    if (!component.templateName) {
+      // logger.error(`[Component ERROR] Component has undefined templateName: ${component.name} at line ${component.line}`);
+      // logger.error(`[Component ERROR] Component type: ${component.type}`);
+      // logger.error(`[Component ERROR] Full component structure: ${JSON.stringify(component, null, 2)}`);
+      continue;
+    }
+    
+    logger.info(`[Component Processing] name=${component.name}, templateName=${component.templateName}, line=${component.line}`);
+    
     const childTemplate = findTemplate(parsedFiles, component.templateName);
     const componentTree: any = {
       name: component.name,
-      templateName: component.templateName,
+      templateName: component.templateName || 'unknown',
       arguments: component.arguments,
       template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
     };
     tree.components.push(componentTree);
+    logger.debug(`Added component to tree: ${component.name} -> ${component.templateName}, templateFound: ${!!childTemplate}`);
+  }
+
+  // Also extract anonymous component calls from ComponentArrayInit and ComponentInstantiationWithInit nodes
+  for (const component of template.components) {
+    if (component.type === 'ComponentArrayInit' && component.initStatements) {
+      // logger.info(`[ComponentArrayInit] Processing component ${component.name}`);
+      const arrayInitCalls = extractComponentCallsFromStatements(component.initStatements);
+      // logger.info(`[ComponentArrayInit] Found ${arrayInitCalls.length} anonymous component calls in ${component.name}`);
+      
+      for (const anonComponent of arrayInitCalls) {
+        if (!anonComponent.templateName && anonComponent.templateName === undefined) {
+          logger.error(`[ArrayInit Anonymous ERROR] Component has undefined templateName: ${anonComponent.name}`);
+          logger.error(`[ArrayInit Anonymous ERROR] Full node structure: ${JSON.stringify(anonComponent, null, 2)}`);
+          continue;
+        }
+
+        logger.info(`[ArrayInit Anonymous Processing] name=${anonComponent.name}, templateName=${anonComponent.templateName}`);
+
+        const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
+        const componentTree: any = {
+          name: anonComponent.name,
+          templateName: anonComponent.templateName || 'unknown',
+          arguments: anonComponent.callArgs || anonComponent.arguments || [],
+          templateArgs: anonComponent.templateArgs || [],
+          isAnonymous: true,
+          template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
+        };
+        tree.components.push(componentTree);
+        logger.debug(`Added array init anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
+      }
+    }
+    
+    if (component.type === 'ComponentInstantiationWithInitNode' && component.initBlock) {
+      logger.info(`[ComponentInstantiationWithInit] Extracting anonymous calls from ${component.name}`);
+      const initBlockCalls = extractComponentCallsFromStatements(component.initBlock);
+      logger.info(`[ComponentInstantiationWithInit] Found ${initBlockCalls.length} anonymous component calls in ${component.name}`);
+      
+      for (const anonComponent of initBlockCalls) {
+        if (!anonComponent.templateName && anonComponent.templateName === undefined) {
+          logger.error(`[InitBlock Anonymous ERROR] Component has undefined templateName: ${anonComponent.name}`);
+          logger.error(`[InitBlock Anonymous ERROR] Full node structure: ${JSON.stringify(anonComponent, null, 2)}`);
+          continue;
+        }
+
+        logger.info(`[InitBlock Anonymous Processing] name=${anonComponent.name}, templateName=${anonComponent.templateName}`);
+
+        const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
+        const componentTree: any = {
+          name: anonComponent.name,
+          templateName: anonComponent.templateName || 'unknown',
+          arguments: anonComponent.callArgs || anonComponent.arguments || [],
+          templateArgs: anonComponent.templateArgs || [],
+          isAnonymous: true,
+          template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
+        };
+        tree.components.push(componentTree);
+        logger.debug(`Added init block anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
+      }
+    }
   }
 
   const anonymousComponentCalls = extractComponentCallsFromStatements(template.statements);
+  // logger.info(`Found ${anonymousComponentCalls.length} anonymous component calls in template ${template.name}`);
+
   for (const anonComponent of anonymousComponentCalls) {
+    // CRITICAL: Validate anonymous component has templateName
+    if (!anonComponent.templateName || anonComponent.templateName === undefined) {
+      logger.error(`[Anonymous Component ERROR] Component has undefined templateName: ${anonComponent.name}`);
+      logger.error(`[Anonymous Component ERROR] Full node structure: ${JSON.stringify(anonComponent, null, 2)}`);
+      continue;
+    }
+
+    // logger.info(`[Anonymous Component Processing] name=${anonComponent.name}, templateName=${anonComponent.templateName}`);
+
     const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
     const componentTree: any = {
       name: anonComponent.name,
-      templateName: anonComponent.templateName,
+      templateName: anonComponent.templateName || 'unknown',
       arguments: anonComponent.callArgs,
       templateArgs: anonComponent.templateArgs,
       isAnonymous: true,
       template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
     };
     tree.components.push(componentTree);
+    // logger.debug(`Added anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
   }
 
   return tree;

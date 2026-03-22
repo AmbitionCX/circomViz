@@ -2,7 +2,7 @@
 // Construct the tree structure based on circom grammar rules.
 
 import { CircomLexer, Token, TokenType } from './lexer.js';
-import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode, TupleNode } from './ast.js';
+import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, ComponentArrayInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode, TupleNode } from './ast.js';
 
 export class CircomParser {
   private lexer: CircomLexer;
@@ -17,9 +17,9 @@ export class CircomParser {
 
   // parse 
   parse(content: string, filePath: string = ''): ASTNode[] {
-    console.log(`[Parser DEBUG] ========== PARSE START ===========`);
-    console.log(`[Parser DEBUG] File: ${filePath}`);
-    console.log(`[Parser DEBUG] Tokens: ${this.tokens.length}`);
+    // console.log(`[Parser DEBUG] ========== PARSE START ===========`);
+    // console.log(`[Parser DEBUG] File: ${filePath}`);
+    // console.log(`[Parser DEBUG] Tokens: ${this.tokens.length}`);
     
     this.sourceFile = filePath || this.sourceFile;
     this.lexer = new CircomLexer(content);
@@ -34,17 +34,17 @@ export class CircomParser {
         const node = this.parseTopLevel(); // grammar analysis
         if (node) {
           nodeCount++;
-          console.log(`[Parser DEBUG] Node ${nodeCount}: ${node.type}${(node as any).name ? `:${(node as any).name}` : ''}`);
+          // console.log(`[Parser DEBUG] Node ${nodeCount}: ${node.type}${(node as any).name ? `:${(node as any).name}` : ''}`);
           nodes.push(node);
         }
       } catch (error: any) {
-        console.log(`[Parser DEBUG] ERROR parsing node: ${error.message}`);
+        // console.log(`[Parser DEBUG] ERROR parsing node: ${error.message}`);
         this.synchronize();
       }
     }
 
-    console.log(`[Parser DEBUG] Total nodes parsed: ${nodes.length}`);
-    console.log(`[Parser DEBUG] ========== PARSE END ============`);
+    // console.log(`[Parser DEBUG] Total nodes parsed: ${nodes.length}`);
+    // console.log(`[Parser DEBUG] ========== PARSE END ============`);
 
     return nodes; // AST Nodes
   }
@@ -126,10 +126,10 @@ export class CircomParser {
   }
 
   private parseTemplateDefinition(): TemplateDefinitionNode {
-    console.log(`[Parser DEBUG] parseTemplateDefinition called at line ${this.peek().line}`);
+    // console.log(`[Parser DEBUG] parseTemplateDefinition called at line ${this.peek().line}`);
     const line = this.previous().line;
     const name = this.consumeIdentifier();
-    console.log(`[Parser DEBUG] Template name: ${name}`);
+    // console.log(`[Parser DEBUG] Template name: ${name}`);
 
     this.consumePunctuation('(');
     const parameters: Parameter[] = [];
@@ -139,40 +139,40 @@ export class CircomParser {
       } while (this.matchPunctuation(','));
     }
     this.consumePunctuation(')');
-    console.log(`[Parser DEBUG] Parsed ${parameters.length} parameters`);
+    // console.log(`[Parser DEBUG] Parsed ${parameters.length} parameters`);
 
     this.consumePunctuation('{');
-    console.log(`[Parser DEBUG] Starting template body parsing`);
+    // console.log(`[Parser DEBUG] Starting template body parsing`);
 
     const signals: SignalNode[] = [];
     const variables: VariableNode[] = [];
-    const components: (ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode)[] = [];
+    const components: (ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode | ComponentArrayInitNode)[] = [];
     const statements: StatementNode[] = [];
 
     let statementCount = 0;
     while (!this.checkPunctuation('}') && !this.isAtEnd()) {
       statementCount++;
       const token = this.peek();
-      console.log(`[Parser DEBUG] Statement ${statementCount}: token type=${token.type}, value=${token.value}`);
+      // console.log(`[Parser DEBUG] Statement ${statementCount}: token type=${token.type}, value=${token.value}`);
       
       if (this.matchKeyword('signal')) {
-        console.log(`[Parser DEBUG]   -> parsing signal`);
+        // console.log(`[Parser DEBUG]   -> parsing signal`);
         signals.push(this.parseSignal());
       } else if (this.matchKeyword('var')) {
-        console.log(`[Parser DEBUG]   -> parsing variable`);
+        // console.log(`[Parser DEBUG]   -> parsing variable`);
         variables.push(this.parseVariable());
       } else if (this.matchKeyword('component')) {
-        console.log(`[Parser DEBUG]   -> parsing component`);
+        // console.log(`[Parser DEBUG]   -> parsing component`);
         components.push(this.parseComponentInstantiation());
       } else {
-        console.log(`[Parser DEBUG]   -> parsing statement`);
+        // console.log(`[Parser DEBUG]   -> parsing statement`);
         statements.push(this.parseStatement());
       }
     }
-    console.log(`[Parser DEBUG] Parsed ${statementCount} statements in template body`);
+    // console.log(`[Parser DEBUG] Parsed ${statementCount} statements in template body`);
 
     this.consumePunctuation('}');
-    console.log(`[Parser DEBUG] Template ${name} parsed successfully: ${signals.length} signals, ${components.length} components, ${statements.length} statements`);
+    // console.log(`[Parser DEBUG] Template ${name} parsed successfully: ${signals.length} signals, ${components.length} components, ${statements.length} statements`);
 
     return {
       type: 'TemplateDefinition',
@@ -296,11 +296,11 @@ export class CircomParser {
     };
   }
 
-  private parseComponentInstantiation(): ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode {
-    console.log(`[Parser DEBUG] parseComponentInstantiation called, next token: ${this.peek().type}:${this.peek().value}`);
+  private parseComponentInstantiation(): ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode | ComponentArrayInitNode {
+    // console.log(`[Parser DEBUG] parseComponentInstantiation called, next token: ${this.peek().type}:${this.peek().value}`);
     const line = this.previous().line;
     const name = this.consumeIdentifier();
-    console.log(`[Parser DEBUG] Component name: ${name}`);
+    // console.log(`[Parser DEBUG] Component name: ${name} at line ${line}`);
     
     // Check for array syntax: component name[expr]
     let arraySizes: (number | ExpressionNode)[] | undefined;
@@ -318,42 +318,62 @@ export class CircomParser {
 
     // If it's an array, handle differently
     if (arraySizes) {
-      // Simple component array declaration without initialization
-      this.consumePunctuation(';');
+      // Check for initialization - component array followed by statements that initialize it
+      // Pattern 1: component c[n]; { c[0] = A(); c[1] = B(); }
+      // Pattern 2: component c[n]; for(...) { c[i] = A(); }
+      if (this.checkPunctuation(';')) {
+        // Don't consume ';' yet - check if there's initialization
+        const hasInitialization = this.checkForComponentArrayInitialization(name);
 
-      // Check for optional initialization block
-      // In circom, component arrays can have initialization blocks like:
-      // component c[5];
-      // {
-      //     c[0] = A();
-      //     c[1] = B();
-      // }
-      // The block must start with an assignment to component
-      if (this.checkPunctuation('{')) {
-        // Check if this looks like an initialization block
-        // Look ahead to see if first statement is an assignment to component
-        const savedPos = this.current;
-        this.consumePunctuation('{');
-        const isInitBlock = this.checkType('IDENTIFIER') && this.peek().value === name;
-        this.current = savedPos;
+        if (hasInitialization) {
+          // Consume the ';' and collect init statements
+          this.consumePunctuation(';');
+          // console.log(`[Parser DEBUG] Detected component array initialization for ${name}`);
+          const initStatements: StatementNode[] = [];
 
-        if (isInitBlock) {
-          // Parse as initialization block
-          this.consumePunctuation('{');
-          const body: StatementNode[] = [];
-          while (!this.checkPunctuation('}') && !this.isAtEnd()) {
-            body.push(this.parseStatement());
+          // Collect statements that initialize this component array
+          while (this.isComponentArrayInitStatement(name)) {
+            initStatements.push(this.parseStatement());
           }
-          this.consumePunctuation('}');
+
+          // console.log(`[Parser DEBUG] Collected ${initStatements.length} init statements for ${name}`);
+          // console.log(`[Parser DEBUG] Init statement types: ${initStatements.map((s: any) => s.type).join(', ')}`);
           return {
-            type: 'ComponentInstantiationWithInitNode',
+            type: 'ComponentArrayInit',
             name,
             arraySizes,
-            initBlock: body,
+            initStatements,
+            line
+          };
+        } else {
+          // Simple component array declaration without initialization
+          this.consumePunctuation(';');
+          // console.log(`[Parser DEBUG] Simple component array declaration: ${name}[...]`);
+          return {
+            type: 'ComponentDeclaration',
+            name,
+            arraySizes,
             line
           };
         }
-        // Otherwise, treat as a regular block statement (will be parsed separately)
+      } else if (this.checkPunctuation('{')) {
+        // Initialization block with braces
+        // component c[5]; { c[0] = A(); c[1] = B(); }
+        this.consumePunctuation('{');
+        const body: StatementNode[] = [];
+        while (!this.checkPunctuation('}') && !this.isAtEnd()) {
+          body.push(this.parseStatement());
+        }
+        this.consumePunctuation('}');
+        return {
+          type: 'ComponentInstantiationWithInitNode',
+          name,
+          arraySizes,
+          initBlock: body,
+          line
+        };
+      } else {
+        // Unrecognized syntax - should not reach here
         return {
           type: 'ComponentDeclaration',
           name,
@@ -361,18 +381,11 @@ export class CircomParser {
           line
         };
       }
-
-      return {
-        type: 'ComponentDeclaration',
-        name,
-        arraySizes,
-        line
-      };
     }
 
     // Check if this is a component declaration without initialization: component name;
     if (this.checkPunctuation(';')) {
-      console.log(`[Parser DEBUG] -> component declaration without initialization`);
+      // console.log(`[Parser DEBUG] -> component declaration without initialization`);
       this.consumePunctuation(';');
       return {
         type: 'ComponentDeclaration',
@@ -384,7 +397,7 @@ export class CircomParser {
     // Component instantiation: component name = Template(args);
     // Skip optional { public [...] } block
     if (this.checkPunctuation('{')) {
-      console.log(`[Parser DEBUG] -> skipping public block`);
+      // console.log(`[Parser DEBUG] -> skipping public block`);
       this.consumePunctuation('{');
       
       // Check for 'public' keyword (may not be a keyword in all contexts)
@@ -414,10 +427,18 @@ export class CircomParser {
     
     // Consume the '=' operator
     this.consumeOperator('=');
-    console.log(`[Parser DEBUG] Consumed = operator`);
+    // console.log(`[Parser DEBUG] Consumed = operator at line ${line}`);
 
+    // Extract template name with validation
     const templateName = this.consumeIdentifier();
-    console.log(`[Parser DEBUG] Template name: ${templateName}`);
+    // console.log(`[Parser DEBUG] Template name: ${templateName} at line ${line}`);
+    
+    // CRITICAL: Validate templateName is not undefined
+    if (!templateName || templateName === undefined) {
+      console.error(`[Parser ERROR] templateName is undefined after consumeIdentifier() at line ${line}`);
+      console.error(`[Parser ERROR] Component name: ${name}, Next token: ${this.peek().type}:${this.peek().value}`);
+      throw new Error(`Failed to parse template name at line ${line}: Expected template name after '='`);
+    }
 
     this.consumePunctuation('(');
     const args: ExpressionNode[] = [];
@@ -427,11 +448,11 @@ export class CircomParser {
       } while (this.matchPunctuation(','));
     }
     this.consumePunctuation(')');
-    console.log(`[Parser DEBUG] Parsed ${args.length} arguments`);
+    // console.log(`[Parser DEBUG] Parsed ${args.length} arguments for template ${templateName}`);
 
     this.consumePunctuation(';');
 
-    console.log(`[Parser DEBUG] Component parsed successfully: ${name} = ${templateName}`);
+    // console.log(`[Parser DEBUG] Component parsed successfully: ${name} = ${templateName} at line ${line}`);
     return {
       type: 'ComponentInstantiationNode',
       name,
@@ -496,36 +517,36 @@ export class CircomParser {
   }
 
   private parseStatement(): StatementNode {
-    console.log(`[Parser DEBUG] parseStatement called, next token: ${this.peek().type}:${this.peek().value}`);
-    console.log(`[Parser DEBUG] current position before parsing: ${this.current}`);
+    // console.log(`[Parser DEBUG] parseStatement called, next token: ${this.peek().type}:${this.peek().value}`);
+    // console.log(`[Parser DEBUG] current position before parsing: ${this.current}`);
     
     if (this.matchKeyword('if')) {
-      console.log(`[Parser DEBUG] -> parsing if statement`);
+      // console.log(`[Parser DEBUG] -> parsing if statement`);
       return this.parseIfStatement();
     }
     if (this.matchKeyword('for')) {
-      console.log(`[Parser DEBUG] -> parsing for loop`);
+      // console.log(`[Parser DEBUG] -> parsing for loop`);
       return this.parseForLoop();
     }
     if (this.matchKeyword('while')) {
-      console.log(`[Parser DEBUG] -> parsing while loop`);
+      // console.log(`[Parser DEBUG] -> parsing while loop`);
       return this.parseWhileLoop();
     }
     if (this.matchKeyword('return')) {
-      console.log(`[Parser DEBUG] -> parsing return`);
+      // console.log(`[Parser DEBUG] -> parsing return`);
       return this.parseReturn();
     }
     if (this.matchKeyword('assert')) {
-      console.log(`[Parser DEBUG] -> parsing assert`);
+      // console.log(`[Parser DEBUG] -> parsing assert`);
       return this.parseAssert();
     }
     if (this.matchKeyword('var')) {
-      console.log(`[Parser DEBUG] -> parsing variable`);
+      // console.log(`[Parser DEBUG] -> parsing variable`);
       return this.parseVariable();
     }
     if (this.checkPunctuation('{')) {
       // Handle block statement
-      console.log(`[Parser DEBUG] -> parsing block statement`);
+      // console.log(`[Parser DEBUG] -> parsing block statement`);
       const body = this.parseBlock();
       return {
         type: 'BlockStatement',
@@ -611,11 +632,11 @@ export class CircomParser {
     
     // Parse expression first
     const expr = this.parseExpression();
-    console.log(`[Parser DEBUG] position after parseExpression: ${this.current}, next token: ${this.peek().type}:${this.peek().value}`);
+    // console.log(`[Parser DEBUG] position after parseExpression: ${this.current}, next token: ${this.peek().type}:${this.peek().value}`);
     
     // Check if the NEXT token is a semicolon (standalone expression statement)
     if (this.checkPunctuation(';')) {
-      console.log(`[Parser DEBUG] -> found standalone expression statement`);
+      // console.log(`[Parser DEBUG] -> found standalone expression statement`);
       this.consumePunctuation(';');
       return {
         type: 'ExpressionStatement',
@@ -625,7 +646,7 @@ export class CircomParser {
     }
     
     // Otherwise, let parseAssignment handle the operator and semicolon
-    console.log(`[Parser DEBUG] -> parsing assignment`);
+    // console.log(`[Parser DEBUG] -> parsing assignment`);
     return this.parseAssignment();
   }
 
@@ -677,14 +698,14 @@ export class CircomParser {
   }
 
   private parseBlock(): StatementNode[] {
-    console.log(`[Parser DEBUG] parseBlock called`);
+    // console.log(`[Parser DEBUG] parseBlock called`);
     this.consumePunctuation('{');
     const body: StatementNode[] = [];
     while (!this.checkPunctuation('}') && !this.isAtEnd()) {
       body.push(this.parseStatement());
     }
     this.consumePunctuation('}');
-    console.log(`[Parser DEBUG] parseBlock parsed ${body.length} statements`);
+    // console.log(`[Parser DEBUG] parseBlock parsed ${body.length} statements`);
     return body;
   }
 
@@ -1353,14 +1374,156 @@ export class CircomParser {
     return this.current >= this.tokens.length;
   }
 
+  private checkForComponentArrayInitialization(componentName: string): boolean {
+    // Look ahead to see if next statements initialize this component array
+    // Pattern to look for: componentName[...] = Template(...) or componentName = Template(...)
+    const savedPos = this.current;
+
+    try {
+      // Skip whitespace and comments if any
+      while (this.checkPunctuation(';')) {
+        this.advance();
+      }
+
+      // Check if next statement is an initialization
+      // Pattern: IDENTIFIER (componentName) [ ... ] = IDENTIFIER ... (
+      if (this.checkType('IDENTIFIER') && this.peek().value === componentName) {
+        this.advance(); // Skip component name
+        if (this.matchPunctuation('[')) {
+          // Array access: component[i] = Template()
+          this.advance(); // Skip '['
+          // Skip index expression
+          while (!this.checkPunctuation(']') && !this.isAtEnd()) {
+            this.advance();
+          }
+          if (this.matchPunctuation(']')) {
+            // Check for assignment operator
+            if (this.matchOperator('=') || this.matchOperator('<==')) {
+              // Check if right side starts with a template call (IDENTIFIER)
+              if (this.checkType('IDENTIFIER')) {
+                // console.log(`[Parser DEBUG] Found component array initialization pattern: ${componentName}[...] = IDENTIFIER`);
+                return true;
+              }
+            }
+          }
+        } else if (this.matchOperator('=') || this.matchOperator('<==')) {
+          // Direct assignment: component = Template()
+          if (this.checkType('IDENTIFIER')) {
+            // console.log(`[Parser DEBUG] Found component array initialization pattern: ${componentName} = IDENTIFIER`);
+            return true;
+          }
+        }
+      }
+
+      // Check if next statement is a for/while loop
+      // component c[n]; for (i=0; i<n; i++) { c[i] = Template(); }
+      if (this.checkType('KEYWORD')) {
+        const keyword = this.peek().value;
+        if (keyword === 'for' || keyword === 'while') {
+          // console.log(`[Parser DEBUG] Found component array initialization in loop: ${componentName}`);
+          return true;
+        }
+      }
+
+      // Check if next statement is a block (might contain initialization)
+      if (this.checkPunctuation('{')) {
+        // console.log(`[Parser DEBUG] Found component array initialization block for ${componentName}`);
+        return true;
+      }
+
+      return false;
+    } finally {
+      this.current = savedPos;
+    }
+  }
+
+  private isComponentArrayInitStatement(componentName: string): boolean {
+    // Check if the current statement is an initialization statement for this component
+    const savedPos = this.current;
+
+    try {
+      // Skip any leading punctuation (like ';')
+      while (this.checkPunctuation(';')) {
+        this.advance();
+      }
+
+      // Check for end of file
+      if (this.isAtEnd()) {
+        return false;
+      }
+
+      // Pattern 1: componentName[i] = Template()
+      if (this.checkType('IDENTIFIER') && this.peek().value === componentName) {
+        this.advance(); // Skip component name
+        if (this.matchPunctuation('[')) {
+          // Array access
+          this.advance(); // Skip '['
+          // Skip index expression
+          while (!this.checkPunctuation(']') && !this.isAtEnd()) {
+            this.advance();
+          }
+          if (this.matchPunctuation(']')) {
+            // Check for assignment operator
+            if (this.matchOperator('=') || this.matchOperator('<==')) {
+              // Check if right side is a template call (IDENTIFIER followed by '(')
+              if (this.checkType('IDENTIFIER')) {
+                this.advance();
+                if (this.checkPunctuation('(')) {
+                  // console.log(`[Parser DEBUG] Statement is component array init: ${componentName}[...] = IDENTIFIER(`);
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Pattern 2: componentName = Template() (less common but possible)
+      if (this.checkType('IDENTIFIER') && this.peek().value === componentName) {
+        this.advance(); // Skip component name
+        if (this.matchOperator('=') || this.matchOperator('<==')) {
+          if (this.checkType('IDENTIFIER')) {
+            this.advance();
+            if (this.checkPunctuation('(')) {
+              // console.log(`[Parser DEBUG] Statement is component array init: ${componentName} = IDENTIFIER(`);
+              return true;
+            }
+          }
+        }
+      }
+
+      // Pattern 3: for/while loop (continue collecting if it's a loop)
+      if (this.checkType('KEYWORD')) {
+        const keyword = this.peek().value;
+        if (keyword === 'for' || keyword === 'while') {
+          // console.log(`[Parser DEBUG] Statement is loop, continuing init collection for ${componentName}`);
+          return true;
+        }
+      }
+
+      // Pattern 4: Block statement (continue collecting)
+      if (this.checkPunctuation('{')) {
+        // console.log(`[Parser DEBUG] Statement is block, continuing init collection for ${componentName}`);
+        return true;
+      }
+
+      // Not an init statement
+      // console.log(`[Parser DEBUG] Statement is NOT component array init for ${componentName}`);
+      // console.log(`[Parser DEBUG] Next token: ${this.peek().type}:${this.peek().value}`);
+      return false;
+    } finally {
+      this.current = savedPos;
+    }
+  }
+
   private synchronize(): void {
-    console.log(`[Parser DEBUG] synchronize() called, current position: ${this.current}, previous token: ${this.previous().type}:${this.previous().value}`);
+    // console.log(`[Parser DEBUG] synchronize() called, current position: ${this.current}, previous token: ${this.previous().type}:${this.previous().value}`);
     this.advance();
 
     let syncCount = 0;
     while (!this.isAtEnd()) {
       if (this.previous().type === 'PUNCTUATION' && this.previous().value === ';') {
-        console.log(`[Parser DEBUG] synchronize() found semicolon, syncing after ${syncCount} tokens`);
+        // console.log(`[Parser DEBUG] synchronize() found semicolon, syncing after ${syncCount} tokens`);
         return;
       }
 
@@ -1368,7 +1531,7 @@ export class CircomParser {
       if (type === 'KEYWORD') {
         const value = this.peek().value;
         if (['template', 'function', 'component', 'signal', 'pragma', 'include'].includes(value)) {
-          console.log(`[Parser DEBUG] synchronize() found keyword: ${value}, stopping`);
+          // console.log(`[Parser DEBUG] synchronize() found keyword: ${value}, stopping`);
           return;
         }
       }
@@ -1377,6 +1540,6 @@ export class CircomParser {
       this.advance();
     }
     
-    console.log(`[Parser DEBUG] synchronize() reached end of file without finding sync point`);
+    // console.log(`[Parser DEBUG] synchronize() reached end of file without finding sync point`);
   }
 }

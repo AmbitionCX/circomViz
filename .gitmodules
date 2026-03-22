@@ -1,6 +1,3 @@
-[submodule "Backend/circomlib"]
-	path = Backend/circomlib
-	url = https://github.com/iden3/circomlib.git
 [submodule "submodules/zk-email-verify"]
 	path = submodules/zk-email-verify
 	url = https://github.com/zkemail/zk-email-verify.git

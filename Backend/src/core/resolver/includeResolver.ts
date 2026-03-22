@@ -19,6 +19,7 @@ export class IncludeResolver {
   private errorCollector: ErrorCollector;
   private resolvedIncludes = new Map<string, IncludePath>();
   private currentFile: string = '';
+  private currentRepoPath: string = '';
 
   constructor(errorCollector: ErrorCollector) {
     this.pathGuard = new PathGuard();
@@ -27,6 +28,10 @@ export class IncludeResolver {
 
   setCurrentFile(filePath: string): void {
     this.currentFile = path.normalize(filePath);
+  }
+
+  setCurrentRepoPath(repoPath: string): void {
+    this.currentRepoPath = path.normalize(repoPath);
   }
 
   async resolveInclude(includeNode: IncludeNode): Promise<string | null> {
@@ -66,8 +71,12 @@ export class IncludeResolver {
     } else if (originalPath.startsWith('circomlib')) {
       type = 'circomlib';
       const result = this.resolveCircomlibPath(originalPath);
-      resolved = result;
-      exists = await FsUtils.fileExists(result);
+      if (result) {
+        resolved = result;
+        exists = await FsUtils.fileExists(result);
+      } else {
+        exists = false;
+      }
     } else if (originalPath.startsWith('./') || originalPath.startsWith('../') || path.isAbsolute(originalPath)) {
       // Explicit relative or absolute path
       if (originalPath.startsWith('./') || originalPath.startsWith('../')) {
@@ -195,8 +204,11 @@ export class IncludeResolver {
     return null;
   }
 
-  private resolveCircomlibPath(libPath: string): string {
-    const result = this.pathGuard.getCircomlibPath(libPath.replace('circomlib/', ''));
+  private resolveCircomlibPath(libPath: string): string | null {
+    const result = this.pathGuard.getCircomlibPath(
+      this.currentRepoPath,
+      libPath.replace('circomlib/', '')
+    );
     logger.debug(`Resolved circomlib: ${libPath} -> ${result}`);
     return result;
   }

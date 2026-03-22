@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { saveCode } from './scripts/compilation.js';
 import { CircomParser as SubmoduleParser } from './core/parser/submoduleParser.js';
 import { parseCircuitHandler } from './server/routes/parseCircuit.js';
+import { compileTemplateHandler } from './server/routes/compileTemplate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,7 +48,11 @@ server.get('/submodules/:id', (request, reply) => {
   reply.send({ submodule });
 });
 
+// parse circuit to tree structure
 server.post('/parse_circuit', parseCircuitHandler);
+
+// partial compile
+server.post('/compile_template', compileTemplateHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
   if (err) {
