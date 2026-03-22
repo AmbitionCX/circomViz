@@ -1,7 +1,14 @@
 <template>
   <div class="interaction-panel-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between mb-3 flex-shrink-0">
-      <h2 class="text-base font-bold text-gray-800">Interaction Panel</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-base font-bold text-gray-800">Interaction Panel</h2>
+        <el-tooltip content="Compile, verify constraints, and inspect signal values for the selected template" placement="top">
+          <el-icon class="text-gray-400 cursor-help">
+            <QuestionFilled />
+          </el-icon>
+        </el-tooltip>
+      </div>
       <el-button
         size="small"
         type="primary"
@@ -164,7 +171,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { VideoPlay, Edit, Select, CircleCheck, CircleClose } from '@element-plus/icons-vue';
+import { VideoPlay, Edit, Select, CircleCheck, CircleClose, QuestionFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import type { ConstraintVerification } from '@/types/circuitTypes';
 

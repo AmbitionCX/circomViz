@@ -1,7 +1,14 @@
 <template>
   <div class="circuit-view-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between mb-3 flex-shrink-0">
-      <h2 class="text-base font-bold text-gray-800">Circuit View</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-base font-bold text-gray-800">Circuit View</h2>
+        <el-tooltip content="Explore the hierarchical structure of templates and components in the circuit" placement="top">
+          <el-icon class="text-gray-400 cursor-help">
+            <QuestionFilled />
+          </el-icon>
+        </el-tooltip>
+      </div>
       <div class="text-xs text-gray-500">
         {{ templateTreeData ? 'Template structure loaded' : 'No template loaded' }}
       </div>
@@ -78,7 +85,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Box, Connection, Document } from '@element-plus/icons-vue';
+import { Box, Connection, Document, QuestionFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import type { TemplateInfo } from '@/types/circuitTypes';
 

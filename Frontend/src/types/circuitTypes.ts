@@ -54,6 +54,7 @@ export interface TemplateInfo {
 export interface FileSummary {
   id: string;
   path: string;
+  displayId: string;
   includes: string[];
 }
 

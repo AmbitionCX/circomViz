@@ -7,7 +7,7 @@ import { logger } from '../../utils/logger.js';
 import type { parse_circuit_request, parse_circuit_response, FileSummary, ParseMessage } from '../../types/circuitParser.js';
 
 import { writeFile, appendFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { join, sep, dirname } from 'path';
 
 export async function parseCircuitHandler(
   request: FastifyRequest<{ Body: parse_circuit_request }>,
@@ -104,9 +104,11 @@ export async function parseCircuitHandler(
       const parsedFile = parsedFiles.get(filePath);
       if (parsedFile) {
         const includes: string[] = parsedFile.includes.map((inc: any) => inc.path);
+        const displayId = generateDisplayId(filePath, repo);
         fileSummaries.push({
           id: filePath,
           path: filePath,
+          displayId,
           includes
         });
       }
@@ -204,6 +206,45 @@ function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
   
   logger.info(`Template/component not found: ${name}`);
   return null;
+}
+
+function generateDisplayId(filePath: string, repo: string): string {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  
+  // Handle node_modules packages (e.g., @zk-email)
+  const nodeModulesMatch = normalizedPath.match(/\/node_modules\/([^\/]+)/);
+  if (nodeModulesMatch) {
+    const packageName = nodeModulesMatch[1];
+    const packagePathIndex = normalizedPath.indexOf('/node_modules/' + packageName);
+    const relativePath = normalizedPath.substring(packagePathIndex + nodeModulesMatch[0].length);
+    return `${packageName}:${relativePath.replace(/^\//, '')}`;
+  }
+  
+  // Handle circomlib
+  if (normalizedPath.includes('/circomlib/')) {
+    const circomlibIndex = normalizedPath.indexOf('/circomlib/');
+    const relativePath = normalizedPath.substring(circomlibIndex + '/circomlib/'.length);
+    return `circomlib:${relativePath}`;
+  }
+  
+  // Handle repo-based files
+  if (normalizedPath.includes(repo)) {
+    const repoIndex = normalizedPath.indexOf(repo);
+    const relativePath = normalizedPath.substring(repoIndex + repo.length + 1);
+    return `${repo}:${relativePath}`;
+  }
+  
+  // Fallback: try to find a reasonable directory name
+  const parts = normalizedPath.split('/');
+  const submodulesIndex = parts.findIndex(p => p === 'submodules');
+  if (submodulesIndex >= 0 && submodulesIndex + 1 < parts.length) {
+    const moduleName = parts[submodulesIndex + 1];
+    const relativePath = parts.slice(submodulesIndex + 2).join('/');
+    return `${moduleName}:${relativePath}`;
+  }
+  
+  // Final fallback: use filename
+  return normalizedPath.split('/').pop() || normalizedPath;
 }
 
 function extractComponentCallsFromStatements(statements: any[]): any[] {

@@ -21,6 +21,7 @@ export interface parse_circuit_response {
 export interface FileSummary {
   id: string;
   path: string;
+  displayId: string;
   includes: string[];
 }
 

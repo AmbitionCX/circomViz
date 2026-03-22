@@ -1,7 +1,14 @@
 <template>
   <div class="submodule-selector-container p-4">
     <div class="flex flex-row flex-nowrap justify-between mb-2">
-      <h2 class="text-base font-bold">Circuit Selection</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-base font-bold">Circuit Selection</h2>
+        <el-tooltip content="Select and parse a circuit from the available submodules to begin debugging" placement="top">
+          <el-icon class="text-gray-400 cursor-help">
+            <QuestionFilled />
+          </el-icon>
+        </el-tooltip>
+      </div>
     </div>
     
     <div class="mb-4">
@@ -65,7 +72,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Tools } from '@element-plus/icons-vue';
+import { Tools, QuestionFilled } from '@element-plus/icons-vue';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
 import { getSubmodules, parseCircuitRequest, parse_circuit_request } from '@/apis/index.js';
 import { ElMessage } from 'element-plus';

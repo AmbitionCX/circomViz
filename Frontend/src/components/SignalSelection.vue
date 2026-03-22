@@ -1,27 +1,15 @@
 <template>
   <div class="signal-selection-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between mb-3 flex-shrink-0">
-      <h2 class="text-base font-bold text-gray-800">Signal View</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-base font-bold text-gray-800">Signal View</h2>
+        <el-tooltip content="View all signals in the circuit, including inputs, outputs, and intermediate signals" placement="top">
+          <el-icon class="text-gray-400 cursor-help">
+            <QuestionFilled />
+          </el-icon>
+        </el-tooltip>
+      </div>
       <el-tag v-if="totalSignalCount" type="info" size="small">{{ totalSignalCount }} signals</el-tag>
-    </div>
-    
-    <div class="mb-3 flex-shrink-0">
-      <el-input
-        v-model="searchTerm"
-        placeholder="Search signals..."
-        size="small"
-        clearable
-        :prefix-icon="Search"
-      />
-    </div>
-    
-    <div class="flex gap-2 mb-3 flex-shrink-0">
-      <el-radio-group v-model="filterType" size="small">
-        <el-radio-button label="all">All</el-radio-button>
-        <el-radio-button label="input">Input</el-radio-button>
-        <el-radio-button label="output">Output</el-radio-button>
-        <el-radio-button label="intermediate">Inter</el-radio-button>
-      </el-radio-group>
     </div>
     
     <div class="flex-1 overflow-auto min-h-0 mb-3">
@@ -82,15 +70,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Search, CircleCheck, CircleCheckFilled, RemoveFilled } from '@element-plus/icons-vue';
+import { computed } from 'vue';
+import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import type { SignalInfo } from '@/types/circuitTypes';
 
 const circuitStore = useCircuitStore();
-
-const searchTerm = ref('');
-const filterType = ref<'all' | 'input' | 'output' | 'intermediate'>('all');
 
 const treeProps = {
   children: 'children',
@@ -103,13 +88,7 @@ const filteredSignalGroups = computed(() => {
   if (!isParsed.value) return [];
   
   const signals = circuitStore.filteredSignals;
-  
-  if (filterType.value === 'all') {
-    return groupSignalsByType(signals);
-  } else {
-    const filtered = signals.filter(s => s.kind === filterType.value);
-    return filtered.map(s => createSignalTreeNode(s));
-  }
+  return groupSignalsByType(signals);
 });
 
 const totalSignalCount = computed(() => {

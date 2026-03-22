@@ -27,11 +27,11 @@
         </el-col>
         
         <el-col :span="18" class="h-full pl-2 flex flex-col">
-          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom h-1/2 overflow-hidden flex flex-col">
+          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom h-3/4 overflow-hidden flex flex-col">
             <CircuitView @template-selected="handleTemplateSelected" />
           </div>
           
-          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom h-1/2 overflow-hidden flex flex-col">
+          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom h-1/4 overflow-hidden flex flex-col">
             <InteractionPanel />
           </div>
         </el-col>
