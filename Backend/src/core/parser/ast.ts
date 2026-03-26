@@ -85,6 +85,7 @@ export interface ComponentInstantiationNode {
   name: string;
   templateName: string;
   arguments: ExpressionNode[];
+  publicSignals: string[];
   line: number;
 }
 

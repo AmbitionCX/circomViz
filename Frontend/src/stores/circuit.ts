@@ -22,10 +22,23 @@ interface CircuitState {
   selectedTemplate: TemplateInfo | null;
   selectedTemplatePath: string[];
   
+  compilationVersion: number;
   compilationData: {
     isCompiling: boolean;
+    debugOutput: string | null;
+    optimizedOutput: string | null;
+    witnessOutput: string | null;
+    symPath: string | null;
+    constraintsJsonPath: string | null;
     constraints: CompilationConstraints | null;
     verifications: ConstraintVerification[];
+    staticAnalysisFindings: Array<{
+      severity: 'high' | 'medium' | 'low';
+      type: string;
+      message: string;
+      file?: string;
+      line?: number;
+    }>;
     error: string | null;
   };
   
@@ -55,10 +68,17 @@ export const useCircuitStore = defineStore('circuit', {
     selectedTemplate: null,
     selectedTemplatePath: [],
     
+    compilationVersion: 0,
     compilationData: {
       isCompiling: false,
+      debugOutput: null,
+      optimizedOutput: null,
+      witnessOutput: null,
+      symPath: null,
+      constraintsJsonPath: null,
       constraints: null,
       verifications: [],
+      staticAnalysisFindings: [],
       error: null
     },
     
@@ -184,12 +204,53 @@ export const useCircuitStore = defineStore('circuit', {
     setCompilationError(error: string | null) {
       this.compilationData.error = error;
     },
+
+    bumpCompilationVersion() {
+      this.compilationVersion++;
+    },
+
+    setDebugOutput(output: string | null) {
+      this.compilationData.debugOutput = output;
+    },
+
+    setOptimizedOutput(output: string | null) {
+      this.compilationData.optimizedOutput = output;
+    },
+
+    setWitnessOutput(output: string | null) {
+      this.compilationData.witnessOutput = output;
+    },
+    
+    setSymPath(path: string | null) {
+      this.compilationData.symPath = path;
+    },
+    
+    setConstraintsJsonPath(path: string | null) {
+      this.compilationData.constraintsJsonPath = path;
+    },
+    
+    setStaticAnalysisFindings(findings: Array<{
+      severity: 'high' | 'medium' | 'low';
+      type: string;
+      message: string;
+      file?: string;
+      line?: number;
+    }>) {
+      this.compilationData.staticAnalysisFindings = findings;
+    },
     
     resetCompilationData() {
+      this.compilationVersion++;
       this.compilationData = {
         isCompiling: false,
+        debugOutput: null,
+        optimizedOutput: null,
+        witnessOutput: null,
+        symPath: null,
+        constraintsJsonPath: null,
         constraints: null,
         verifications: [],
+        staticAnalysisFindings: [],
         error: null
       };
     },

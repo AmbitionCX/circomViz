@@ -85,6 +85,9 @@ export interface CompilationConstraints {
   signals: Record<string, number>;
   templateName: string;
   componentPath: string[];
+  wrapperCode?: string;
+  symPath?: string;
+  constraintsJsonPath?: string;
 }
 
 export interface ConstraintVerification {
@@ -93,4 +96,76 @@ export interface ConstraintVerification {
   userSpecification: string;
   matches: boolean;
   explanation?: string;
+}
+
+export interface TemplateParamCandidate {
+  params: { name: string; value: number }[];
+  publicSignals: string[];
+  location: {
+    file: string;
+    line: number;
+    component: string;
+  };
+}
+
+export interface FindTemplateParamsResponse {
+  templateName: string;
+  hasCandidates: boolean;
+  candidates: TemplateParamCandidate[];
+  templateParams: string[];
+  signals: Array<{ name: string; kind: string }>;
+}
+
+export interface SatisfiabilityResult {
+  satisfiable: boolean;
+  model?: Record<string, string>;
+  solverOutput: string;
+  executionTimeMs: number;
+}
+
+export interface DeterminismResult {
+  deterministic: boolean;
+  counterexample?: {
+    input: Record<string, string>;
+    output1: Record<string, string>;
+    output2: Record<string, string>;
+  };
+  solverOutput: string;
+  executionTimeMs: number;
+}
+
+export interface CoverageCheckResult {
+  covered: boolean;
+  drifts?: Array<{
+    signalName: string;
+    value1: string;
+    value2: string;
+  }>;
+  solverOutput: string;
+  executionTimeMs: number;
+}
+
+export interface SoundnessCheckRequest {
+  repo: string;
+  entry: string;
+  symPath: string;
+  constraintsJsonPath: string;
+  queries: {
+    satisfiability?: boolean;
+    determinism?: boolean;
+    coverage?: {
+      signalNames: string[];
+      fixedInputs?: Record<string, string | number>;
+    };
+  };
+}
+
+export interface SoundnessCheckResponse {
+  success: boolean;
+  results: {
+    satisfiability?: SatisfiabilityResult;
+    determinism?: DeterminismResult;
+    coverage?: CoverageCheckResult;
+  };
+  error?: string;
 }

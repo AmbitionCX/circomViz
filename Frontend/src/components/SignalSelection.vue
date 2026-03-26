@@ -1,6 +1,6 @@
 <template>
   <div class="signal-selection-container h-full flex flex-col overflow-hidden">
-    <div class="flex items-center justify-between mb-3 flex-shrink-0">
+    <div class="flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-2">
         <h2 class="text-base font-bold text-gray-800">Signal View</h2>
         <el-tooltip content="View all signals in the circuit, including inputs, outputs, and intermediate signals" placement="top">
@@ -9,10 +9,24 @@
           </el-icon>
         </el-tooltip>
       </div>
-      <el-tag v-if="totalSignalCount" type="info" size="small">{{ totalSignalCount }} signals</el-tag>
+      <div class="flex items-center gap-3 text-xs text-gray-500">
+        <div class="flex items-center gap-1">
+          <el-icon class="text-blue-500"><CircleCheck /></el-icon>
+          <span>Input</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <el-icon class="text-green-500"><CircleCheckFilled /></el-icon>
+          <span>Output</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <el-icon class="text-gray-500"><RemoveFilled /></el-icon>
+          <span>Intermediate</span>
+        </div>
+        <el-tag v-if="totalSignalCount" type="info" size="small">{{ totalSignalCount }} signals</el-tag>
+      </div>
     </div>
     
-    <div class="flex-1 overflow-auto min-h-0 mb-3">
+    <div class="flex-1 overflow-auto min-h-0 mt-2">
       <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
       
       <el-tree
@@ -48,23 +62,6 @@
       </el-tree>
       
       <el-empty v-else description="No signals found" :image-size="80" />
-    </div>
-    
-    <div class="pt-3 border-t border-gray-200 flex-shrink-0">
-      <div class="text-xs text-gray-500 space-y-1">
-        <div class="flex items-center gap-2">
-          <el-icon class="text-blue-500"><CircleCheck /></el-icon>
-          <span>Input signals</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <el-icon class="text-green-500"><CircleCheckFilled /></el-icon>
-          <span>Output signals</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <el-icon class="text-gray-500"><RemoveFilled /></el-icon>
-          <span>Intermediate signals</span>
-        </div>
-      </div>
     </div>
   </div>
 </template>

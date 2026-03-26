@@ -1,54 +1,85 @@
 <template>
-  <el-container class="h-screen">
-    <el-header class="bg-indigo-900 shadow-md">
-      <div class="flex items-center justify-between h-full px-4">
-        <div class="flex items-center gap-3">
-          <h1 class="text-lg text-white font-bold">Visual Assistance System for Circom</h1>
-          <el-tag v-if="circuitStore.parseData.repo" size="small" type="info">
-            {{ circuitStore.parseData.repo }}
-          </el-tag>
-        </div>
-        <div class="text-xs text-indigo-200">
-          Circom Structure Debugging
-        </div>
-      </div>
-    </el-header>
-    
-    <el-main class="bg-gray-100 pt-2 px-2">
-      <el-row class="h-full" :gutter="8">
-        <el-col :span="6" class="h-full flex flex-col">
-          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom flex-shrink-0">
-            <SubmoduleSelector @parse-complete="handleParseComplete" />
-          </div>
-          
-          <div class="bg-white p-4 rounded-lg shadow-custom flex-1 overflow-hidden flex flex-col min-h-0">
-            <SignalSelection />
-          </div>
-        </el-col>
-        
-        <el-col :span="18" class="h-full pl-2 flex flex-col">
-          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom h-3/4 overflow-hidden flex flex-col">
-            <CircuitView @template-selected="handleTemplateSelected" />
-          </div>
-          
-          <div class="bg-white p-4 mb-2 rounded-lg shadow-custom h-1/4 overflow-hidden flex flex-col">
-            <InteractionPanel />
-          </div>
-        </el-col>
-      </el-row>
-    </el-main>
-  </el-container>
-</template>
+   <el-container class="h-screen">
+     <el-header class="bg-indigo-900 shadow-md">
+       <div class="flex items-center justify-between h-full px-4">
+         <div class="flex items-center gap-3">
+           <h1 class="text-lg text-white font-bold">Visual Assistance System for Circom</h1>
+           <el-tag v-if="circuitStore.parseData.repo" size="small" type="info">
+             {{ circuitStore.parseData.repo }}
+           </el-tag>
+         </div>
+         <div class="text-xs text-indigo-200">
+           Circom Structure Debugging
+         </div>
+       </div>
+     </el-header>
+     
+     <el-main class="bg-gray-100 pt-2 px-2 h-full">
+       <el-row class="h-full" :gutter="8">
+         <el-col :span="6" class="h-full flex flex-col overflow-hidden">
+            <div class="bg-white p-4 mb-2 rounded-lg shadow-custom flex-shrink-0 h-2/5">
+              <SubmoduleSelector @parse-complete="handleParseComplete" />
+            </div>
+            
+            <div class="bg-white p-4 rounded-lg shadow-custom flex-1 min-h-0 overflow-hidden h-3/5 flex flex-col">
+              <SignalSelection />
+            </div>
+         </el-col>
+         
+         <el-col :span="18" class="h-full pl-2 flex flex-col overflow-hidden">
+            <div 
+              :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
+              @click="handleCircuitViewClick"
+            >
+              <CircuitView 
+                @template-selected="handleTemplateSelected"
+                @template-params-selected="handleWrapTemplate"
+              />
+            </div>
+           
+           <div 
+             :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
+             @click="handleInteractionPanelClick"
+           >
+             <InteractionPanel />
+           </div>
+         </el-col>
+       </el-row>
+     </el-main>
+   </el-container>
+ </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue';
 import SubmoduleSelector from './components/SubmoduleSelector.vue';
 import SignalSelection from './components/SignalSelection.vue';
 import CircuitView from './components/CircuitView.vue';
 import InteractionPanel from './components/InteractionPanel.vue';
 import { useCircuitStore } from '@/stores/circuit';
 import type { TemplateInfo } from '@/types/circuitTypes';
+import { ElMessage } from 'element-plus';
+import { generateWrapper } from '@/apis';
 
 const circuitStore = useCircuitStore();
+
+type PanelState = 'circuit' | 'interaction';
+const activePanel = ref<PanelState>('circuit');
+
+const circuitViewHeightClass = computed(() => {
+  return activePanel.value === 'circuit' ? 'h-4/5' : 'h-1/5';
+});
+
+const interactionPanelHeightClass = computed(() => {
+  return activePanel.value === 'interaction' ? 'h-4/5' : 'h-1/5';
+});
+
+const handleCircuitViewClick = () => {
+  activePanel.value = 'circuit';
+};
+
+const handleInteractionPanelClick = () => {
+  activePanel.value = 'interaction';
+};
 
 const handleParseComplete = (data: any) => {
   console.log('Parse complete:', data);
@@ -74,6 +105,55 @@ const handleParseComplete = (data: any) => {
 const handleTemplateSelected = (template: TemplateInfo, path: string[]) => {
   console.log('Template selected:', template.templateName, 'at path:', path);
 };
+
+const handleWrapTemplate = async (data: any) => {
+  console.log('Wrap template:', data);
+  
+  circuitStore.setCompiling(true);
+  
+  try {
+    const result = await generateWrapper({
+      templateName: data.templateName,
+      params: data.params,
+      publicParams: data.publicParams,
+      publicSignals: data.publicSignals || [],
+      repo: circuitStore.parseData.repo,
+      entry: circuitStore.parseData.entry,
+      templatePath: circuitStore.selectedTemplatePath
+    });
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to generate wrapper');
+    }
+    
+    console.log('Wrapper generated:', result.wrapperCode);
+    console.log('Debug output:', result.debugOutput);
+    console.log('Optimized output:', result.optimizedOutput);
+    console.log('Witness output:', result.witnessOutput);
+    
+    circuitStore.setDebugOutput('debugOutput' in result ? (result.debugOutput ?? null) : null);
+    circuitStore.setOptimizedOutput('optimizedOutput' in result ? (result.optimizedOutput ?? null) : null);
+    circuitStore.setWitnessOutput('witnessOutput' in result ? (result.witnessOutput ?? null) : null);
+    circuitStore.setSymPath('symPath' in result ? (result.symPath ?? null) : null);
+    circuitStore.setConstraintsJsonPath('constraintsJsonPath' in result ? (result.constraintsJsonPath ?? null) : null);
+    if (typeof circuitStore.bumpCompilationVersion === 'function') {
+      circuitStore.bumpCompilationVersion();
+    } else {
+      console.warn('[App] bumpCompilationVersion not found on store - store may need reload');
+      circuitStore.compilationVersion++;
+    }
+    
+    activePanel.value = 'interaction';
+    
+    ElMessage.success('Wrapper generated successfully');
+    
+  } catch (error: any) {
+    console.error('Error generating wrapper:', error);
+    ElMessage.error(error.response?.data?.error || error.message || 'Failed to generate wrapper');
+  } finally {
+    circuitStore.setCompiling(false);
+  }
+};
 </script>
 
 <style scoped>
@@ -97,5 +177,10 @@ const handleTemplateSelected = (template: TemplateInfo, path: string[]) => {
 
 :deep(.el-col) {
   height: 100%;
+}
+
+:deep(.cursor-pointer):hover {
+  box-shadow: 0 4px 8px rgba(79, 70, 229, 0.2);
+  border-color: #c7d2fe;
 }
 </style>

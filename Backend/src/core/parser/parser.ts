@@ -395,25 +395,28 @@ export class CircomParser {
     }
 
     // Component instantiation: component name = Template(args);
-    // Skip optional { public [...] } block
+    // Capture optional { public [...] } block
+    let publicSignals: string[] = [];
     if (this.checkPunctuation('{')) {
-      // console.log(`[Parser DEBUG] -> skipping public block`);
+      // console.log(`[Parser DEBUG] -> capturing public block`);
       this.consumePunctuation('{');
       
       // Check for 'public' keyword (may not be a keyword in all contexts)
-      if (this.checkPunctuation('[') || this.checkType('KEYWORD')) {
+      if (this.checkPunctuation('[') || this.checkType('KEYWORD') || (this.checkType('IDENTIFIER') && this.peek().value === 'public')) {
         // Skip 'public' keyword if present
-        if (this.checkType('KEYWORD') && this.peek().value === 'public') {
+        if ((this.checkType('KEYWORD') || this.checkType('IDENTIFIER')) && this.peek().value === 'public') {
           this.advance();
         }
         this.consumePunctuation('[');
         
-        // Skip signal names
+        // Capture signal names
         while (!this.checkPunctuation(']')) {
           if (this.matchType('IDENTIFIER')) {
-            this.advance(); // Skip signal name
+            publicSignals.push(this.previous().value);
           } else if (this.matchPunctuation(',')) {
-            this.advance(); // Skip comma
+            // Skip comma
+          } else {
+            this.advance();
           }
         }
         
@@ -458,6 +461,7 @@ export class CircomParser {
       name,
       templateName,
       arguments: args,
+      publicSignals,
       line
     };
   }
@@ -634,7 +638,7 @@ export class CircomParser {
     const expr = this.parseExpression();
     // console.log(`[Parser DEBUG] position after parseExpression: ${this.current}, next token: ${this.peek().type}:${this.peek().value}`);
     
-    // Check if the NEXT token is a semicolon (standalone expression statement)
+    // Check if NEXT token is a semicolon (standalone expression statement)
     if (this.checkPunctuation(';')) {
       // console.log(`[Parser DEBUG] -> found standalone expression statement`);
       this.consumePunctuation(';');
@@ -647,12 +651,12 @@ export class CircomParser {
     
     // Otherwise, let parseAssignment handle the operator and semicolon
     // console.log(`[Parser DEBUG] -> parsing assignment`);
-    return this.parseAssignment();
+    return this.parseAssignment(expr);
   }
 
-  private parseAssignment(): AssignmentNode {
-    // Left side should already be parsed (we're positioned at it from parseStatement)
-    const left = this.previous() as any;
+  private parseAssignment(left: ExpressionNode): AssignmentNode {
+    // Left side is passed as parameter from parseStatement
+    const leftExpr = left;
     
     let operator: '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=' = '=';
     if (this.matchOperator('<==')) {
@@ -690,10 +694,10 @@ export class CircomParser {
 
     return {
       type: 'Assignment',
-      left,
+      left: leftExpr,
       operator,
       right,
-      line: (left as any).line
+      line: (leftExpr as any).line
     };
   }
 

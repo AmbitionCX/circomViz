@@ -14,7 +14,7 @@
       </div>
     </div>
     
-    <div class="flex-1 overflow-auto min-h-0 mb-3 bg-gray-50 rounded-lg p-2">
+    <div class="h-full overflow-auto min-h-0 mb-3 bg-gray-50 rounded-lg p-2">
       <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
       
       <el-tree
@@ -67,8 +67,18 @@
     </div>
     
     <div v-if="selectedTemplate" class="p-3 bg-blue-50 rounded-lg border border-blue-200 flex-shrink-0">
-      <div class="text-sm font-semibold text-blue-900 mb-2">
-        Selected: {{ selectedTemplate.templateName }}
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-semibold text-blue-900">
+          Selected: {{ selectedTemplate.templateName }}
+        </div>
+        <el-button
+          type="primary"
+          size="small"
+          @click="handleSelectTemplate"
+          :loading="isSearching"
+        >
+          Select
+        </el-button>
       </div>
       <div class="grid grid-cols-2 gap-2 text-xs text-blue-800">
         <div>Parameters: {{ selectedTemplate.parameters.length }}</div>
@@ -80,19 +90,117 @@
         <span class="font-semibold">Path:</span> {{ selectedTemplatePath.join(' → ') }}
       </div>
     </div>
+
+    <el-dialog
+      v-model="showParamDialog"
+      title="Create a wrapper to compile this template"
+      width="600px"
+    >
+      <div v-if="paramResponse">
+        <div v-if="paramResponse.hasCandidates">
+          <div class="mb-4">
+            <p class="text-sm text-gray-600 mb-2">
+              Found {{ paramResponse.candidates.length }} parameter candidates for template <strong>{{ paramResponse.templateName }}</strong>:
+            </p>
+              <el-radio-group v-model="selectedCandidateIndex" class="w-full">
+                <div
+                  v-for="(candidate, idx) in paramResponse.candidates"
+                  :key="idx"
+                  class="mb-2 p-6 border rounded hover:bg-gray-50 cursor-pointer"
+                >
+                  <el-radio :value="idx" class="w-full">
+                    <div class="text-xs">
+                      <div class="font-semibold mb-2">
+                        Parameters: {{ candidate.params.map(p => `${p.name}=${p.value}`).join(', ') }}
+                      </div>
+                      <div v-if="candidate.publicSignals && candidate.publicSignals.length > 0" class="text-gray-600 mb-1">
+                        Public signals: {{ candidate.publicSignals.join(', ') }}
+                      </div>
+                      <div class="text-gray-500">
+                        Location: {{ candidate.location.component }} at {{ getShortFilePath(candidate.location.file) }}:{{ candidate.location.line }}
+                      </div>
+                    </div>
+                  </el-radio>
+                </div>
+              </el-radio-group>
+          </div>
+        </div>
+        <div v-else>
+          <p class="text-sm text-gray-600 mb-4">
+            No existing parameter candidates found for template <strong>{{ paramResponse.templateName }}</strong>. Please enter parameters manually:
+          </p>
+        </div>
+
+        <div v-if="paramResponse.templateParams.length > 0" class="mt-4 pt-4 border-t">
+          <p class="text-sm font-semibold text-gray-700 mb-2">Compile Constants:</p>
+          <el-table :data="paramResponse.templateParams" size="small" max-height="300">
+            <el-table-column label="Constant Name" width="150">
+              <template #default="scope">
+                <span class="font-mono">{{ scope.row }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="Value">
+              <template #default="scope">
+                <el-input
+                  v-model="paramInputs[scope.row]"
+                  size="small"
+                  placeholder="Enter value"
+                  class="w-full"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <div v-if="paramResponse.signals.length > 0" class="mt-4 pt-4 border-t">
+          <p class="text-sm font-semibold text-gray-700 mb-2">Input Signals:</p>
+          <el-table :data="paramResponse.signals.filter(s => s.kind === 'input')" size="small" max-height="300">
+            <el-table-column label="Signal Name" width="150">
+              <template #default="scope">
+                <span class="font-mono">{{ scope.row.name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="Visibility">
+              <template #default="scope">
+                <el-radio-group v-model="signalVisibility[scope.row.name]" size="small">
+                  <el-radio-button value="public">Public</el-radio-button>
+                  <el-radio-button value="private">Private</el-radio-button>
+                </el-radio-group>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showParamDialog = false">Cancel</el-button>
+          <el-button type="primary" @click="confirmParamSelection" :disabled="!isParamSelectionValid">
+            Wrap
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, reactive, watch } from 'vue';
 import { Box, Connection, Document, QuestionFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
-import type { TemplateInfo } from '@/types/circuitTypes';
+import { findTemplateParams } from '@/apis';
+import type { TemplateInfo, FindTemplateParamsResponse } from '@/types/circuitTypes';
+import { ElMessage } from 'element-plus';
 
 const circuitStore = useCircuitStore();
 
 const emit = defineEmits<{
   'template-selected': [template: TemplateInfo, path: string[]];
+  'template-params-selected': [data: {
+    templateName: string;
+    params: { name: string; value: number }[];
+    publicParams: string[];
+    publicSignals: string[];
+  }];
 }>();
 
 const treeProps = {
@@ -112,6 +220,49 @@ const inputSignalCount = computed(() => {
 
 const outputSignalCount = computed(() => {
   return selectedTemplate.value?.signals.filter(s => s.kind === 'output').length || 0;
+});
+
+const showParamDialog = ref(false);
+const isSearching = ref(false);
+const paramResponse = ref<FindTemplateParamsResponse | null>(null);
+const selectedCandidateIndex = ref<number>(-1);
+const paramInputs = reactive<Record<string, string>>({});
+const paramVisibility = reactive<Record<string, 'public' | 'private'>>({});
+const signalVisibility = reactive<Record<string, 'public' | 'private'>>({});
+
+const isParamSelectionValid = computed(() => {
+  if (!paramResponse.value) return false;
+  
+  return paramResponse.value.templateParams.every(
+    paramName => paramInputs[paramName] && paramInputs[paramName].trim() !== ''
+  );
+});
+
+const getShortFilePath = (filePath: string): string => {
+  const maxLength = 50;
+  if (filePath.length <= maxLength) {
+    return filePath;
+  }
+  return filePath.slice(-maxLength);
+};
+
+watch(selectedCandidateIndex, (newIndex) => {
+  if (paramResponse.value && newIndex >= 0 && paramResponse.value.hasCandidates) {
+    const candidate = paramResponse.value.candidates[newIndex];
+    candidate.params.forEach(param => {
+      paramInputs[param.name] = param.value.toString();
+    });
+    
+    paramResponse.value.signals.filter(s => s.kind === 'input').forEach(signal => {
+      signalVisibility[signal.name] = 'private';
+    });
+    
+    if (candidate.publicSignals) {
+      candidate.publicSignals.forEach(signalName => {
+        signalVisibility[signalName] = 'public';
+      });
+    }
+  }
 });
 
 const templateTreeData = computed(() => {
@@ -174,7 +325,83 @@ const handleNodeClick = (data: any) => {
   if (data.type === 'template' && data.template) {
     circuitStore.setSelectedTemplate(data.template, data.path);
     emit('template-selected', data.template, data.path);
+  } else if (data.type === 'component' && data.component) {
+    circuitStore.setSelectedTemplate(data.component.template, data.path);
+    emit('template-selected', data.component.template, data.path);
   }
+};
+
+const handleSelectTemplate = async () => {
+  if (!selectedTemplate.value || !circuitStore.parseData.repo || !circuitStore.parseData.entry) {
+    ElMessage.error('No template selected or circuit not parsed');
+    return;
+  }
+
+  isSearching.value = true;
+  try {
+    const response = await findTemplateParams({
+      templateName: selectedTemplate.value.templateName,
+      repo: circuitStore.parseData.repo,
+      entry: circuitStore.parseData.entry
+    });
+    paramResponse.value = response;
+    
+    Object.keys(paramInputs).forEach(key => delete paramInputs[key]);
+    Object.keys(paramVisibility).forEach(key => delete paramVisibility[key]);
+    Object.keys(signalVisibility).forEach(key => delete signalVisibility[key]);
+    
+    if (response.hasCandidates && selectedCandidateIndex.value >= 0) {
+      const candidate = response.candidates[selectedCandidateIndex.value];
+      candidate.params.forEach(param => {
+        paramInputs[param.name] = param.value.toString();
+      });
+    } else {
+      response.templateParams.forEach(paramName => {
+        paramInputs[paramName] = '';
+      });
+    }
+    
+    response.templateParams.forEach(paramName => {
+      paramVisibility[paramName] = 'public';
+    });
+    
+    response.signals.filter(s => s.kind === 'input').forEach(signal => {
+      signalVisibility[signal.name] = 'private';
+    });
+    
+    showParamDialog.value = true;
+  } catch (error: any) {
+    ElMessage.error(`Failed to search for template parameters: ${error.message}`);
+  } finally {
+    isSearching.value = false;
+  }
+};
+
+const confirmParamSelection = () => {
+  if (!paramResponse.value || !selectedTemplate.value) return;
+  
+  const params = paramResponse.value.templateParams.map(paramName => ({
+    name: paramName,
+    value: parseInt(paramInputs[paramName], 10)
+  }));
+  
+  const publicParams = Object.entries(paramVisibility)
+    .filter(([_, visibility]) => visibility === 'public')
+    .map(([name]) => name);
+  
+  const publicSignals = Object.entries(signalVisibility)
+    .filter(([_, visibility]) => visibility === 'public')
+    .map(([name]) => name);
+  
+  emit('template-params-selected', {
+    templateName: selectedTemplate.value.templateName,
+    params,
+    publicParams,
+    publicSignals
+  });
+  
+  showParamDialog.value = false;
+  ElMessage.success('Generating wrapper...');
 };
 </script>
 

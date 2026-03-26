@@ -8,6 +8,10 @@ import { saveCode } from './scripts/compilation.js';
 import { CircomParser as SubmoduleParser } from './core/parser/submoduleParser.js';
 import { parseCircuitHandler } from './server/routes/parseCircuit.js';
 import { compileTemplateHandler } from './server/routes/compileTemplate.js';
+import { findTemplateParamsHandler } from './server/routes/findTemplateParams.js';
+import { generateWrapperHandler } from './server/routes/generateWrapper.js';
+import { staticAnalysisHandler } from './server/routes/staticAnalysis.js';
+import { soundnessCheckHandler } from './server/routes/soundnessCheck.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +57,18 @@ server.post('/parse_circuit', parseCircuitHandler);
 
 // partial compile
 server.post('/compile_template', compileTemplateHandler);
+
+// find template parameter candidates
+server.post('/find_template_params', findTemplateParamsHandler);
+
+// generate wrapper and compile
+server.post('/generate_wrapper', generateWrapperHandler);
+
+// static analysis
+server.post('/static_analysis', staticAnalysisHandler);
+
+// soundness check (cvc5)
+server.post('/soundness_check', soundnessCheckHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
   if (err) {

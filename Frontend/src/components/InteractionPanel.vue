@@ -1,24 +1,42 @@
 <template>
   <div class="interaction-panel-container h-full flex flex-col overflow-hidden">
-    <div class="flex items-center justify-between mb-3 flex-shrink-0">
-      <div class="flex items-center gap-2">
-        <h2 class="text-base font-bold text-gray-800">Interaction Panel</h2>
-        <el-tooltip content="Compile, verify constraints, and inspect signal values for the selected template" placement="top">
-          <el-icon class="text-gray-400 cursor-help">
-            <QuestionFilled />
-          </el-icon>
-        </el-tooltip>
+    <div class="mb-3 flex-shrink-0">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-base font-bold text-gray-800">Debugging Panel</h2>
+            <el-tooltip content="Debug constraints, verification, and signals for selected template" placement="top">
+              <el-icon class="text-gray-400 cursor-help">
+                <QuestionFilled />
+              </el-icon>
+            </el-tooltip>
+          </div>
+          <div v-if="hasSelectedTemplate" class="flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <span class="text-xs font-medium text-gray-500">Template:</span>
+            <span class="text-gray-800">{{ selectedTemplate?.templateName }}</span>
+          </div>
+        </div>
+        <div v-if="hasSelectedTemplate" class="flex gap-3">
+          <el-tooltip content="Debug compilation output (O0)" placement="top">
+            <div class="flex items-center gap-1" :class="{ 'text-green-600': hasDebugOutput }">
+              <el-icon><Finished /></el-icon>
+              <span class="text-xs">Debug</span>
+            </div>
+          </el-tooltip>
+          <el-tooltip content="Optimized compilation output (O2)" placement="top">
+            <div class="flex items-center gap-1" :class="{ 'text-green-600': hasOptimizedOutput }">
+              <el-icon><Finished /></el-icon>
+              <span class="text-xs">Optimized</span>
+            </div>
+          </el-tooltip>
+          <el-tooltip content="Witness computation output" placement="top">
+            <div class="flex items-center gap-1" :class="{ 'text-green-600': hasWitnessOutput }">
+              <el-icon><Finished /></el-icon>
+              <span class="text-xs">Witness</span>
+            </div>
+          </el-tooltip>
+        </div>
       </div>
-      <el-button
-        size="small"
-        type="primary"
-        :disabled="!canCompile"
-        :loading="isCompiling"
-        @click="handleCompile"
-      >
-        <el-icon class="mr-1"><VideoPlay /></el-icon>
-        Compile
-      </el-button>
     </div>
 
     <el-empty
@@ -26,254 +44,100 @@
       description="Select a template in Circuit View to start debugging"
       :image-size="80"
     />
-
+    
     <div v-else class="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div class="mb-3 p-3 bg-gray-50 rounded-lg flex-shrink-0">
-        <div class="text-sm font-semibold text-gray-700 mb-1">
-          Template: {{ selectedTemplate?.templateName }}
+      <div class="flex items-center gap-0 mb-3 flex-shrink-0">
+        <button 
+          @click="activeTab = 'constraints'"
+          :class="['step-tab-btn', soundnessConfirmed ? 'step-tab-confirmed' : activeTab === 'constraints' ? 'step-tab-active' : 'step-tab-inactive']"
+        >
+          <el-icon v-if="soundnessConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
+          {{ constraintTabLabel }}
+        </button>
+        <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
+        <button 
+          @click="activeTab = 'verification'"
+          :class="['step-tab-btn', activeTab === 'verification' ? 'step-tab-active' : 'step-tab-inactive']"
+        >
+          {{ verificationTabLabel }}
+        </button>
+        <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
+        <button 
+          @click="activeTab = 'signals'"
+          :class="['step-tab-btn', activeTab === 'signals' ? 'step-tab-active' : 'step-tab-inactive']"
+        >
+          {{ signalsTabLabel }}
+        </button>
+      </div>
+
+      <div class="flex-1 min-h-0 overflow-hidden">
+        <div v-show="activeTab === 'constraints'">
+          <SoundnessCheck 
+            ref="soundnessCheckRef"
+            :canRunStaticAnalysis="allCompilesComplete"
+            @confirm="handleConfirmSoundness"
+          />
         </div>
-        <div class="text-xs text-gray-500">
-          <span class="font-medium">Parameters:</span>
-          {{ selectedTemplate?.parameters.map(p => p.name).join(', ') || 'None' }}
+        <div v-show="activeTab === 'verification'">
+          <IntentAlignment />
+        </div>
+        <div v-show="activeTab === 'signals'">
+          <FormalConformance />
         </div>
       </div>
-      
-      <el-tabs v-model="activeTab" class="flex-1 flex flex-col min-h-0">
-        <el-tab-pane label="Constraints" name="constraints">
-          <div class="h-full flex flex-col min-h-0 overflow-hidden">
-            <div v-if="!hasConstraints" class="h-full flex items-center justify-center">
-              <el-empty description="Click 'Compile' to generate constraints" :image-size="60" />
-            </div>
-            
-            <div v-else class="h-full flex flex-col min-h-0 overflow-hidden">
-              <div class="mb-2 text-xs text-gray-500">
-                {{ constraints?.constraints.length || 0 }} constraints generated
-              </div>
-              
-              <div class="flex-1 overflow-auto bg-gray-900 rounded-lg p-3">
-                <div 
-                  v-for="(constraint, index) in constraints?.constraints" 
-                  :key="index"
-                  class="mb-3 p-2 bg-gray-800 rounded border-l-2 border-blue-500"
-                >
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs text-gray-400">Constraint #{{ index + 1 }}</span>
-                    <el-icon 
-                      class="cursor-pointer text-blue-400 hover:text-blue-300"
-                      @click="handleEditConstraint(index)"
-                    >
-                      <Edit />
-                    </el-icon>
-                  </div>
-                  <pre class="text-sm text-green-400 font-mono whitespace-pre-wrap">{{ constraint }}</pre>
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-        
-        <el-tab-pane label="Verification" name="verification">
-          <div class="h-full flex flex-col min-h-0 overflow-hidden">
-            <div v-if="!hasConstraints" class="h-full flex items-center justify-center">
-              <el-empty description="Compile first, then verify constraints" :image-size="60" />
-            </div>
-            
-            <div v-else class="h-full flex flex-col min-h-0 overflow-hidden">
-              <div class="mb-3">
-                <el-button size="small" @click="handleVerifyAll">
-                  <el-icon class="mr-1"><Select /></el-icon>
-                  Verify All
-                </el-button>
-              </div>
-              
-              <div class="flex-1 overflow-auto">
-                <div 
-                  v-for="(verification, index) in verifications" 
-                  :key="index"
-                  :class="[
-                    'mb-3 p-3 rounded-lg border',
-                    verification.matches ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-                  ]"
-                >
-                  <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                      <el-icon :class="verification.matches ? 'text-green-600' : 'text-red-600'">
-                        <CircleCheck v-if="verification.matches" />
-                        <CircleClose v-else />
-                      </el-icon>
-                      <span class="text-sm font-semibold">
-                        Constraint #{{ verification.constraintIndex + 1 }}
-                      </span>
-                    </div>
-                    <el-tag :type="verification.matches ? 'success' : 'danger'" size="small">
-                      {{ verification.matches ? 'Matches' : 'Mismatch' }}
-                    </el-tag>
-                  </div>
-                  
-                  <div class="mb-2 p-2 bg-gray-900 rounded">
-                    <pre class="text-xs text-gray-300 font-mono">{{ verification.constraint }}</pre>
-                  </div>
-                  
-                  <div class="text-sm text-gray-700 mb-1">
-                    <span class="font-semibold">Your Specification:</span>
-                  </div>
-                  <el-input
-                    v-model="verification.userSpecification"
-                    type="textarea"
-                    :rows="2"
-                    placeholder="Enter expected constraint..."
-                    @change="handleVerifySingle(index)"
-                  />
-                  
-                  <div v-if="verification.explanation" class="mt-2 text-xs text-gray-600">
-                    <span class="font-semibold">Explanation:</span> {{ verification.explanation }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-        
-        <el-tab-pane label="Signals" name="signals">
-          <div class="h-full flex flex-col min-h-0 overflow-hidden">
-            <div v-if="!hasConstraints" class="h-full flex items-center justify-center">
-              <el-empty description="Compile to see signal values" :image-size="60" />
-            </div>
-            
-            <div v-else class="h-full flex flex-col min-h-0 overflow-hidden">
-              <div class="mb-2">
-                <el-input
-                  v-model="signalSearchTerm"
-                  placeholder="Search signals..."
-                  size="small"
-                  clearable
-                />
-              </div>
-              
-              <div class="flex-1 overflow-auto">
-                <el-table 
-                  :data="filteredSignals" 
-                  stripe 
-                  size="small"
-                  max-height="100%"
-                >
-                  <el-table-column prop="name" label="Signal Name" width="200" />
-                  <el-table-column prop="value" label="Value" />
-                </el-table>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { VideoPlay, Edit, Select, CircleCheck, CircleClose, QuestionFilled } from '@element-plus/icons-vue';
+import { ref, computed, watch } from 'vue';
+import { QuestionFilled, Finished, CircleCheckFilled, DArrowRight } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
-import { compileTemplate } from '@/apis/index.js';
-import type { ConstraintVerification } from '@/types/circuitTypes';
-import { ElMessage } from 'element-plus';
+import SoundnessCheck from './SoundnessCheck.vue';
+import IntentAlignment from './IntentAlignment.vue';
+import FormalConformance from './FormalConformance.vue';
 
 const circuitStore = useCircuitStore();
 
 const activeTab = ref('constraints');
-const signalSearchTerm = ref('');
+const soundnessConfirmed = ref(false);
+
+const soundnessCheckRef = ref<InstanceType<typeof SoundnessCheck> | null>(null);
+
+watch(() => circuitStore.compilationVersion, () => {
+  soundnessConfirmed.value = false;
+  activeTab.value = 'constraints';
+});
 
 const hasSelectedTemplate = computed(() => circuitStore.selectedTemplate !== null);
 
 const selectedTemplate = computed(() => circuitStore.selectedTemplate);
 
-const canCompile = computed(() => hasSelectedTemplate.value);
+const hasDebugOutput = computed(() => circuitStore.compilationData.debugOutput !== null);
 
-const isCompiling = computed(() => circuitStore.compilationData.isCompiling);
+const hasOptimizedOutput = computed(() => circuitStore.compilationData.optimizedOutput !== null);
 
-const constraints = computed(() => circuitStore.compilationData.constraints);
+const hasWitnessOutput = computed(() => circuitStore.compilationData.witnessOutput !== null);
 
-const verifications = computed(() => circuitStore.compilationData.verifications);
+const allCompilesComplete = computed(() => 
+  hasDebugOutput.value && hasOptimizedOutput.value && hasWitnessOutput.value
+);
 
-const hasConstraints = computed(() => constraints.value !== null);
+const constraintTabLabel = computed(() => 
+  allCompilesComplete.value ? 'Soundness Check' : 'Constraints'
+);
 
-const signalData = computed(() => {
-  return Object.entries(constraints.value?.signals || {}).map(([name, value]) => ({
-    name,
-    value: value.toString()
-  }));
-});
+const verificationTabLabel = computed(() => 
+  allCompilesComplete.value ? 'Intent Alignment' : 'Verification'
+);
 
-const filteredSignals = computed(() => {
-  if (!signalSearchTerm.value) return signalData.value;
-  const term = signalSearchTerm.value.toLowerCase();
-  return signalData.value.filter(s => s.name.toLowerCase().includes(term));
-});
+const signalsTabLabel = computed(() => 
+  allCompilesComplete.value ? 'Formal Conformance' : 'Signals'
+);
 
-const handleCompile = async () => {
-  if (!selectedTemplate.value || !circuitStore.parseData.repo || !circuitStore.parseData.entry) {
-    ElMessage.error('Please parse a circuit and select a template first');
-    return;
-  }
-
-  circuitStore.setCompiling(true);
-  circuitStore.setCompilationError(null);
-  
-  try {
-    console.log('Compiling template:', selectedTemplate.value.templateName);
-    
-    const request = {
-      repo: circuitStore.parseData.repo,
-      entry: circuitStore.parseData.entry,
-      templatePath: circuitStore.selectedTemplatePath,
-      templateName: selectedTemplate.value.templateName
-    };
-
-    const response = await compileTemplate(request) as any;
-    
-    if (!response.success) {
-      throw new Error(response.error || 'Compilation failed');
-    }
-
-    const compilationResult = {
-      constraints: response.constraints,
-      signals: response.signals,
-      templateName: selectedTemplate.value.templateName,
-      componentPath: circuitStore.selectedTemplatePath
-    };
-    
-    circuitStore.setCompilationResult(compilationResult);
-    
-    const verifications: ConstraintVerification[] = response.constraints.map((constraint: string, index: number) => ({
-      constraintIndex: index,
-      constraint: constraint,
-      userSpecification: '',
-      matches: false
-    }));
-    
-    circuitStore.setVerification(verifications);
-    
-    ElMessage.success(`Successfully compiled template: ${selectedTemplate.value.templateName} (${response.stats.constraintCount} constraints)`);
-    
-  } catch (error: any) {
-    console.error('Compilation error:', error);
-    const errorMessage = error.response?.data?.error || error.message || 'Compilation failed';
-    circuitStore.setCompilationError(errorMessage);
-    ElMessage.error(errorMessage);
-  } finally {
-    circuitStore.setCompiling(false);
-  }
-};
-
-const handleEditConstraint = (index: number) => {
-  console.log('Edit constraint:', index);
-};
-
-const handleVerifyAll = () => {
-  console.log('Verify all constraints');
-};
-
-const handleVerifySingle = (index: number) => {
-  console.log('Verify single constraint:', index);
+const handleConfirmSoundness = () => {
+  soundnessConfirmed.value = true;
+  activeTab.value = 'verification';
 };
 </script>
 
@@ -283,24 +147,40 @@ const handleVerifySingle = (index: number) => {
   border-radius: 8px;
 }
 
-:deep(.el-tabs) {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+.step-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid #dcdfe6;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fff;
+  color: #606266;
 }
 
-:deep(.el-tabs__header) {
-  margin: 0;
-  flex-shrink: 0;
+.step-tab-btn:hover {
+  border-color: #409eff;
+  color: #409eff;
 }
 
-:deep(.el-tabs__content) {
-  height: 100%;
-  overflow: hidden;
+.step-tab-active {
+  border-color: #409eff;
+  color: #409eff;
+  background: #ecf5ff;
 }
 
-:deep(.el-tab-pane) {
-  height: 100%;
-  overflow: hidden;
+.step-tab-inactive {
+  border-color: #dcdfe6;
+  color: #606266;
+  background: #fff;
+}
+
+.step-tab-confirmed {
+  border-color: #67c23a;
+  color: #67c23a;
+  background: #f0f9eb;
 }
 </style>
