@@ -16,33 +16,39 @@
      
      <el-main class="bg-gray-100 pt-2 px-2 h-full">
        <el-row class="h-full" :gutter="8">
-         <el-col :span="6" class="h-full flex flex-col overflow-hidden">
-            <div class="bg-white p-4 mb-2 rounded-lg shadow-custom flex-shrink-0 h-2/5">
-              <SubmoduleSelector @parse-complete="handleParseComplete" />
-            </div>
+          <el-col :span="6" class="h-full flex flex-col gap-2 overflow-hidden">
+              <div
+                :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', submoduleHeightClass]"
+                @click.self="handleSubmoduleClick"
+              >
+                <SubmoduleSelector @parse-complete="handleParseComplete" />
+              </div>
+             
+              <div
+                :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', signalViewHeightClass]"
+                @click.self="handleSignalViewClick"
+              >
+                <SignalSelection />
+              </div>
+           </el-col>
+          
+          <el-col :span="18" class="h-full pl-2 flex flex-col overflow-hidden">
+             <div 
+               :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
+               @click.self="handleCircuitViewClick"
+             >
+               <CircuitView 
+                 @template-selected="handleTemplateSelected"
+                 @template-params-selected="handleWrapTemplate"
+               />
+             </div>
             
-            <div class="bg-white p-4 rounded-lg shadow-custom flex-1 min-h-0 overflow-hidden h-3/5 flex flex-col">
-              <SignalSelection />
-            </div>
-         </el-col>
-         
-         <el-col :span="18" class="h-full pl-2 flex flex-col overflow-hidden">
-            <div 
-              :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
-              @click="handleCircuitViewClick"
-            >
-              <CircuitView 
-                @template-selected="handleTemplateSelected"
-                @template-params-selected="handleWrapTemplate"
-              />
-            </div>
-           
-           <div 
-             :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
-             @click="handleInteractionPanelClick"
-           >
-             <InteractionPanel />
-           </div>
+             <div 
+               :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
+               @click.self="handleInteractionPanelClick"
+             >
+               <InteractionPanel @formal-conformance-confirmed="handleFormalConformanceConfirmed" />
+             </div>
          </el-col>
        </el-row>
      </el-main>
@@ -63,7 +69,9 @@ import { generateWrapper } from '@/apis';
 const circuitStore = useCircuitStore();
 
 type PanelState = 'circuit' | 'interaction';
+type LeftPanelState = 'signal' | 'submodule';
 const activePanel = ref<PanelState>('circuit');
+const activeLeftPanel = ref<LeftPanelState>('submodule');
 
 const circuitViewHeightClass = computed(() => {
   return activePanel.value === 'circuit' ? 'h-4/5' : 'h-1/5';
@@ -73,12 +81,32 @@ const interactionPanelHeightClass = computed(() => {
   return activePanel.value === 'interaction' ? 'h-4/5' : 'h-1/5';
 });
 
+const submoduleHeightClass = computed(() => {
+  return activeLeftPanel.value === 'submodule' ? 'h-2/3' : 'h-1/3';
+});
+
+const signalViewHeightClass = computed(() => {
+  return activeLeftPanel.value === 'signal' ? 'h-2/3' : 'h-1/3';
+});
+
 const handleCircuitViewClick = () => {
   activePanel.value = 'circuit';
 };
 
 const handleInteractionPanelClick = () => {
   activePanel.value = 'interaction';
+};
+
+const handleFormalConformanceConfirmed = () => {
+  activePanel.value = 'circuit';
+};
+
+const handleSubmoduleClick = () => {
+  activeLeftPanel.value = 'submodule';
+};
+
+const handleSignalViewClick = () => {
+  activeLeftPanel.value = 'signal';
 };
 
 const handleParseComplete = (data: any) => {
@@ -100,6 +128,7 @@ const handleParseComplete = (data: any) => {
   
   circuitStore.clearSelectedTemplate();
   circuitStore.resetCompilationData();
+  activeLeftPanel.value = 'signal';
 };
 
 const handleTemplateSelected = (template: TemplateInfo, path: string[]) => {
@@ -127,13 +156,13 @@ const handleWrapTemplate = async (data: any) => {
     }
     
     console.log('Wrapper generated:', result.wrapperCode);
-    console.log('Debug output:', result.debugOutput);
-    console.log('Optimized output:', result.optimizedOutput);
-    console.log('Witness output:', result.witnessOutput);
     
     circuitStore.setDebugOutput('debugOutput' in result ? (result.debugOutput ?? null) : null);
     circuitStore.setOptimizedOutput('optimizedOutput' in result ? (result.optimizedOutput ?? null) : null);
     circuitStore.setWitnessOutput('witnessOutput' in result ? (result.witnessOutput ?? null) : null);
+    circuitStore.setDebugStatus(result.debugSuccess ? 'success' : 'failure');
+    circuitStore.setOptimizedStatus(result.optimizedSuccess ? 'success' : 'failure');
+    circuitStore.setWitnessStatus(result.witnessSuccess ? 'success' : 'failure');
     circuitStore.setSymPath('symPath' in result ? (result.symPath ?? null) : null);
     circuitStore.setConstraintsJsonPath('constraintsJsonPath' in result ? (result.constraintsJsonPath ?? null) : null);
     if (typeof circuitStore.bumpCompilationVersion === 'function') {

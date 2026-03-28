@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col min-h-0 overflow-hidden">
+  <div class="h-full flex flex-col min-h-0 overflow-auto">
     <div class="mb-2 flex-shrink-0 flex flex-row-reverse items-center gap-2">
       <el-button
         type="success"

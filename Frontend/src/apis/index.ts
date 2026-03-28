@@ -1,6 +1,6 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, ResolveConstraintsResponse, FormalConformanceResponse } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
@@ -9,7 +9,11 @@ const enum API {
   find_template_params = '/find_template_params',
   generate_wrapper = '/generate_wrapper',
   static_analysis = '/static_analysis',
-  soundness_check = '/soundness_check'
+  soundness_check = '/soundness_check',
+  file_content = '/file_content',
+  resolve_constraints = '/resolve_constraints',
+  intent_alignment = '/intent_alignment',
+  formal_conformance = '/formal_conformance'
 }
 
 export interface getSubmodules_response {
@@ -96,6 +100,9 @@ export interface generate_wrapper_response {
   debugOutput?: string;
   optimizedOutput?: string;
   witnessOutput?: string;
+  debugSuccess?: boolean;
+  optimizedSuccess?: boolean;
+  witnessSuccess?: boolean;
   symPath?: string;
   constraintsJsonPath?: string;
   error?: string;
@@ -155,3 +162,47 @@ export const soundnessCheck = (data: soundness_check_request) =>
       'Access-Control-Allow-Origin': '*'
     },
   })
+
+export interface FileContentResponse {
+  success: boolean;
+  content?: string;
+  fileName?: string;
+  filePath?: string;
+  error?: string;
+}
+
+export const getFileContent = (data: { filePath: string }) =>
+  request.post<any, FileContentResponse>(API.file_content, data)
+
+export const resolveConstraints = (data: { symPath: string; constraintsJsonPath: string }) =>
+  request.post<any, ResolveConstraintsResponse>(API.resolve_constraints, data)
+
+export const intentAlignment = (data: {
+  repo: string;
+  entry: string;
+  symPath: string;
+  constraintsJsonPath: string;
+  templatePath: string[];
+  templateName: string;
+  groupingStrategy: 'by-template' | 'by-file' | 'by-statement';
+}) =>
+  request.post<any, IntentAlignmentResponse>(API.intent_alignment, data)
+
+export interface formal_conformance_request {
+  repo: string;
+  entry: string;
+  symPath: string;
+  constraintsJsonPath: string;
+  candidateSpecDSL: string;
+  templateName: string;
+  templatePath: string[];
+  queries: {
+    soundness?: boolean;
+    completeness?: boolean;
+    determinism?: boolean;
+    totality?: boolean;
+  };
+}
+
+export const formalConformance = (data: formal_conformance_request) =>
+  request.post<any, FormalConformanceResponse>(API.formal_conformance, data)

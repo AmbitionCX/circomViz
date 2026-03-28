@@ -118,7 +118,7 @@ export async function generateWrapperHandler(
 
     const wrapperCode = generateWrapperCode(templateDef, params, publicParams, publicSignals, repoPath);
 
-    const timestamp = new Date().toISOString();
+    const timestamp = Date.now();
     const wrapperDir = join(process.cwd(), 'wrappers', `wrapper_${templateName}_${timestamp}`);
     await fs.mkdir(wrapperDir, { recursive: true });
 
@@ -136,6 +136,7 @@ export async function generateWrapperHandler(
     const debugResult = await compileDebug(wrapperFilePath, includeFlags, debugDir);
     
     results.debugOutput = debugResult.stdout + debugResult.stderr;
+    results.debugSuccess = debugResult.success;
     
     const symFilePath = join(debugDir, 'wrapper.sym');
     const constraintsJsonPath = join(debugDir, 'wrapper_constraints.json');
@@ -148,6 +149,7 @@ export async function generateWrapperHandler(
     const optResult = await compileOptimized(wrapperFilePath, includeFlags, optDir);
 
     results.optimizedOutput = optResult.stdout + optResult.stderr;
+    results.optimizedSuccess = optResult.success;
 
     if (!optResult.success) {
       logger.error(`Optimized compilation failed`);
@@ -157,6 +159,7 @@ export async function generateWrapperHandler(
     const witnessResult = await compileWitness(wrapperFilePath, includeFlags, witnessDir);
 
     results.witnessOutput = witnessResult.stdout + witnessResult.stderr;
+    results.witnessSuccess = witnessResult.success;
 
     if (!witnessResult.success) {
       logger.error(`Witness compilation failed`);

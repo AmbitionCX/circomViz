@@ -9,10 +9,7 @@
           </el-icon>
         </el-tooltip>
       </div>
-    </div>
-    
-    <div class="mb-4">
-      <span class="text-sm text-gray-600">Select a circuit to analyze:</span>
+      <span class="text-sm text-gray-600">Select a project:</span>
     </div>
     
     <el-select 

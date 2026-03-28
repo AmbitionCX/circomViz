@@ -54,6 +54,14 @@
             </div>
             
             <div class="flex items-center gap-1 ml-2">
+              <el-tag
+                v-if="data.type === 'template' && circuitStore.isTemplateConfirmed(data.templateName)"
+                size="small"
+                type="success"
+                class="text-xs"
+              >
+                Confirmed
+              </el-tag>
               <el-tag v-if="data.signalCount" size="small" type="info" class="text-xs">
                 {{ data.signalCount }} sig
               </el-tag>

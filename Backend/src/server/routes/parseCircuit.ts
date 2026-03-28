@@ -372,6 +372,7 @@ function buildTemplateTree(
     signals: template.signals,
     variables: template.variables,
     statements: template.statements,
+    sourceFile: template.sourceFile,
     components: []
   };
 
@@ -410,6 +411,7 @@ function buildTemplateTree(
       name: component.name,
       templateName: component.templateName || 'unknown',
       arguments: component.arguments,
+      sourceFile: childTemplate?.sourceFile,
       template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
     };
     tree.components.push(componentTree);
@@ -439,6 +441,7 @@ function buildTemplateTree(
           arguments: anonComponent.callArgs || anonComponent.arguments || [],
           templateArgs: anonComponent.templateArgs || [],
           isAnonymous: true,
+          sourceFile: childTemplate?.sourceFile,
           template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
         };
         tree.components.push(componentTree);
@@ -467,6 +470,7 @@ function buildTemplateTree(
           arguments: anonComponent.callArgs || anonComponent.arguments || [],
           templateArgs: anonComponent.templateArgs || [],
           isAnonymous: true,
+          sourceFile: childTemplate?.sourceFile,
           template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
         };
         tree.components.push(componentTree);
@@ -495,6 +499,7 @@ function buildTemplateTree(
       arguments: anonComponent.callArgs,
       templateArgs: anonComponent.templateArgs,
       isAnonymous: true,
+      sourceFile: childTemplate?.sourceFile,
       template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
     };
     tree.components.push(componentTree);

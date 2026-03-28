@@ -71,6 +71,9 @@ export interface generate_wrapper_response {
   debugOutput?: string;
   optimizedOutput?: string;
   witnessOutput?: string;
+  debugSuccess?: boolean;
+  optimizedSuccess?: boolean;
+  witnessSuccess?: boolean;
   symPath?: string;
   constraintsJsonPath?: string;
   error?: string;

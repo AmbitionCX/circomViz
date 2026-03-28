@@ -23,11 +23,15 @@ interface CircuitState {
   selectedTemplatePath: string[];
   
   compilationVersion: number;
+  confirmedTemplateNames: string[];
   compilationData: {
     isCompiling: boolean;
     debugOutput: string | null;
     optimizedOutput: string | null;
     witnessOutput: string | null;
+    debugStatus: 'success' | 'failure' | null;
+    optimizedStatus: 'success' | 'failure' | null;
+    witnessStatus: 'success' | 'failure' | null;
     symPath: string | null;
     constraintsJsonPath: string | null;
     constraints: CompilationConstraints | null;
@@ -69,11 +73,15 @@ export const useCircuitStore = defineStore('circuit', {
     selectedTemplatePath: [],
     
     compilationVersion: 0,
+    confirmedTemplateNames: [],
     compilationData: {
       isCompiling: false,
       debugOutput: null,
       optimizedOutput: null,
       witnessOutput: null,
+      debugStatus: null,
+      optimizedStatus: null,
+      witnessStatus: null,
       symPath: null,
       constraintsJsonPath: null,
       constraints: null,
@@ -220,6 +228,18 @@ export const useCircuitStore = defineStore('circuit', {
     setWitnessOutput(output: string | null) {
       this.compilationData.witnessOutput = output;
     },
+
+    setDebugStatus(status: 'success' | 'failure' | null) {
+      this.compilationData.debugStatus = status;
+    },
+
+    setOptimizedStatus(status: 'success' | 'failure' | null) {
+      this.compilationData.optimizedStatus = status;
+    },
+
+    setWitnessStatus(status: 'success' | 'failure' | null) {
+      this.compilationData.witnessStatus = status;
+    },
     
     setSymPath(path: string | null) {
       this.compilationData.symPath = path;
@@ -241,11 +261,15 @@ export const useCircuitStore = defineStore('circuit', {
     
     resetCompilationData() {
       this.compilationVersion++;
+      this.confirmedTemplateNames = [];
       this.compilationData = {
         isCompiling: false,
         debugOutput: null,
         optimizedOutput: null,
         witnessOutput: null,
+        debugStatus: null,
+        optimizedStatus: null,
+        witnessStatus: null,
         symPath: null,
         constraintsJsonPath: null,
         constraints: null,
@@ -292,6 +316,16 @@ export const useCircuitStore = defineStore('circuit', {
       }
       
       return null;
+    },
+
+    confirmTemplateName(templateName: string) {
+      if (!this.confirmedTemplateNames.includes(templateName)) {
+        this.confirmedTemplateNames = [...this.confirmedTemplateNames, templateName];
+      }
+    },
+
+    isTemplateConfirmed(templateName: string): boolean {
+      return this.confirmedTemplateNames.includes(templateName);
     }
   }
 });

@@ -18,20 +18,23 @@
         </div>
         <div v-if="hasSelectedTemplate" class="flex gap-3">
           <el-tooltip content="Debug compilation output (O0)" placement="top">
-            <div class="flex items-center gap-1" :class="{ 'text-green-600': hasDebugOutput }">
-              <el-icon><Finished /></el-icon>
+            <div class="flex items-center gap-1" :class="compileStatusClass(debugStatus)">
+              <el-icon v-if="debugStatus === 'success'"><CircleCheckFilled /></el-icon>
+              <el-icon v-else-if="debugStatus === 'failure'"><CircleCloseFilled /></el-icon>
               <span class="text-xs">Debug</span>
             </div>
           </el-tooltip>
           <el-tooltip content="Optimized compilation output (O2)" placement="top">
-            <div class="flex items-center gap-1" :class="{ 'text-green-600': hasOptimizedOutput }">
-              <el-icon><Finished /></el-icon>
+            <div class="flex items-center gap-1" :class="compileStatusClass(optimizedStatus)">
+              <el-icon v-if="optimizedStatus === 'success'"><CircleCheckFilled /></el-icon>
+              <el-icon v-else-if="optimizedStatus === 'failure'"><CircleCloseFilled /></el-icon>
               <span class="text-xs">Optimized</span>
             </div>
           </el-tooltip>
           <el-tooltip content="Witness computation output" placement="top">
-            <div class="flex items-center gap-1" :class="{ 'text-green-600': hasWitnessOutput }">
-              <el-icon><Finished /></el-icon>
+            <div class="flex items-center gap-1" :class="compileStatusClass(witnessStatus)">
+              <el-icon v-if="witnessStatus === 'success'"><CircleCheckFilled /></el-icon>
+              <el-icon v-else-if="witnessStatus === 'failure'"><CircleCloseFilled /></el-icon>
               <span class="text-xs">Witness</span>
             </div>
           </el-tooltip>
@@ -57,20 +60,22 @@
         <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
         <button 
           @click="activeTab = 'verification'"
-          :class="['step-tab-btn', activeTab === 'verification' ? 'step-tab-active' : 'step-tab-inactive']"
+          :class="['step-tab-btn', intentConfirmed ? 'step-tab-confirmed' : activeTab === 'verification' ? 'step-tab-active' : 'step-tab-inactive']"
         >
+          <el-icon v-if="intentConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
           {{ verificationTabLabel }}
         </button>
         <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
         <button 
           @click="activeTab = 'signals'"
-          :class="['step-tab-btn', activeTab === 'signals' ? 'step-tab-active' : 'step-tab-inactive']"
+          :class="['step-tab-btn', formalConfirmed ? 'step-tab-confirmed' : activeTab === 'signals' ? 'step-tab-active' : 'step-tab-inactive']"
         >
+          <el-icon v-if="formalConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
           {{ signalsTabLabel }}
         </button>
       </div>
 
-      <div class="flex-1 min-h-0 overflow-hidden">
+      <div class="flex-1 min-h-0 overflow-auto">
         <div v-show="activeTab === 'constraints'">
           <SoundnessCheck 
             ref="soundnessCheckRef"
@@ -79,10 +84,13 @@
           />
         </div>
         <div v-show="activeTab === 'verification'">
-          <IntentAlignment />
+          <IntentAlignment ref="intentAlignmentRef" @confirm="handleConfirmIntent" />
         </div>
         <div v-show="activeTab === 'signals'">
-          <FormalConformance />
+          <FormalConformance
+            ref="formalConformanceRef"
+            @confirm="handleConfirmFormal"
+          />
         </div>
       </div>
     </div>
@@ -91,7 +99,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { QuestionFilled, Finished, CircleCheckFilled, DArrowRight } from '@element-plus/icons-vue';
+import { QuestionFilled, CircleCheckFilled, CircleCloseFilled, DArrowRight } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import SoundnessCheck from './SoundnessCheck.vue';
 import IntentAlignment from './IntentAlignment.vue';
@@ -101,11 +109,22 @@ const circuitStore = useCircuitStore();
 
 const activeTab = ref('constraints');
 const soundnessConfirmed = ref(false);
+const intentConfirmed = ref(false);
+const formalConfirmed = ref(false);
 
 const soundnessCheckRef = ref<InstanceType<typeof SoundnessCheck> | null>(null);
+const intentAlignmentRef = ref<InstanceType<typeof IntentAlignment> | null>(null);
+const formalConformanceRef = ref<InstanceType<typeof FormalConformance> | null>(null);
+
+const emit = defineEmits<{
+  confirm: [];
+  formalConformanceConfirmed: [];
+}>();
 
 watch(() => circuitStore.compilationVersion, () => {
   soundnessConfirmed.value = false;
+  intentConfirmed.value = false;
+  formalConfirmed.value = false;
   activeTab.value = 'constraints';
 });
 
@@ -113,11 +132,21 @@ const hasSelectedTemplate = computed(() => circuitStore.selectedTemplate !== nul
 
 const selectedTemplate = computed(() => circuitStore.selectedTemplate);
 
+const debugStatus = computed(() => circuitStore.compilationData.debugStatus);
+const optimizedStatus = computed(() => circuitStore.compilationData.optimizedStatus);
+const witnessStatus = computed(() => circuitStore.compilationData.witnessStatus);
+
 const hasDebugOutput = computed(() => circuitStore.compilationData.debugOutput !== null);
 
 const hasOptimizedOutput = computed(() => circuitStore.compilationData.optimizedOutput !== null);
 
 const hasWitnessOutput = computed(() => circuitStore.compilationData.witnessOutput !== null);
+
+function compileStatusClass(status: 'success' | 'failure' | null): string {
+  if (status === 'success') return 'text-green-600';
+  if (status === 'failure') return 'text-red-500';
+  return 'text-gray-400';
+}
 
 const allCompilesComplete = computed(() => 
   hasDebugOutput.value && hasOptimizedOutput.value && hasWitnessOutput.value
@@ -138,6 +167,24 @@ const signalsTabLabel = computed(() =>
 const handleConfirmSoundness = () => {
   soundnessConfirmed.value = true;
   activeTab.value = 'verification';
+};
+
+const handleConfirmIntent = () => {
+  intentConfirmed.value = true;
+  if (intentAlignmentRef.value && formalConformanceRef.value) {
+    formalConformanceRef.value.storeGroups(intentAlignmentRef.value.groups);
+  }
+  activeTab.value = 'signals';
+};
+
+const handleConfirmFormal = () => {
+  formalConfirmed.value = true;
+  const templateName = circuitStore.selectedTemplate?.templateName;
+  if (templateName) {
+    circuitStore.confirmTemplateName(templateName);
+  }
+  emit('confirm');
+  emit('formalConformanceConfirmed');
 };
 </script>
 

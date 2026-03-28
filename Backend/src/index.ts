@@ -12,6 +12,10 @@ import { findTemplateParamsHandler } from './server/routes/findTemplateParams.js
 import { generateWrapperHandler } from './server/routes/generateWrapper.js';
 import { staticAnalysisHandler } from './server/routes/staticAnalysis.js';
 import { soundnessCheckHandler } from './server/routes/soundnessCheck.js';
+import { fileContentHandler } from './server/routes/fileContent.js';
+import { resolveConstraintsHandler } from './server/routes/resolveConstraints.js';
+import { intentAlignmentHandler } from './server/routes/intentAlignment.js';
+import { formalConformanceHandler } from './server/routes/formalConformance.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +73,18 @@ server.post('/static_analysis', staticAnalysisHandler);
 
 // soundness check (cvc5)
 server.post('/soundness_check', soundnessCheckHandler);
+
+// file content viewer
+server.post('/file_content', fileContentHandler);
+
+// resolve constraints to human-readable formulas
+server.post('/resolve_constraints', resolveConstraintsHandler);
+
+// intent alignment (LLM analysis)
+server.post('/intent_alignment', intentAlignmentHandler);
+
+// formal conformance (spec-based cvc5 verification)
+server.post('/formal_conformance', formalConformanceHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
   if (err) {
