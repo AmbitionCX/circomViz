@@ -2,10 +2,19 @@
   <div class="signal-selection-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-2">
-        <h2 class="text-base font-bold text-gray-800">Signal View</h2>
+        <h2 class="view-title text-base font-bold text-gray-800">Signal View</h2>
         <el-tooltip content="View all signals organized by source file and template" placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
+          </el-icon>
+        </el-tooltip>
+        <el-tooltip :content="viewMode === 'text' ? 'Switch to Visualization' : 'Switch to Plain Text'" placement="top">
+          <el-icon
+            class="cursor-pointer transition-colors duration-200"
+            :class="viewMode === 'visualization' ? 'text-indigo-500' : 'text-gray-400 hover:text-indigo-400'"
+            @click.stop="viewMode = viewMode === 'text' ? 'visualization' : 'text'"
+          >
+            <Switch />
           </el-icon>
         </el-tooltip>
       </div>
@@ -22,11 +31,10 @@
           <el-icon class="text-gray-500"><RemoveFilled /></el-icon>
           <span>Intermediate</span>
         </div>
-        <el-tag v-if="totalSignalCount" type="info" size="small">{{ totalSignalCount }} signals</el-tag>
       </div>
     </div>
     
-    <div class="flex-1 overflow-auto min-h-0 mt-2">
+    <div v-if="viewMode === 'text'" class="flex-1 overflow-auto min-h-0 mt-2">
       <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
       
       <el-tree
@@ -37,21 +45,25 @@
         :expand-on-click-node="false"
         node-key="id"
         class="signal-tree"
+        @click.stop
       >
         <template #default="{ data }">
           <!-- File node -->
           <div v-if="data.type === 'file'" class="tree-node-content file-node" @dblclick.stop="handleNodeDblClick(data)">
             <el-icon class="mr-1 text-gray-400"><Document /></el-icon>
             <span class="file-name">{{ data.name }}</span>
+            <el-tag v-if="extractNodeModulesPackage(data.sourceFile)" size="small" type="info" class="ml-2">
+              {{ extractNodeModulesPackage(data.sourceFile) }}
+            </el-tag>
           </div>
           <!-- Template node -->
-          <div v-else-if="data.type === 'template'" class="tree-node-content template-node">
+          <div v-else-if="data.type === 'template'" class="tree-node-content template-node" @dblclick.stop="handleNodeDblClick(data)">
             <el-icon class="mr-1 text-indigo-500"><Box /></el-icon>
-            <span class="signal-name">{{ data.templateName }}</span>
+            <span class="signal-name" :style="templateColorStyle(data.templateName)">{{ data.templateName }}</span>
             <el-tag size="small" type="info" class="ml-2">{{ data.signalCount }}</el-tag>
           </div>
           <!-- Signal node -->
-          <div v-else class="tree-node-content">
+          <div v-else class="tree-node-content" @dblclick.stop="handleNodeDblClick(data)">
             <el-icon v-if="data.kind === 'input'" class="mr-1 text-blue-500">
               <CircleCheck />
             </el-icon>
@@ -70,12 +82,17 @@
       <el-empty v-else description="No signals found" :image-size="80" />
     </div>
 
+    <div v-else class="flex-1 min-h-0 mt-2">
+      <SignalViewVisualization />
+    </div>
+
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
       width="70%"
       top="5vh"
       destroy-on-close
+      @opened="scrollToHighlight"
     >
       <pre class="file-content-viewer hljs" v-html="highlightedContent"></pre>
     </el-dialog>
@@ -83,11 +100,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box } from '@element-plus/icons-vue';
+import { ref, computed, nextTick } from 'vue';
+import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box, Switch } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { getFileContent } from '@/apis';
 import { ElMessage } from 'element-plus';
+import SignalViewVisualization from './SignalViewVisualization.vue';
+import { hexToRgba } from '@/composables/colors';
 import hljs from 'highlight.js/lib/core';
 import c from 'highlight.js/lib/languages/c';
 import 'highlight.js/styles/github-dark.css';
@@ -97,6 +116,19 @@ import type { SignalInfo, TemplateInfo } from '@/types/circuitTypes';
 
 const circuitStore = useCircuitStore();
 
+function templateColorStyle(templateName: string) {
+  const color = circuitStore.getTemplateColor(templateName);
+  return {
+    backgroundColor: hexToRgba(color, 0.15),
+    color: color,
+    borderRadius: '4px',
+    padding: '1px 6px',
+    fontWeight: '600' as const,
+  };
+}
+
+const viewMode = ref<'text' | 'visualization'>('text');
+
 const treeProps = {
   children: 'children',
   label: 'name'
@@ -105,9 +137,16 @@ const treeProps = {
 const dialogVisible = ref(false);
 const dialogTitle = ref('');
 const fileContent = ref('');
+const highlightKeyword = ref('');
 const highlightedContent = computed(() => {
   if (!fileContent.value) return '';
-  return hljs.highlight(fileContent.value, { language: 'c' }).value;
+  const highlighted = hljs.highlight(fileContent.value, { language: 'c' }).value;
+  if (!highlightKeyword.value) return highlighted;
+
+  const keyword = highlightKeyword.value;
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escaped})(?![^<]*>)`, 'g');
+  return highlighted.replace(regex, '<mark class="highlight-name">$1</mark>');
 });
 
 const isParsed = computed(() => circuitStore.isParsed);
@@ -117,15 +156,20 @@ const signalFileTree = computed(() => {
   return buildSignalFileTree(circuitStore.parseData.tree, circuitStore.filteredSignals);
 });
 
-const totalSignalCount = computed(() => {
-  if (!isParsed.value) return 0;
-  return circuitStore.filteredSignals.length;
-});
 
 async function handleNodeDblClick(data: any) {
-  if (data.type !== 'file') return;
+  let sourceFile = '';
+  if (data.type === 'file') {
+    sourceFile = data.sourceFile;
+    highlightKeyword.value = '';
+  } else if (data.type === 'template') {
+    sourceFile = data.sourceFile;
+    highlightKeyword.value = data.templateName;
+  } else {
+    sourceFile = data.sourceFile;
+    highlightKeyword.value = data.name;
+  }
 
-  const sourceFile = data.sourceFile;
   if (!sourceFile) return;
 
   dialogTitle.value = sourceFile.split('/').pop() || sourceFile;
@@ -139,6 +183,8 @@ async function handleNodeDblClick(data: any) {
     }
     dialogTitle.value = result.fileName || sourceFile.split('/').pop() || sourceFile;
     fileContent.value = result.content;
+    await nextTick();
+    scrollToHighlight();
   } catch (error: any) {
     fileContent.value = '';
     ElMessage.error(error.response?.data?.error || error.message || 'Failed to load file');
@@ -146,10 +192,23 @@ async function handleNodeDblClick(data: any) {
   }
 }
 
+function scrollToHighlight() {
+  const mark = document.querySelector('.file-content-viewer .highlight-name');
+  if (mark) {
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
 function extractBaseName(filePath: string | undefined): string {
   if (!filePath) return 'unknown';
   const parts = filePath.replace(/\\/g, '/').split('/');
   return parts[parts.length - 1] || 'unknown';
+}
+
+function extractNodeModulesPackage(filePath: string | undefined): string | undefined {
+  if (!filePath) return undefined;
+  const match = filePath.match(/\/node_modules\/([^/]+)/);
+  return match ? match[1] : undefined;
 }
 
 function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]): any[] {
@@ -202,6 +261,7 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
       type: 'template',
       name: template.templateName,
       templateName: template.templateName,
+      sourceFile: srcFile,
       signalCount: tplSignals.length,
       stats,
       children: tplSignals.map(s => ({
@@ -210,6 +270,7 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
         kind: s.kind,
         isArray: s.isArray,
         signal: s,
+        sourceFile: srcFile,
       }))
     });
   }
@@ -233,6 +294,19 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
 </script>
 
 <style scoped>
+.view-title {
+  padding: 2px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-title:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
 .signal-selection-container {
   background: white;
   border-radius: 8px;
@@ -267,8 +341,16 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
   cursor: pointer;
 }
 
+.template-node {
+  cursor: pointer;
+}
+
+.tree-node-content:not(.file-node) {
+  cursor: pointer;
+}
+
 .signal-name {
-  font-size: 13px;
+  font-size: 11px;
   color: #333;
   font-family: 'Monaco', 'Menlo', monospace;
   white-space: nowrap;
@@ -288,5 +370,12 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
   overflow: auto;
   white-space: pre;
   tab-size: 4;
+}
+
+.highlight-name {
+  background: rgba(234, 179, 8, 0.35);
+  border-radius: 2px;
+  padding: 0 2px;
+  box-shadow: 0 0 0 1px #eab308;
 }
 </style>

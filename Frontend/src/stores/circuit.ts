@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import * as d3 from 'd3';
 import type {
   TemplateInfo,
   SignalInfo,
@@ -6,7 +7,12 @@ import type {
   ParseError,
   CircuitStatistics,
   CompilationConstraints,
-  ConstraintVerification
+  ConstraintVerification,
+  IndexMetadata,
+  SliceResult,
+  BipartiteGraphData,
+  TemplateContract,
+  ContractVerifyResult
 } from '@/types/circuitTypes';
 
 interface CircuitState {
@@ -18,9 +24,11 @@ interface CircuitState {
     errors: ParseError[];
     statistics: CircuitStatistics;
   };
-  
+
   selectedTemplate: TemplateInfo | null;
   selectedTemplatePath: string[];
+
+  templateColorMap: Record<string, string>;
   
   compilationVersion: number;
   confirmedTemplateNames: string[];
@@ -51,6 +59,31 @@ interface CircuitState {
     filterByType: 'input' | 'output' | 'intermediate' | 'all';
     searchTerm: string;
   };
+
+  constraintIndex: {
+    metadata: IndexMetadata | null;
+    loading: boolean;
+  };
+
+  sliceData: {
+    currentSlice: SliceResult | null;
+    loading: boolean;
+  };
+
+  bipartiteData: {
+    graph: BipartiteGraphData | null;
+    loading: boolean;
+    expandedComponent: string | null;
+    highlightedSignals: Set<number>;
+    highlightedConstraints: Set<number>;
+  };
+
+  contracts: {
+    cache: Record<string, TemplateContract>;
+    verificationResults: Record<string, ContractVerifyResult>;
+    generating: boolean;
+    verifying: boolean;
+  };
 }
 
 export const useCircuitStore = defineStore('circuit', {
@@ -71,6 +104,7 @@ export const useCircuitStore = defineStore('circuit', {
     
     selectedTemplate: null,
     selectedTemplatePath: [],
+    templateColorMap: {},
     
     compilationVersion: 0,
     confirmedTemplateNames: [],
@@ -94,6 +128,27 @@ export const useCircuitStore = defineStore('circuit', {
       selectedSignals: new Set<string>(),
       filterByType: 'all',
       searchTerm: ''
+    },
+    constraintIndex: {
+      metadata: null,
+      loading: false
+    },
+    sliceData: {
+      currentSlice: null,
+      loading: false
+    },
+    bipartiteData: {
+      graph: null,
+      loading: false,
+      expandedComponent: null,
+      highlightedSignals: new Set<number>(),
+      highlightedConstraints: new Set<number>()
+    },
+    contracts: {
+      cache: {},
+      verificationResults: {},
+      generating: false,
+      verifying: false
     }
   }),
   
@@ -151,8 +206,12 @@ export const useCircuitStore = defineStore('circuit', {
   actions: {
     setParseData(data: CircuitState['parseData']) {
       this.parseData = data;
+      this.templateColorMap = {};
+      if (data.tree) {
+        this.rebuildTemplateColorMap(data.tree);
+      }
     },
-    
+
     resetParseData() {
       this.parseData = {
         repo: '',
@@ -169,6 +228,7 @@ export const useCircuitStore = defineStore('circuit', {
       };
       this.selectedTemplate = null;
       this.selectedTemplatePath = [];
+      this.templateColorMap = {};
     },
     
     setSelectedTemplate(template: TemplateInfo, path: string[]) {
@@ -326,6 +386,53 @@ export const useCircuitStore = defineStore('circuit', {
 
     isTemplateConfirmed(templateName: string): boolean {
       return this.confirmedTemplateNames.includes(templateName);
+    },
+
+    collectTemplateNames(template: TemplateInfo): string[] {
+      const names: string[] = [template.templateName];
+      for (const comp of template.components) {
+        if (comp.template) {
+          names.push(...this.collectTemplateNames(comp.template));
+        } else {
+          names.push(comp.templateName);
+        }
+      }
+      return names;
+    },
+
+    rebuildTemplateColorMap(root: TemplateInfo) {
+      const names = [...new Set(this.collectTemplateNames(root))];
+
+      const confirmedGreen = '#16a34a';
+
+      function isExcluded(hex: string): boolean {
+        if (hex === confirmedGreen) return true;
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        if (g > r * 1.3 && g > b * 1.2) return true;
+        if (r > 200 && g > 200 && b < 180) return true;
+        return false;
+      }
+
+      const palette = [
+        ...d3.schemeTableau10,
+        ...d3.schemeSet3,
+        ...d3.schemePaired,
+      ].filter(c => !isExcluded(c));
+
+      const colorScale = d3.scaleOrdinal<string>(palette);
+
+      const colorMap: Record<string, string> = {};
+      for (const name of names) {
+        colorMap[name] = colorScale(name);
+      }
+
+      this.templateColorMap = colorMap;
+    },
+
+    getTemplateColor(templateName: string): string {
+      return this.templateColorMap[templateName] ?? '#5f6368';
     }
   }
 });

@@ -4,16 +4,25 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex items-center gap-2">
-            <h2 class="text-base font-bold text-gray-800">Debugging Panel</h2>
+            <h2 class="view-title text-base font-bold text-gray-800">Debugging Panel</h2>
             <el-tooltip content="Debug constraints, verification, and signals for selected template" placement="top">
               <el-icon class="text-gray-400 cursor-help">
                 <QuestionFilled />
               </el-icon>
             </el-tooltip>
+            <el-tooltip :content="viewMode === 'text' ? 'Switch to Visualization' : 'Switch to Plain Text'" placement="top">
+              <el-icon
+                class="cursor-pointer transition-colors duration-200"
+                :class="viewMode === 'visualization' ? 'text-indigo-500' : 'text-gray-400 hover:text-indigo-400'"
+                @click.stop="viewMode = viewMode === 'text' ? 'visualization' : 'text'"
+              >
+                <Switch />
+              </el-icon>
+            </el-tooltip>
           </div>
           <div v-if="hasSelectedTemplate" class="flex items-center gap-2 text-sm font-semibold text-gray-700">
             <span class="text-xs font-medium text-gray-500">Template:</span>
-            <span class="text-gray-800">{{ selectedTemplate?.templateName }}</span>
+            <span :style="templateColorStyle(selectedTemplate?.templateName ?? '')">{{ selectedTemplate?.templateName }}</span>
           </div>
         </div>
         <div v-if="hasSelectedTemplate" class="flex gap-3">
@@ -42,70 +51,91 @@
       </div>
     </div>
 
-    <el-empty
-      v-if="!hasSelectedTemplate"
-      description="Select a template in Circuit View to start debugging"
-      :image-size="80"
-    />
-    
-    <div v-else class="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div class="flex items-center gap-0 mb-3 flex-shrink-0">
-        <button 
-          @click="activeTab = 'constraints'"
-          :class="['step-tab-btn', soundnessConfirmed ? 'step-tab-confirmed' : activeTab === 'constraints' ? 'step-tab-active' : 'step-tab-inactive']"
-        >
-          <el-icon v-if="soundnessConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
-          {{ constraintTabLabel }}
-        </button>
-        <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
-        <button 
-          @click="activeTab = 'verification'"
-          :class="['step-tab-btn', intentConfirmed ? 'step-tab-confirmed' : activeTab === 'verification' ? 'step-tab-active' : 'step-tab-inactive']"
-        >
-          <el-icon v-if="intentConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
-          {{ verificationTabLabel }}
-        </button>
-        <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
-        <button 
-          @click="activeTab = 'signals'"
-          :class="['step-tab-btn', formalConfirmed ? 'step-tab-confirmed' : activeTab === 'signals' ? 'step-tab-active' : 'step-tab-inactive']"
-        >
-          <el-icon v-if="formalConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
-          {{ signalsTabLabel }}
-        </button>
-      </div>
+    <div v-if="viewMode === 'text'" class="flex-1 flex flex-col min-h-0">
+      <el-empty
+        v-if="!hasSelectedTemplate"
+        description="Select a template in Circuit View to start debugging"
+        :image-size="80"
+      />
+      
+      <div v-else class="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div class="flex items-center gap-0 mb-3 flex-shrink-0" @click.stop>
+          <button 
+            @click.stop="activeTab = 'constraints'"
+            :class="['step-tab-btn', soundnessConfirmed ? 'step-tab-confirmed' : activeTab === 'constraints' ? 'step-tab-active' : 'step-tab-inactive']"
+          >
+            <el-icon v-if="soundnessConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
+            {{ constraintTabLabel }}
+          </button>
+          <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
+          <button 
+            @click.stop="activeTab = 'verification'"
+            :class="['step-tab-btn', intentConfirmed ? 'step-tab-confirmed' : activeTab === 'verification' ? 'step-tab-active' : 'step-tab-inactive']"
+          >
+            <el-icon v-if="intentConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
+            {{ verificationTabLabel }}
+          </button>
+          <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
+          <button 
+            @click.stop="activeTab = 'signals'"
+            :class="['step-tab-btn', formalConfirmed ? 'step-tab-confirmed' : activeTab === 'signals' ? 'step-tab-active' : 'step-tab-inactive']"
+          >
+            <el-icon v-if="formalConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
+            {{ signalsTabLabel }}
+          </button>
+        </div>
 
-      <div class="flex-1 min-h-0 overflow-auto">
-        <div v-show="activeTab === 'constraints'">
-          <SoundnessCheck 
-            ref="soundnessCheckRef"
-            :canRunStaticAnalysis="allCompilesComplete"
-            @confirm="handleConfirmSoundness"
-          />
-        </div>
-        <div v-show="activeTab === 'verification'">
-          <IntentAlignment ref="intentAlignmentRef" @confirm="handleConfirmIntent" />
-        </div>
-        <div v-show="activeTab === 'signals'">
-          <FormalConformance
-            ref="formalConformanceRef"
-            @confirm="handleConfirmFormal"
-          />
+        <div class="flex-1 min-h-0 overflow-auto" @click.stop>
+          <div v-show="activeTab === 'constraints'">
+            <SoundnessCheck 
+              ref="soundnessCheckRef"
+              :canRunStaticAnalysis="allCompilesComplete"
+              @confirm="handleConfirmSoundness"
+            />
+          </div>
+          <div v-show="activeTab === 'verification'">
+            <IntentAlignment ref="intentAlignmentRef" @confirm="handleConfirmIntent" />
+          </div>
+          <div v-show="activeTab === 'signals'">
+            <FormalConformance
+              ref="formalConformanceRef"
+              @confirm="handleConfirmFormal"
+            />
+          </div>
         </div>
       </div>
+    </div>
+
+    <div v-else class="flex-1 min-h-0 overflow-hidden">
+      <DebuggingPanelVisualization />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { QuestionFilled, CircleCheckFilled, CircleCloseFilled, DArrowRight } from '@element-plus/icons-vue';
+import { QuestionFilled, CircleCheckFilled, CircleCloseFilled, DArrowRight, Switch } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
+import { hexToRgba } from '@/composables/colors';
 import SoundnessCheck from './SoundnessCheck.vue';
 import IntentAlignment from './IntentAlignment.vue';
 import FormalConformance from './FormalConformance.vue';
+import DebuggingPanelVisualization from './DebuggingPanelVisualization.vue';
 
 const circuitStore = useCircuitStore();
+
+const viewMode = ref<'text' | 'visualization'>('text');
+
+function templateColorStyle(templateName: string) {
+  const color = circuitStore.getTemplateColor(templateName);
+  return {
+    backgroundColor: hexToRgba(color, 0.15),
+    color: color,
+    borderRadius: '4px',
+    padding: '1px 8px',
+    fontWeight: '600' as const,
+  };
+}
 
 const activeTab = ref('constraints');
 const soundnessConfirmed = ref(false);
@@ -189,6 +219,19 @@ const handleConfirmFormal = () => {
 </script>
 
 <style scoped>
+.view-title {
+  padding: 2px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-title:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
 .interaction-panel-container {
   background: white;
   border-radius: 8px;

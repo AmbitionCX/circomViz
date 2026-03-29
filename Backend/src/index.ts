@@ -16,6 +16,12 @@ import { fileContentHandler } from './server/routes/fileContent.js';
 import { resolveConstraintsHandler } from './server/routes/resolveConstraints.js';
 import { intentAlignmentHandler } from './server/routes/intentAlignment.js';
 import { formalConformanceHandler } from './server/routes/formalConformance.js';
+import { buildConstraintIndexHandler } from './server/routes/buildConstraintIndex.js';
+import { coneSliceHandler } from './server/routes/coneSlice.js';
+import { bipartiteGraphHandler } from './server/routes/bipartiteGraph.js';
+import { generateContractHandler } from './server/routes/generateContract.js';
+import { contractVerifyHandler } from './server/routes/contractVerify.js';
+import { refinementExpandHandler } from './server/routes/refinementExpand.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,8 +89,25 @@ server.post('/resolve_constraints', resolveConstraintsHandler);
 // intent alignment (LLM analysis)
 server.post('/intent_alignment', intentAlignmentHandler);
 
-// formal conformance (spec-based cvc5 verification)
 server.post('/formal_conformance', formalConformanceHandler);
+
+// constraint index builder
+server.post('/build_constraint_index', buildConstraintIndexHandler);
+
+// cone of influence slicing
+server.post('/cone_slice', coneSliceHandler);
+
+// bipartite graph data for visualization
+server.post('/bipartite_graph', bipartiteGraphHandler);
+
+// contract generation
+server.post('/generate_contract', generateContractHandler);
+
+// contract-based verification
+server.post('/contract_verify', contractVerifyHandler);
+
+// refinement expansion
+server.post('/refinement_expand', refinementExpandHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
   if (err) {

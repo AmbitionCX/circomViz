@@ -17,36 +17,36 @@
      <el-main class="bg-gray-100 pt-2 px-2 h-full">
        <el-row class="h-full" :gutter="8">
           <el-col :span="6" class="h-full flex flex-col gap-2 overflow-hidden">
-              <div
-                :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', submoduleHeightClass]"
-                @click.self="handleSubmoduleClick"
-              >
+               <div
+                 :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', submoduleHeightClass]"
+                 @click="handleSubmoduleClick"
+               >
                 <SubmoduleSelector @parse-complete="handleParseComplete" />
               </div>
              
-              <div
-                :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', signalViewHeightClass]"
-                @click.self="handleSignalViewClick"
-              >
+               <div
+                 :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', signalViewHeightClass]"
+                 @click="handleSignalViewClick"
+               >
                 <SignalSelection />
               </div>
            </el-col>
           
           <el-col :span="18" class="h-full pl-2 flex flex-col overflow-hidden">
-             <div 
-               :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
-               @click.self="handleCircuitViewClick"
-             >
+              <div 
+                :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
+                @click="handleCircuitViewClick"
+              >
                <CircuitView 
                  @template-selected="handleTemplateSelected"
                  @template-params-selected="handleWrapTemplate"
                />
              </div>
             
-             <div 
-               :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
-               @click.self="handleInteractionPanelClick"
-             >
+              <div 
+                :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
+                @click="handleInteractionPanelClick"
+              >
                <InteractionPanel @formal-conformance-confirmed="handleFormalConformanceConfirmed" />
              </div>
          </el-col>

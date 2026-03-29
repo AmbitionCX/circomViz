@@ -171,172 +171,116 @@ export interface SoundnessCheckResponse {
   error?: string;
 }
 
-export interface ResolvedConstraint {
-  index: number;
-  formula: string;
-  signalsUsed: string[];
-}
-
-export type InvariantKind =
-  | 'boolean'
-  | 'range_check'
-  | 'multiplication'
-  | 'addition'
-  | 'linear_equality'
-  | 'selector_gate'
-  | 'decomposition'
-  | 'constant_constraint'
-  | 'complex'
-  | 'zero_constraint';
-
-export interface NormalizedInvariant {
-  kind: InvariantKind;
-  description: string;
-  signals: string[];
-  rawFormula: string;
-}
-
-export interface SubcomponentCluster {
-  prefix: string;
-  signals: Array<{ name: string; index: number; witness: number }>;
-  publicSignals: string[];
-  privateSignals: string[];
-  constraintCount: number;
-}
-
-export interface InterfaceSummary {
-  templateName: string;
-  inputs: Array<{ name: string; kind: string }>;
-  outputs: Array<{ name: string; kind: string }>;
-  publicSignals: string[];
-  privateSignals: string[];
-  likelyBooleanFlags: string[];
-  likelyCommitments: string[];
-  likelyHashes: string[];
-}
-
-export interface NormalizedContext {
-  interfaceSummary: InterfaceSummary;
-  subcomponentClusters: SubcomponentCluster[];
-  invariantSummary: string;
-  representativeInvariants: NormalizedInvariant[];
+export interface IndexMetadata {
+  totalSignals: number;
   totalConstraints: number;
-  templateSignature: string;
-  callerInfo: string;
+  componentCount: number;
+  arrayFamilyCount: number;
+  cachePath: string;
 }
 
-export interface LLMGroupResult {
-  summary: string;
-  candidateSpecDSL: string;
-  ambiguities: string[];
-  riskNotes: string[];
-}
-
-export interface IntentAlignmentGroup {
-  groupId: string;
-  sourceFile: string;
-  templateName: string;
-  lineRange: [number, number];
-  normalizedContext: NormalizedContext;
-  sourceSnippet: string;
-  metadata: {
-    signals: { name: string; kind: string }[];
-    subcomponents: { name: string; templateName: string }[];
-    parameters: string[];
-    comments: string[];
-  };
-  llmResult: LLMGroupResult | null;
+export interface BuildIndexResponse {
+  success: boolean;
+  metadata: IndexMetadata;
   error?: string;
 }
 
-export interface IntentAlignmentRequest {
-  repo: string;
-  entry: string;
-  symPath: string;
-  constraintsJsonPath: string;
-  templatePath: string[];
-  templateName: string;
-  groupingStrategy: string;
-}
+export type SliceDirection = 'backward' | 'forward' | 'bidirectional';
 
-export interface IntentAlignmentResponse {
-  success: boolean;
-  groups: IntentAlignmentGroup[];
-  error?: string;
-}
-
-export interface ResolveConstraintsRequest {
-  symPath: string;
-  constraintsJsonPath: string;
-}
-
-export interface ResolveConstraintsResponse {
-  success: boolean;
-  constraints: ResolvedConstraint[];
-  signalCount: number;
+export interface SliceResult {
+  constraintIndices: number[];
+  signalIndices: number[];
   constraintCount: number;
+  signalCount: number;
+  totalConstraints: number;
+  totalSignals: number;
+  reductionPercent: number;
+  componentGroups: ComponentGroup[];
+  resolvedConstraints: ResolvedConstraint[];
+}
+
+export interface ComponentGroup {
+  prefix: string;
+  signalIndices: number[];
+  constraintCount: number;
+  inputCount: number;
+  outputCount: number;
+  intermediateCount: number;
+}
+
+export interface ComponentEdge {
+  fromComponent: string;
+  toComponent: string;
+  signalCount: number;
+  sharedConstraints: number;
+}
+
+export interface ConstraintKindSummary {
+  component: string;
+  kindCounts: Record<string, number>;
+  total: number;
+}
+
+export interface BipartiteGraphData {
+  success: boolean;
+  componentGroups: ComponentGroup[];
+  boundarySignals: Array<{
+    name: string;
+    index: number;
+    kind: 'input' | 'output' | 'intermediate';
+  }>;
+  constraintSummaries: ConstraintKindSummary[];
+  componentEdges: ComponentEdge[];
+}
+
+export interface ContractClause {
+  signal: string;
+  kind: 'boolean' | 'range' | 'equality' | 'hash' | 'commitment' | 'custom';
+  smt2Representation: string;
+  description: string;
+}
+
+export interface ContractInvariant {
+  kind: string;
+  description: string;
+  smt2Representation: string;
+  signals: string[];
+}
+
+export interface TemplateContract {
+  templateName: string;
+  instancePath: string;
+  compiledAt: number;
+  assumptions: ContractClause[];
+  guarantees: ContractClause[];
+  invariants: ContractInvariant[];
+  verification: {
+    soundnessPassed: boolean;
+    intentAligned: boolean;
+    formalConformancePassed: boolean;
+    satisfiabilityModel?: Record<string, string>;
+    counterexample?: any;
+  };
+  coveredConstraints: number[];
+  coveredSignals: number[];
+  interface: {
+    inputs: Array<{ name: string; index: number; kind: 'input' }>;
+    outputs: Array<{ name: string; index: number; kind: 'output' }>;
+  };
+}
+
+export interface ContractVerifyResult {
+  success: boolean;
+  results?: {
+    satisfiability?: any;
+    determinism?: any;
+    coverage?: any;
+  };
+  suspectChildren: string[];
+  refinementNeeded: boolean;
   error?: string;
 }
 
-export interface FormalConformanceRequest {
-  repo: string;
-  entry: string;
-  symPath: string;
-  constraintsJsonPath: string;
-  candidateSpecDSL: string;
-  templateName: string;
-  templatePath: string[];
-  queries: {
-    soundness?: boolean;
-    completeness?: boolean;
-    determinism?: boolean;
-    totality?: boolean;
-  };
-}
-
-export interface FormalConformanceSoundnessResult {
-  conformant: boolean;
-  violation?: {
-    inputValues: Record<string, string>;
-    outputValues: Record<string, string>;
-    violatedSpec: string;
-  };
-  solverOutput: string;
-  executionTimeMs: number;
-  translatedSpecLines: number;
-}
-
-export interface FormalConformanceCompletenessResult {
-  complete: boolean;
-  gap?: {
-    inputValues: Record<string, string>;
-    specAllowsOutput: string;
-    circuitCannotProduce: string;
-  };
-  solverOutput: string;
-  executionTimeMs: number;
-}
-
-export interface FormalConformanceDeterminismResult {
-  deterministic: boolean;
-  counterexample?: {
-    input: Record<string, string>;
-    output1: Record<string, string>;
-    output2: Record<string, string>;
-  };
-  solverOutput: string;
-  executionTimeMs: number;
-}
-
-export interface FormalConformanceTotalityResult {
-  total: boolean;
-  noWitnessInputs?: Array<Record<string, string>>;
-  solverOutput: string;
-  executionTimeMs: number;
-  checkedInputs: number;
-}
-
-export interface FormalConformanceResponse {
   success: boolean;
   specTranslation?: {
     assumptions: Array<{

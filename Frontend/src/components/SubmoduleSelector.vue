@@ -2,7 +2,7 @@
   <div class="submodule-selector-container p-4">
     <div class="flex flex-row flex-nowrap justify-between mb-2">
       <div class="flex items-center gap-2">
-        <h2 class="text-base font-bold">Circuit Selection</h2>
+        <h2 class="view-title text-base font-bold">Circuit Selection</h2>
         <el-tooltip content="Select and parse a circuit from the available submodules to begin debugging" placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
@@ -17,6 +17,7 @@
       placeholder="Choose a circuit..."
       size="large"
       @change="handleSubmoduleChange"
+      @click.stop
       clearable
       :loading="isLoading"
     >
@@ -49,7 +50,7 @@
       size="large" 
       :disabled="!selectedSubmodule" 
       :loading="isParsing" 
-      @click="parseCircuit"
+      @click.stop="parseCircuit"
       class="w-full mt-4"
     >
       <el-icon class="mr-2"><Tools /></el-icon>
@@ -62,6 +63,7 @@
       :title="parseError" 
       show-icon
       closable
+      @click.stop
       @close="parseError = ''"
     />
   </div>
@@ -149,6 +151,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.view-title {
+  padding: 2px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-title:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
 .submodule-selector-container {
   background: white;
   border-radius: 8px;

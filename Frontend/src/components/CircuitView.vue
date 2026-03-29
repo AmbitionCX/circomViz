@@ -2,10 +2,19 @@
   <div class="circuit-view-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between mb-3 flex-shrink-0">
       <div class="flex items-center gap-2">
-        <h2 class="text-base font-bold text-gray-800">Circuit View</h2>
+        <h2 class="view-title text-base font-bold text-gray-800">Circuit View</h2>
         <el-tooltip content="Explore the hierarchical structure of templates and components in the circuit" placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
+          </el-icon>
+        </el-tooltip>
+        <el-tooltip :content="viewMode === 'text' ? 'Switch to Visualization' : 'Switch to Plain Text'" placement="top">
+          <el-icon
+            class="cursor-pointer transition-colors duration-200"
+            :class="viewMode === 'visualization' ? 'text-indigo-500' : 'text-gray-400 hover:text-indigo-400'"
+            @click.stop="viewMode = viewMode === 'text' ? 'visualization' : 'text'"
+          >
+            <Switch />
           </el-icon>
         </el-tooltip>
       </div>
@@ -14,192 +23,202 @@
       </div>
     </div>
     
-    <div class="h-full overflow-auto min-h-0 mb-3 bg-gray-50 rounded-lg p-2">
-      <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
-      
-      <el-tree
-        v-else-if="templateTreeData"
-        :data="[templateTreeData]"
-        :props="treeProps"
-        node-key="id"
-        highlight-current
-        @node-click="handleNodeClick"
-        class="template-tree"
-      >
-        <template #default="{ data }">
-          <div class="tree-node-content">
-            <el-icon v-if="data.type === 'template'" class="mr-2 text-indigo-600">
-              <Box />
-            </el-icon>
-            <el-icon v-else-if="data.type === 'component'" class="mr-2 text-blue-500">
-              <Connection />
-            </el-icon>
-            <el-icon v-else class="mr-2 text-gray-400">
-              <Document />
-            </el-icon>
-            
-            <div class="flex-1">
-              <div class="font-medium text-sm">
-                {{ data.name }}
-              </div>
-              <div v-if="data.type === 'template'" class="text-xs text-gray-500">
-                {{ data.templateName }}
-                <span v-if="data.parameters.length > 0" class="ml-1">
-                  ({{ data.parameters.map((p: any) => p.name).join(', ') }})
-                </span>
-              </div>
-              <div v-if="data.type === 'component'" class="text-xs text-gray-500">
-                {{ data.templateName }}
-              </div>
-            </div>
-            
-            <div class="flex items-center gap-1 ml-2">
-              <el-tag
-                v-if="data.type === 'template' && circuitStore.isTemplateConfirmed(data.templateName)"
-                size="small"
-                type="success"
-                class="text-xs"
-              >
-                Confirmed
-              </el-tag>
-              <el-tag v-if="data.signalCount" size="small" type="info" class="text-xs">
-                {{ data.signalCount }} sig
-              </el-tag>
-              <el-tag v-if="data.componentCount" size="small" type="warning" class="text-xs">
-                {{ data.componentCount }} comp
-              </el-tag>
-            </div>
-          </div>
-        </template>
-      </el-tree>
-    </div>
-    
-    <div v-if="selectedTemplate" class="p-3 bg-blue-50 rounded-lg border border-blue-200 flex-shrink-0">
-      <div class="flex items-center justify-between mb-2">
-        <div class="text-sm font-semibold text-blue-900">
-          Selected: {{ selectedTemplate.templateName }}
-        </div>
-        <el-button
-          type="primary"
-          size="small"
-          @click="handleSelectTemplate"
-          :loading="isSearching"
+    <div v-if="viewMode === 'text'" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div class="h-full overflow-auto min-h-0 mb-3 bg-gray-50 rounded-lg p-2">
+        <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
+        
+        <el-tree
+          v-else-if="templateTreeData"
+          :data="[templateTreeData]"
+          :props="treeProps"
+          node-key="id"
+          highlight-current
+          @node-click="handleNodeClick"
+          class="template-tree"
+          @click.stop
         >
-          Select
-        </el-button>
-      </div>
-      <div class="grid grid-cols-2 gap-2 text-xs text-blue-800">
-        <div>Parameters: {{ selectedTemplate.parameters.length }}</div>
-        <div>Signals: {{ selectedTemplate.signals.length }}</div>
-        <div>Input Signals: {{ inputSignalCount }}</div>
-        <div>Output Signals: {{ outputSignalCount }}</div>
-      </div>
-      <div class="mt-2 text-xs text-blue-700">
-        <span class="font-semibold">Path:</span> {{ selectedTemplatePath.join(' → ') }}
-      </div>
-    </div>
-
-    <el-dialog
-      v-model="showParamDialog"
-      title="Create a wrapper to compile this template"
-      width="600px"
-    >
-      <div v-if="paramResponse">
-        <div v-if="paramResponse.hasCandidates">
-          <div class="mb-4">
-            <p class="text-sm text-gray-600 mb-2">
-              Found {{ paramResponse.candidates.length }} parameter candidates for template <strong>{{ paramResponse.templateName }}</strong>:
-            </p>
-              <el-radio-group v-model="selectedCandidateIndex" class="w-full">
-                <div
-                  v-for="(candidate, idx) in paramResponse.candidates"
-                  :key="idx"
-                  class="mb-2 p-6 border rounded hover:bg-gray-50 cursor-pointer"
-                >
-                  <el-radio :value="idx" class="w-full">
-                    <div class="text-xs">
-                      <div class="font-semibold mb-2">
-                        Parameters: {{ candidate.params.map(p => `${p.name}=${p.value}`).join(', ') }}
-                      </div>
-                      <div v-if="candidate.publicSignals && candidate.publicSignals.length > 0" class="text-gray-600 mb-1">
-                        Public signals: {{ candidate.publicSignals.join(', ') }}
-                      </div>
-                      <div class="text-gray-500">
-                        Location: {{ candidate.location.component }} at {{ getShortFilePath(candidate.location.file) }}:{{ candidate.location.line }}
-                      </div>
-                    </div>
-                  </el-radio>
+          <template #default="{ data }">
+            <div class="tree-node-content">
+              <el-icon v-if="data.type === 'template'" class="mr-2 text-indigo-600">
+                <Box />
+              </el-icon>
+              <el-icon v-else-if="data.type === 'component'" class="mr-2 text-blue-500">
+                <Connection />
+              </el-icon>
+              <el-icon v-else class="mr-2 text-gray-400">
+                <Document />
+              </el-icon>
+              
+              <div class="flex-1">
+                <div class="font-medium text-sm">
+                  {{ data.name }}
                 </div>
-              </el-radio-group>
+                <div v-if="data.type === 'template'" class="text-xs text-gray-500">
+                  {{ data.templateName }}
+                  <span v-if="data.parameters.length > 0" class="ml-1">
+                    ({{ data.parameters.map((p: any) => p.name).join(', ') }})
+                  </span>
+                </div>
+                <div v-if="data.type === 'component'" class="text-xs text-gray-500">
+                  {{ data.templateName }}
+                </div>
+              </div>
+              
+              <div class="flex items-center gap-1 ml-2">
+                <el-tag
+                  v-if="data.type === 'template' && circuitStore.isTemplateConfirmed(data.templateName)"
+                  size="small"
+                  type="success"
+                  class="text-xs"
+                >
+                  Confirmed
+                </el-tag>
+                <el-tag v-if="data.signalCount" size="small" type="info" class="text-xs">
+                  {{ data.signalCount }} sig
+                </el-tag>
+                <el-tag v-if="data.componentCount" size="small" type="warning" class="text-xs">
+                  {{ data.componentCount }} comp
+                </el-tag>
+              </div>
+            </div>
+          </template>
+        </el-tree>
+      </div>
+      
+      <div v-if="selectedTemplate" class="p-3 bg-blue-50 rounded-lg border border-blue-200 flex-shrink-0" @click.stop>
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-semibold text-blue-900">
+            Selected: {{ selectedTemplate.templateName }}
+          </div>
+          <el-button
+            type="primary"
+            size="small"
+            @click.stop="handleSelectTemplate"
+            :loading="isSearching"
+          >
+            Select
+          </el-button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs text-blue-800">
+          <div>Parameters: {{ selectedTemplate.parameters.length }}</div>
+          <div>Signals: {{ selectedTemplate.signals.length }}</div>
+          <div>Input Signals: {{ inputSignalCount }}</div>
+          <div>Output Signals: {{ outputSignalCount }}</div>
+        </div>
+        <div class="mt-2 text-xs text-blue-700">
+          <span class="font-semibold">Path:</span> {{ selectedTemplatePath.join(' → ') }}
+        </div>
+      </div>
+
+      <el-dialog
+        v-model="showParamDialog"
+        title="Create a wrapper to compile this template"
+        width="600px"
+      >
+        <div v-if="paramResponse">
+          <div v-if="paramResponse.hasCandidates">
+            <div class="mb-4">
+              <p class="text-sm text-gray-600 mb-2">
+                Found {{ paramResponse.candidates.length }} parameter candidates for template <strong>{{ paramResponse.templateName }}</strong>:
+              </p>
+                <el-radio-group v-model="selectedCandidateIndex" class="w-full">
+                  <div
+                    v-for="(candidate, idx) in paramResponse.candidates"
+                    :key="idx"
+                    class="mb-2 p-6 border rounded hover:bg-gray-50 cursor-pointer"
+                  >
+                    <el-radio :value="idx" class="w-full">
+                      <div class="text-xs">
+                        <div class="font-semibold mb-2">
+                          Parameters: {{ candidate.params.map(p => `${p.name}=${p.value}`).join(', ') }}
+                        </div>
+                        <div v-if="candidate.publicSignals && candidate.publicSignals.length > 0" class="text-gray-600 mb-1">
+                          Public signals: {{ candidate.publicSignals.join(', ') }}
+                        </div>
+                        <div class="text-gray-500">
+                          Location: {{ candidate.location.component }} at {{ getShortFilePath(candidate.location.file) }}:{{ candidate.location.line }}
+                        </div>
+                      </div>
+                    </el-radio>
+                  </div>
+                </el-radio-group>
+            </div>
+          </div>
+          <div v-else>
+            <p class="text-sm text-gray-600 mb-4">
+              No existing parameter candidates found for template <strong>{{ paramResponse.templateName }}</strong>. Please enter parameters manually:
+            </p>
+          </div>
+
+          <div v-if="paramResponse.templateParams.length > 0" class="mt-4 pt-4 border-t">
+            <p class="text-sm font-semibold text-gray-700 mb-2">Compile Constants:</p>
+            <el-table :data="paramResponse.templateParams" size="small" max-height="300">
+              <el-table-column label="Constant Name" width="150">
+                <template #default="scope">
+                  <span class="font-mono">{{ scope.row }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="Value">
+                <template #default="scope">
+                  <el-input
+                    v-model="paramInputs[scope.row]"
+                    size="small"
+                    placeholder="Enter value"
+                    class="w-full"
+                  />
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <div v-if="paramResponse.signals.length > 0" class="mt-4 pt-4 border-t">
+            <p class="text-sm font-semibold text-gray-700 mb-2">Input Signals:</p>
+            <el-table :data="paramResponse.signals.filter(s => s.kind === 'input')" size="small" max-height="300">
+              <el-table-column label="Signal Name" width="150">
+                <template #default="scope">
+                  <span class="font-mono">{{ scope.row.name }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="Visibility">
+                <template #default="scope">
+                  <el-radio-group v-model="signalVisibility[scope.row.name]" size="small">
+                    <el-radio-button value="public">Public</el-radio-button>
+                    <el-radio-button value="private">Private</el-radio-button>
+                  </el-radio-group>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
         </div>
-        <div v-else>
-          <p class="text-sm text-gray-600 mb-4">
-            No existing parameter candidates found for template <strong>{{ paramResponse.templateName }}</strong>. Please enter parameters manually:
-          </p>
-        </div>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="showParamDialog = false">Cancel</el-button>
+            <el-button type="primary" @click="confirmParamSelection" :disabled="!isParamSelectionValid">
+              Wrap
+            </el-button>
+          </span>
+        </template>
+      </el-dialog>
+    </div>
 
-        <div v-if="paramResponse.templateParams.length > 0" class="mt-4 pt-4 border-t">
-          <p class="text-sm font-semibold text-gray-700 mb-2">Compile Constants:</p>
-          <el-table :data="paramResponse.templateParams" size="small" max-height="300">
-            <el-table-column label="Constant Name" width="150">
-              <template #default="scope">
-                <span class="font-mono">{{ scope.row }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="Value">
-              <template #default="scope">
-                <el-input
-                  v-model="paramInputs[scope.row]"
-                  size="small"
-                  placeholder="Enter value"
-                  class="w-full"
-                />
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-
-        <div v-if="paramResponse.signals.length > 0" class="mt-4 pt-4 border-t">
-          <p class="text-sm font-semibold text-gray-700 mb-2">Input Signals:</p>
-          <el-table :data="paramResponse.signals.filter(s => s.kind === 'input')" size="small" max-height="300">
-            <el-table-column label="Signal Name" width="150">
-              <template #default="scope">
-                <span class="font-mono">{{ scope.row.name }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="Visibility">
-              <template #default="scope">
-                <el-radio-group v-model="signalVisibility[scope.row.name]" size="small">
-                  <el-radio-button value="public">Public</el-radio-button>
-                  <el-radio-button value="private">Private</el-radio-button>
-                </el-radio-group>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showParamDialog = false">Cancel</el-button>
-          <el-button type="primary" @click="confirmParamSelection" :disabled="!isParamSelectionValid">
-            Wrap
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
+    <div v-else class="flex-1 min-h-0 overflow-hidden">
+      <CircuitViewVisualization @template-params-selected="(data: any) => emit('template-params-selected', data)" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, reactive, watch } from 'vue';
-import { Box, Connection, Document, QuestionFilled } from '@element-plus/icons-vue';
+import { Box, Connection, Document, QuestionFilled, Switch } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { findTemplateParams } from '@/apis';
 import type { TemplateInfo, FindTemplateParamsResponse } from '@/types/circuitTypes';
 import { ElMessage } from 'element-plus';
+import CircuitViewVisualization from './CircuitViewVisualization.vue';
 
 const circuitStore = useCircuitStore();
+
+const viewMode = ref<'text' | 'visualization'>('text');
 
 const emit = defineEmits<{
   'template-selected': [template: TemplateInfo, path: string[]];
@@ -414,6 +433,19 @@ const confirmParamSelection = () => {
 </script>
 
 <style scoped>
+.view-title {
+  padding: 2px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-title:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
 .circuit-view-container {
   background: white;
   border-radius: 8px;

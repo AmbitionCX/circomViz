@@ -1,6 +1,6 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, ResolveConstraintsResponse, FormalConformanceResponse } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, ResolveConstraintsResponse, FormalConformanceResponse, BuildIndexResponse, SliceResult, SliceDirection, BipartiteGraphData, TemplateContract, ContractVerifyResult } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
@@ -13,7 +13,13 @@ const enum API {
   file_content = '/file_content',
   resolve_constraints = '/resolve_constraints',
   intent_alignment = '/intent_alignment',
-  formal_conformance = '/formal_conformance'
+  formal_conformance = '/formal_conformance',
+  build_constraint_index = '/build_constraint_index',
+  cone_slice = '/cone_slice',
+  bipartite_graph = '/bipartite_graph',
+  generate_contract = '/generate_contract',
+  contract_verify = '/contract_verify',
+  refinement_expand = '/refinement_expand'
 }
 
 export interface getSubmodules_response {
