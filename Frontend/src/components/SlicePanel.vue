@@ -8,9 +8,13 @@
     <div class="flex-1 overflow-auto min-h-0 flex flex-col">
       <template v-if="isCompactTemplate">
         <div class="px-3 py-2 border-b border-gray-100 flex-shrink-0">
-          <div class="flex items-center gap-2">
+          <div
+            class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 -mx-1 transition-colors"
+            :class="{ 'bg-blue-50': loadingFullSlice }"
+            @click="handleFullTemplateClick"
+          >
             <el-tag size="small" type="success" effect="plain">Full Template</el-tag>
-            <span class="text-xs text-gray-400">All constraints (compact)</span>
+            <span class="text-xs text-gray-400">All constraints</span>
           </div>
         </div>
       </template>
@@ -58,6 +62,20 @@
                 </el-icon>
               </el-tooltip>
             </div>
+          </div>
+        </div>
+
+        <div
+          class="flex-shrink-0 px-2 py-2 border-t border-gray-100"
+        >
+          <div
+            class="flex items-center gap-2 cursor-pointer hover:bg-green-50 rounded px-2 py-1.5 transition-colors"
+            :class="{ 'bg-green-50 ring-1 ring-green-200': loadingFullSlice }"
+            @click="handleFullTemplateClick"
+          >
+            <el-tag size="small" type="success" effect="plain">Full Template</el-tag>
+            <span class="text-xs text-gray-400 flex-1">Show all constraints</span>
+            <el-icon v-if="loadingFullSlice" class="is-loading text-green-500" :size="14"><Loading /></el-icon>
           </div>
         </div>
 
@@ -113,6 +131,12 @@ const loadingCandidates = ref(false);
 const candidatesError = ref('');
 const activeCandidateId = ref<string | null>(null);
 const loadingSliceFor = ref<string | null>(null);
+const loadingFullSlice = ref(false);
+
+function handleFullTemplateClick() {
+  loadingFullSlice.value = true;
+  emit('loadFullSlice');
+}
 
 function stripMain(s: string): string {
   return s.replace(/^main\./, '');

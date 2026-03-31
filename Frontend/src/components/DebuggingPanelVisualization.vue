@@ -14,6 +14,7 @@
         style="width: 300px;"
         :schema-summary="currentSchemaSummary"
         @slice-selected="handleSliceSelected"
+        @load-full-slice="handleLoadFullSlice"
       />
       <div class="flex-1 min-w-0 flex flex-col">
         <div
@@ -218,6 +219,10 @@ function clearSlice() {
   activeSlice.value = null;
   activeSliceId.value = null;
   activeTargetSignals.value = [];
+}
+
+async function handleLoadFullSlice() {
+  await loadFullTemplateSlice();
 }
 
 function handleSignalClick(signalName: string) {
