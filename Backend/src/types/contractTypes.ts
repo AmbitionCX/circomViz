@@ -41,6 +41,7 @@ export interface GenerateContractRequest {
   constraintsJsonPath: string;
   templateName: string;
   instancePath: string;
+  constraintIndices?: number[];
   soundnessResult?: any;
   intentResult?: any;
   formalResult?: any;
@@ -57,6 +58,7 @@ export interface ContractVerifyRequest {
   constraintsJsonPath: string;
   templateName: string;
   childContracts: TemplateContract[];
+  constraintIndices?: number[];
   queries: {
     checkSatisfiability?: boolean;
     checkDeterminism?: boolean;
@@ -82,6 +84,7 @@ export interface RefinementExpandRequest {
   templateName: string;
   childContracts: TemplateContract[];
   expandedChildren: string[];
+  constraintIndices?: number[];
   queries: {
     checkSatisfiability?: boolean;
     checkDeterminism?: boolean;

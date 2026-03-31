@@ -137,3 +137,42 @@ export function resolveConstraintsWithNames(
     };
   });
 }
+
+export function resolveConstraintTrees(
+  constraints: ConstraintObject[],
+  symEntries: SymEntry[]
+): Array<{ index: number; kind: string; description: string; a: any; b: any; c: any }> {
+  const indexToName = new Map<number, string>();
+  for (const entry of symEntries) {
+    indexToName.set(entry.index, entry.name);
+  }
+
+  return constraints.map((constraint, idx) => {
+    const [rawA, rawB, rawC] = constraint;
+    const parseExpr = (expr: Record<string, string | number>) => {
+      const terms: Array<{ signal: string; signalIndex: number; coefficient: string }> = [];
+      let constant = '0';
+      for (const [key, val] of Object.entries(expr)) {
+        if (key === '0' || key === '1') {
+          constant = String(simplifyFieldElement(val));
+          continue;
+        }
+        const signalIdx = parseInt(key);
+        const signalName = indexToName.get(signalIdx) || `s_${signalIdx}`;
+        const coeff = simplifyFieldElement(val);
+        if (coeff !== 0n) {
+          terms.push({ signal: signalName, signalIndex: signalIdx, coefficient: String(coeff) });
+        }
+      }
+      return { terms, constant };
+    };
+    return {
+      index: idx,
+      kind: 'unknown',
+      description: '',
+      a: parseExpr(rawA),
+      b: parseExpr(rawB),
+      c: parseExpr(rawC),
+    };
+  });
+}

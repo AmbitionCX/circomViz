@@ -172,65 +172,122 @@ export interface SoundnessCheckResponse {
 }
 
 export interface IndexMetadata {
-  totalSignals: number;
-  totalConstraints: number;
+  signalCount: number;
+  constraintCount: number;
   componentCount: number;
   arrayFamilyCount: number;
-  cachePath: string;
+  inputCount: number;
+  outputCount: number;
+  intermediateCount: number;
+  maxComponentDepth: number;
+  componentGroups: ComponentGroup[];
+  buildTimeMs: number;
 }
 
 export interface BuildIndexResponse {
   success: boolean;
-  metadata: IndexMetadata;
+  metadata?: IndexMetadata;
+  cachePath?: string;
   error?: string;
 }
 
 export type SliceDirection = 'backward' | 'forward' | 'bidirectional';
+
+export interface ComponentGroup {
+  prefix: string;
+  signalCount: number;
+  constraintCount: number;
+  inputCount: number;
+  outputCount: number;
+  intermediateCount: number;
+  kindCounts: Record<string, number>;
+  childComponents: string[];
+}
+
+export interface SignalRef {
+  index: number;
+  name: string;
+  witness: number;
+  component: string;
+  classification: 'input' | 'output' | 'intermediate';
+}
+
+export interface ResolvedSliceConstraint {
+  index: number;
+  formula: string;
+  signalsUsed: string[];
+  kind: string;
+  component: string;
+}
 
 export interface SliceResult {
   constraintIndices: number[];
   signalIndices: number[];
   constraintCount: number;
   signalCount: number;
-  totalConstraints: number;
-  totalSignals: number;
-  reductionPercent: number;
+  resolvedConstraints: ResolvedSliceConstraint[];
   componentGroups: ComponentGroup[];
-  resolvedConstraints: ResolvedConstraint[];
+  signals: SignalRef[];
 }
 
-export interface ComponentGroup {
+export interface SliceResponse {
+  success: boolean;
+  slice?: SliceResult;
+  totalConstraintCount: number;
+  totalSignalCount: number;
+  reductionPercent: number;
+  error?: string;
+}
+
+export interface BipartiteSignalNode {
+  id: string;
+  index: number;
+  name: string;
+  shortName: string;
+  component: string;
+  classification: 'input' | 'output' | 'intermediate';
+  witness: number;
+  constraintCount: number;
+}
+
+export interface BipartiteConstraintCluster {
+  id: string;
+  kind: string;
+  indexRange: string;
+  count: number;
+  sampleFormula: string;
+  signals: string[];
+}
+
+export interface BipartiteComponentNode {
+  id: string;
   prefix: string;
-  signalIndices: number[];
+  label: string;
+  signalCount: number;
   constraintCount: number;
   inputCount: number;
   outputCount: number;
   intermediateCount: number;
-}
-
-export interface ComponentEdge {
-  fromComponent: string;
-  toComponent: string;
-  signalCount: number;
-  sharedConstraints: number;
-}
-
-export interface ConstraintKindSummary {
-  component: string;
   kindCounts: Record<string, number>;
-  total: number;
+  childComponents: string[];
+  signals: BipartiteSignalNode[];
+  constraints: BipartiteConstraintCluster[];
 }
 
-export interface BipartiteGraphData {
+export interface BipartiteGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  type: 'signal-constraint' | 'component-flow';
+}
+
+export interface BipartiteGraphResponse {
   success: boolean;
-  componentGroups: ComponentGroup[];
-  boundarySignals: Array<{
-    name: string;
-    index: number;
-    kind: 'input' | 'output' | 'intermediate';
-  }>;
-  constraintSummaries: ConstraintKindSummary[];
-  componentEdges: ComponentEdge[];
+  components: BipartiteComponentNode[];
+  topLevelSignals: BipartiteSignalNode[];
+  edges: BipartiteGraphEdge[];
+  metadata: IndexMetadata;
+  error?: string;
 }
 
 export interface ContractClause {
@@ -281,6 +338,7 @@ export interface ContractVerifyResult {
   error?: string;
 }
 
+export interface FormalConformanceResponse {
   success: boolean;
   specTranslation?: {
     assumptions: Array<{
@@ -311,5 +369,182 @@ export interface ContractVerifyResult {
     determinism?: FormalConformanceDeterminismResult;
     totality?: FormalConformanceTotalityResult;
   };
+  error?: string;
+}
+
+export interface FormalConformanceSoundnessResult {
+  conformant: boolean;
+  noVerifiableSpec?: boolean;
+  violation?: {
+    inputValues: Record<string, string>;
+    outputValues: Record<string, string>;
+    violatedSpec: string;
+  };
+  solverOutput: string;
+  executionTimeMs: number;
+  translatedSpecLines: number;
+  parseErrors?: string[];
+}
+
+export interface FormalConformanceCompletenessResult {
+  complete: boolean;
+  gap?: {
+    inputValues: Record<string, string>;
+    specAllowsOutput: string;
+    circuitCannotProduce: string;
+  };
+  solverOutput: string;
+  executionTimeMs: number;
+}
+
+export interface FormalConformanceDeterminismResult {
+  deterministic: boolean;
+  counterexample?: {
+    input: Record<string, string>;
+    output1: Record<string, string>;
+    output2: Record<string, string>;
+  };
+  solverOutput: string;
+  executionTimeMs: number;
+}
+
+export interface FormalConformanceTotalityResult {
+  total: boolean;
+  noWitnessInputs?: Array<Record<string, string>>;
+  solverOutput: string;
+  executionTimeMs: number;
+  checkedInputs: number;
+}
+
+export interface ResolvedConstraint {
+  index: number;
+  formula: string;
+  signalsUsed: string[];
+}
+
+export interface IntentAlignmentResponse {
+  success: boolean;
+  groups: IntentAlignmentGroup[];
+  error?: string;
+}
+
+export interface ResolveConstraintsResponse {
+  success: boolean;
+  constraints: ResolvedConstraint[];
+  signalCount: number;
+  constraintCount: number;
+  error?: string;
+}
+
+export type InvariantKind =
+  | 'boolean'
+  | 'range_check'
+  | 'multiplication'
+  | 'addition'
+  | 'linear_equality'
+  | 'selector_gate'
+  | 'decomposition'
+  | 'constant_constraint'
+  | 'complex'
+  | 'zero_constraint';
+
+export interface NormalizedInvariant {
+  kind: InvariantKind;
+  description: string;
+  signals: string[];
+  rawFormula: string;
+}
+
+export interface SubcomponentCluster {
+  prefix: string;
+  signals: Array<{ name: string; index: number; witness: number }>;
+  publicSignals: string[];
+  privateSignals: string[];
+  constraintCount: number;
+}
+
+export interface InterfaceSummary {
+  templateName: string;
+  inputs: Array<{ name: string; kind: string }>;
+  outputs: Array<{ name: string; kind: string }>;
+  publicSignals: string[];
+  privateSignals: string[];
+  likelyBooleanFlags: string[];
+  likelyCommitments: string[];
+  likelyHashes: string[];
+}
+
+export interface NormalizedContext {
+  interfaceSummary: InterfaceSummary;
+  subcomponentClusters: SubcomponentCluster[];
+  invariantSummary: string;
+  representativeInvariants: NormalizedInvariant[];
+  totalConstraints: number;
+  templateSignature: string;
+  callerInfo: string;
+}
+
+export interface IntentAlignmentGroup {
+  groupId: string;
+  sourceFile: string;
+  templateName: string;
+  lineRange: [number, number];
+  normalizedContext: NormalizedContext;
+  sourceSnippet: string;
+  metadata: {
+    signals: Array<{ name: string; kind: string }>;
+    subcomponents: Array<{ name: string; templateName: string }>;
+    parameters: string[];
+    comments: string[];
+  };
+  llmResult: {
+    summary: string;
+    candidateSpecDSL: string;
+    ambiguities: string[];
+    riskNotes: string[];
+  } | null;
+  error?: string;
+}
+
+export interface SliceCandidate {
+  id: string;
+  name: string;
+  direction: SliceDirection;
+  targetSignals: string[];
+  sourceSignals: string[];
+  groupKind: 'output_array' | 'input_array' | 'output_single' | 'input_single' | 'component' | 'heuristic';
+  signalCount: number;
+  priority: number;
+}
+
+export interface SliceCandidatesResponse {
+  success: boolean;
+  candidates: SliceCandidate[];
+  error?: string;
+}
+
+export interface LinearTerm {
+  signal: string;
+  signalIndex: number;
+  coefficient: string;
+}
+
+export interface LinearExpression {
+  terms: LinearTerm[];
+  constant: string;
+}
+
+export interface ConstraintTree {
+  index: number;
+  kind: string;
+  description: string;
+  a: LinearExpression;
+  b: LinearExpression;
+  c: LinearExpression;
+}
+
+export interface ConstraintTreesResponse {
+  success: boolean;
+  trees: ConstraintTree[];
   error?: string;
 }

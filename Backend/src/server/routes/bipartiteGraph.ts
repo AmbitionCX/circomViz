@@ -1,14 +1,26 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
-import { parseSymFile, parseConstraintsFile } from '../../core/utils/symbolParser.js';
-import { normalizeConstraints, clusterSignalsByComponentPath, type InvariantKind } from '../../core/utils/constraintNormalizer.js';
+import { normalizeConstraints } from '../../core/utils/constraintNormalizer.js';
 import { logger } from '../../utils/logger.js';
-import type { BipartiteGraphData, ComponentEdge, ConstraintKindSummary } from '../../types/slicerTypes.js';
+import type { ConstraintIndexData } from '../../types/slicerTypes.js';
+import type { ConstraintObject } from '../../types/constraint.js';
+import type {
+  BipartiteGraphRequest,
+  BipartiteGraphResponse,
+  BipartiteComponentNode,
+  BipartiteSignalNode,
+  BipartiteConstraintCluster,
+  BipartiteGraphEdge,
+} from '../../types/slicerTypes.js';
 
-interface BipartiteGraphRequest {
-  symPath: string;
-  constraintsJsonPath: string;
-}
+const MAX_TOP_LEVEL_SIGNALS = 200;
+const MAX_SAMPLE_FORMULAS = 5;
+
+const EMPTY_METADATA = {
+  signalCount: 0, constraintCount: 0, componentCount: 0, arrayFamilyCount: 0,
+  inputCount: 0, outputCount: 0, intermediateCount: 0, maxComponentDepth: 0,
+  componentGroups: [], buildTimeMs: 0,
+};
 
 export async function bipartiteGraphHandler(
   request: FastifyRequest<{ Body: BipartiteGraphRequest }>,
@@ -20,126 +32,262 @@ export async function bipartiteGraphHandler(
     if (!symPath || !constraintsJsonPath) {
       return reply.code(400).send({
         success: false,
-        componentGroups: [],
-        boundarySignals: [],
-        constraintSummaries: [],
-        componentEdges: [],
+        components: [],
+        topLevelSignals: [],
+        edges: [],
+        metadata: EMPTY_METADATA,
         error: 'symPath and constraintsJsonPath are required',
-      });
+      } as BipartiteGraphResponse);
     }
 
-    logger.info(`Building bipartite graph data: sym=${symPath}`);
+    logger.info(`Building bipartite graph: sym=${symPath}, constraints=${constraintsJsonPath}`);
 
     const indexer = new ConstraintIndexer();
-    const { data } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index, symEntries, constraints } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
 
-    const symEntries = await parseSymFile(symPath);
-    const constraints = await parseConstraintsFile(constraintsJsonPath);
     const { invariants } = normalizeConstraints(constraints, symEntries);
 
-    const componentGroups = data.componentGroups.filter(g => !g.prefix.includes('.') || g.prefix.split('.').length <= 3);
+    const components = buildComponentNodes(index, constraints, invariants);
+    const topLevelSignals = buildTopLevelSignals(index, constraints, MAX_TOP_LEVEL_SIGNALS);
+    const edges = buildComponentEdges(index, constraints);
 
-    const boundarySignals = symEntries
-      .filter(e => e.index !== 0 && (e.name.split('.').length <= 2))
-      .map(e => ({
-        name: e.name,
-        index: e.index,
-        kind: (data.signalClassification[String(e.index)] || 'intermediate') as 'input' | 'output' | 'intermediate',
-      }));
+    logger.info(`Bipartite graph: ${components.length} components, ${topLevelSignals.length} top-level signals, ${edges.length} edges`);
 
-    const kindByComponent = new Map<string, Record<string, number>>();
-    const componentIndex = new Map<number, string>();
-    for (const entry of symEntries) {
-      if (entry.index === 0) continue;
-      const parts = entry.name.split('.');
-      if (parts.length > 1) {
-        componentIndex.set(entry.index, parts.slice(0, -1).join('.'));
-      }
-    }
-
-    for (let ci = 0; ci < constraints.length; ci++) {
-      const sigs = data.constraintToSignals[String(ci)];
-      if (!sigs) continue;
-      for (const sig of sigs) {
-        const comp = componentIndex.get(sig) || 'main';
-        if (!kindByComponent.has(comp)) kindByComponent.set(comp, {});
-      }
-      if (ci < invariants.length) {
-        const inv = invariants[ci];
-        const comps = new Set<string>();
-        for (const sig of sigs) {
-          comps.add(componentIndex.get(sig) || 'main');
-        }
-        for (const comp of comps) {
-          const counts = kindByComponent.get(comp)!;
-          counts[inv.kind] = (counts[inv.kind] || 0) + 1;
-        }
-      }
-    }
-
-    const constraintSummaries: ConstraintKindSummary[] = [];
-    for (const [comp, kindCounts] of kindByComponent) {
-      constraintSummaries.push({
-        component: comp,
-        kindCounts,
-        total: Object.values(kindCounts).reduce((a, b) => a + b, 0),
-      });
-    }
-
-    const componentEdges: ComponentEdge[] = [];
-    const edgeMap = new Map<string, { signalCount: number; sharedConstraints: number }>();
-
-    for (let ci = 0; ci < constraints.length; ci++) {
-      const sigs = data.constraintToSignals[String(ci)];
-      if (!sigs) continue;
-      const comps = new Set<string>();
-      for (const sig of sigs) {
-        const comp = componentIndex.get(sig) || 'main';
-        comps.add(comp);
-      }
-      const compArr = Array.from(comps).sort();
-      for (let i = 0; i < compArr.length; i++) {
-        for (let j = i + 1; j < compArr.length; j++) {
-          const key = `${compArr[i]}->${compArr[j]}`;
-          if (!edgeMap.has(key)) edgeMap.set(key, { signalCount: 0, sharedConstraints: 0 });
-          const edge = edgeMap.get(key)!;
-          edge.sharedConstraints++;
-          edge.signalCount += sigs.filter(s => {
-            const c = componentIndex.get(s) || 'main';
-            return c === compArr[i] || c === compArr[j];
-          }).length;
-        }
-      }
-    }
-
-    for (const [key, val] of edgeMap) {
-      const [from, to] = key.split('->');
-      componentEdges.push({
-        fromComponent: from,
-        toComponent: to,
-        signalCount: val.signalCount,
-        sharedConstraints: val.sharedConstraints,
-      });
-    }
-
-    const graphData: BipartiteGraphData & { success: boolean } = {
+    reply.send({
       success: true,
-      componentGroups,
-      boundarySignals,
-      constraintSummaries: constraintSummaries.sort((a, b) => b.total - a.total).slice(0, 50),
-      componentEdges: componentEdges.sort((a, b) => b.sharedConstraints - a.sharedConstraints).slice(0, 100),
-    };
-
-    reply.send(graphData);
+      components,
+      topLevelSignals,
+      edges,
+      metadata: index.metadata,
+    } as BipartiteGraphResponse);
   } catch (error: any) {
     logger.error(`Error building bipartite graph: ${error.message}`);
     reply.code(500).send({
       success: false,
-      componentGroups: [],
-      boundarySignals: [],
-      constraintSummaries: [],
-      componentEdges: [],
+      components: [],
+      topLevelSignals: [],
+      edges: [],
+      metadata: EMPTY_METADATA,
       error: error.message,
+    } as BipartiteGraphResponse);
+  }
+}
+
+function buildComponentNodes(
+  index: ConstraintIndexData,
+  constraints: ConstraintObject[],
+  invariants: Array<{ kind: string; description: string; signals: string[] }>
+): BipartiteComponentNode[] {
+  const components: BipartiteComponentNode[] = [];
+
+  for (const group of index.metadata.componentGroups) {
+    const prefix = group.prefix;
+    const sigIndices = index.componentToSignals[prefix] || [];
+    const signalIndexSet = new Set<number>(sigIndices);
+
+    const componentConstraintIndices = new Set<number>();
+    for (const sigIdx of sigIndices) {
+      const cIndices = index.signalToConstraints[sigIdx] || [];
+      for (const ci of cIndices) {
+        const depSignals = index.constraintToSignals[ci] || [];
+        const allInComponent = depSignals.every((s: number) => signalIndexSet.has(s));
+        if (allInComponent) {
+          componentConstraintIndices.add(ci);
+        }
+      }
+    }
+
+    const signals = buildComponentSignals(index, sigIndices, componentConstraintIndices);
+
+    const constraintClusters = buildConstraintClusters(
+      componentConstraintIndices,
+      constraints,
+      invariants,
+      index
+    );
+
+    const label = prefix.split('.').pop() || prefix;
+
+    components.push({
+      id: `comp-${prefix}`,
+      prefix,
+      label,
+      signalCount: group.signalCount,
+      constraintCount: group.constraintCount,
+      inputCount: group.inputCount,
+      outputCount: group.outputCount,
+      intermediateCount: group.intermediateCount,
+      kindCounts: group.kindCounts,
+      childComponents: group.childComponents,
+      signals,
+      constraints: constraintClusters,
     });
   }
+
+  return components;
+}
+
+function buildComponentSignals(
+  index: ConstraintIndexData,
+  sigIndices: number[],
+  constraintIndices: Set<number>
+): BipartiteSignalNode[] {
+  const signals: BipartiteSignalNode[] = [];
+  const sortedIndices = [...sigIndices].sort((a: number, b: number) => a - b);
+
+  for (const idx of sortedIndices) {
+    const name = index.signalToName[idx] || `s_${idx}`;
+    const shortName = name.split('.').pop() || name;
+    const constraintCount = (index.signalToConstraints[idx] || []).filter((ci: number) => constraintIndices.has(ci)).length;
+
+    signals.push({
+      id: `sig-${idx}`,
+      index: idx,
+      name,
+      shortName,
+      component: index.signalToComponent[idx] || 'unknown',
+      classification: index.signalClassification[idx] || 'intermediate',
+      witness: -1,
+      constraintCount,
+    });
+  }
+
+  return signals;
+}
+
+function buildConstraintClusters(
+  constraintIndices: Set<number>,
+  constraints: ConstraintObject[],
+  invariants: Array<{ kind: string; description: string; signals: string[] }>,
+  index: ConstraintIndexData
+): BipartiteConstraintCluster[] {
+  const kindGroups = new Map<string, { indices: number[]; signals: Set<string>; samples: string[] }>();
+
+  const sortedIndices = Array.from(constraintIndices).sort((a: number, b: number) => a - b);
+
+  for (const ci of sortedIndices) {
+    const kind = ci < invariants.length ? invariants[ci].kind : 'unknown';
+    if (!kindGroups.has(kind)) {
+      kindGroups.set(kind, { indices: [], signals: new Set(), samples: [] });
+    }
+    const group = kindGroups.get(kind)!;
+    group.indices.push(ci);
+
+    const depSignals = index.constraintToSignals[ci] || [];
+    for (const sigIdx of depSignals) {
+      const name = index.signalToName[sigIdx];
+      if (name) group.signals.add(name.split('.').pop() || name);
+    }
+
+    if (ci < constraints.length && group.samples.length < MAX_SAMPLE_FORMULAS) {
+      const [a, b, c] = constraints[ci];
+      const exprToParts = (expr: Record<string, string | number>) => {
+        const parts: string[] = [];
+        for (const [key, _val] of Object.entries(expr)) {
+          if (key === '0' || key === '1') continue;
+          const sigName = index.signalToName[parseInt(key)];
+          if (sigName) parts.push(sigName.split('.').pop() || `s_${key}`);
+        }
+        return parts.join(', ');
+      };
+      group.samples.push(`${exprToParts(a)} * ${exprToParts(b)} = ${exprToParts(c)}`);
+    }
+  }
+
+  const clusters: BipartiteConstraintCluster[] = [];
+  for (const [kind, group] of kindGroups) {
+    if (group.indices.length === 0) continue;
+
+    const minIdx = group.indices[0];
+    const maxIdx = group.indices[group.indices.length - 1];
+    const indexRange = group.indices.length === 1
+      ? String(minIdx)
+      : `${minIdx}-${maxIdx}`;
+
+    clusters.push({
+      id: `cluster-${kind}-${minIdx}`,
+      kind,
+      indexRange,
+      count: group.indices.length,
+      sampleFormula: group.samples[0] || '',
+      signals: Array.from(group.signals).slice(0, 20),
+    });
+  }
+
+  return clusters.sort((a, b) => b.count - a.count);
+}
+
+function buildTopLevelSignals(
+  index: ConstraintIndexData,
+  _constraints: ConstraintObject[],
+  maxSignals: number
+): BipartiteSignalNode[] {
+  const mainSignals = index.componentToSignals['main'] || [];
+  const signals: BipartiteSignalNode[] = [];
+  const sortedIndices = [...mainSignals].sort((a: number, b: number) => a - b);
+  const limit = Math.min(sortedIndices.length, maxSignals);
+
+  for (let i = 0; i < limit; i++) {
+    const idx = sortedIndices[i];
+    const name = index.signalToName[idx] || `s_${idx}`;
+    const shortName = name.split('.').pop() || name;
+    const constraintCount = (index.signalToConstraints[idx] || []).length;
+
+    signals.push({
+      id: `sig-${idx}`,
+      index: idx,
+      name,
+      shortName,
+      component: 'main',
+      classification: index.signalClassification[idx] || 'intermediate',
+      witness: -1,
+      constraintCount,
+    });
+  }
+
+  return signals;
+}
+
+function buildComponentEdges(
+  index: ConstraintIndexData,
+  constraints: ConstraintObject[]
+): BipartiteGraphEdge[] {
+  const edges: BipartiteGraphEdge[] = [];
+  const edgeMap = new Map<string, { signalCount: number }>();
+
+  for (let ci = 0; ci < constraints.length; ci++) {
+    const depSignals = index.constraintToSignals[ci] || [];
+    if (depSignals.length < 2) continue;
+
+    const components = new Set<string>();
+    for (const sigIdx of depSignals) {
+      const comp = index.signalToComponent[sigIdx];
+      if (comp) components.add(comp);
+    }
+
+    const compArray = Array.from(components).sort();
+    if (compArray.length < 2) continue;
+
+    for (let i = 0; i < compArray.length; i++) {
+      for (let j = i + 1; j < compArray.length; j++) {
+        const key = `${compArray[i]}|||${compArray[j]}`;
+        if (!edgeMap.has(key)) {
+          edgeMap.set(key, { signalCount: 0 });
+        }
+        edgeMap.get(key)!.signalCount++;
+      }
+    }
+  }
+
+  for (const [key, data] of edgeMap) {
+    const [source, target] = key.split('|||');
+    edges.push({
+      source: `comp-${source}`,
+      target: `comp-${target}`,
+      weight: data.signalCount,
+      type: 'component-flow',
+    });
+  }
+
+  return edges.sort((a, b) => b.weight - a.weight);
 }

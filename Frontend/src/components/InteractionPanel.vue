@@ -10,15 +10,6 @@
                 <QuestionFilled />
               </el-icon>
             </el-tooltip>
-            <el-tooltip :content="viewMode === 'text' ? 'Switch to Visualization' : 'Switch to Plain Text'" placement="top">
-              <el-icon
-                class="cursor-pointer transition-colors duration-200"
-                :class="viewMode === 'visualization' ? 'text-indigo-500' : 'text-gray-400 hover:text-indigo-400'"
-                @click.stop="viewMode = viewMode === 'text' ? 'visualization' : 'text'"
-              >
-                <Switch />
-              </el-icon>
-            </el-tooltip>
           </div>
           <div v-if="hasSelectedTemplate" class="flex items-center gap-2 text-sm font-semibold text-gray-700">
             <span class="text-xs font-medium text-gray-500">Template:</span>
@@ -51,60 +42,11 @@
       </div>
     </div>
 
-    <div v-if="viewMode === 'text'" class="flex-1 flex flex-col min-h-0">
-      <el-empty
-        v-if="!hasSelectedTemplate"
-        description="Select a template in Circuit View to start debugging"
-        :image-size="80"
-      />
-      
-      <div v-else class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div class="flex items-center gap-0 mb-3 flex-shrink-0" @click.stop>
-          <button 
-            @click.stop="activeTab = 'constraints'"
-            :class="['step-tab-btn', soundnessConfirmed ? 'step-tab-confirmed' : activeTab === 'constraints' ? 'step-tab-active' : 'step-tab-inactive']"
-          >
-            <el-icon v-if="soundnessConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
-            {{ constraintTabLabel }}
-          </button>
-          <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
-          <button 
-            @click.stop="activeTab = 'verification'"
-            :class="['step-tab-btn', intentConfirmed ? 'step-tab-confirmed' : activeTab === 'verification' ? 'step-tab-active' : 'step-tab-inactive']"
-          >
-            <el-icon v-if="intentConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
-            {{ verificationTabLabel }}
-          </button>
-          <el-icon class="mx-2 text-gray-400"><DArrowRight /></el-icon>
-          <button 
-            @click.stop="activeTab = 'signals'"
-            :class="['step-tab-btn', formalConfirmed ? 'step-tab-confirmed' : activeTab === 'signals' ? 'step-tab-active' : 'step-tab-inactive']"
-          >
-            <el-icon v-if="formalConfirmed" class="mr-1"><CircleCheckFilled /></el-icon>
-            {{ signalsTabLabel }}
-          </button>
-        </div>
-
-        <div class="flex-1 min-h-0 overflow-auto" @click.stop>
-          <div v-show="activeTab === 'constraints'">
-            <SoundnessCheck 
-              ref="soundnessCheckRef"
-              :canRunStaticAnalysis="allCompilesComplete"
-              @confirm="handleConfirmSoundness"
-            />
-          </div>
-          <div v-show="activeTab === 'verification'">
-            <IntentAlignment ref="intentAlignmentRef" @confirm="handleConfirmIntent" />
-          </div>
-          <div v-show="activeTab === 'signals'">
-            <FormalConformance
-              ref="formalConformanceRef"
-              @confirm="handleConfirmFormal"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <el-empty
+      v-if="!hasSelectedTemplate"
+      description="Select a template in Circuit View to start debugging"
+      :image-size="80"
+    />
 
     <div v-else class="flex-1 min-h-0 overflow-hidden">
       <DebuggingPanelVisualization />
@@ -113,18 +55,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { QuestionFilled, CircleCheckFilled, CircleCloseFilled, DArrowRight, Switch } from '@element-plus/icons-vue';
+import { computed } from 'vue';
+import { QuestionFilled, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { hexToRgba } from '@/composables/colors';
-import SoundnessCheck from './SoundnessCheck.vue';
-import IntentAlignment from './IntentAlignment.vue';
-import FormalConformance from './FormalConformance.vue';
 import DebuggingPanelVisualization from './DebuggingPanelVisualization.vue';
 
 const circuitStore = useCircuitStore();
-
-const viewMode = ref<'text' | 'visualization'>('text');
 
 function templateColorStyle(templateName: string) {
   const color = circuitStore.getTemplateColor(templateName);
@@ -137,27 +74,6 @@ function templateColorStyle(templateName: string) {
   };
 }
 
-const activeTab = ref('constraints');
-const soundnessConfirmed = ref(false);
-const intentConfirmed = ref(false);
-const formalConfirmed = ref(false);
-
-const soundnessCheckRef = ref<InstanceType<typeof SoundnessCheck> | null>(null);
-const intentAlignmentRef = ref<InstanceType<typeof IntentAlignment> | null>(null);
-const formalConformanceRef = ref<InstanceType<typeof FormalConformance> | null>(null);
-
-const emit = defineEmits<{
-  confirm: [];
-  formalConformanceConfirmed: [];
-}>();
-
-watch(() => circuitStore.compilationVersion, () => {
-  soundnessConfirmed.value = false;
-  intentConfirmed.value = false;
-  formalConfirmed.value = false;
-  activeTab.value = 'constraints';
-});
-
 const hasSelectedTemplate = computed(() => circuitStore.selectedTemplate !== null);
 
 const selectedTemplate = computed(() => circuitStore.selectedTemplate);
@@ -166,56 +82,11 @@ const debugStatus = computed(() => circuitStore.compilationData.debugStatus);
 const optimizedStatus = computed(() => circuitStore.compilationData.optimizedStatus);
 const witnessStatus = computed(() => circuitStore.compilationData.witnessStatus);
 
-const hasDebugOutput = computed(() => circuitStore.compilationData.debugOutput !== null);
-
-const hasOptimizedOutput = computed(() => circuitStore.compilationData.optimizedOutput !== null);
-
-const hasWitnessOutput = computed(() => circuitStore.compilationData.witnessOutput !== null);
-
 function compileStatusClass(status: 'success' | 'failure' | null): string {
   if (status === 'success') return 'text-green-600';
   if (status === 'failure') return 'text-red-500';
   return 'text-gray-400';
 }
-
-const allCompilesComplete = computed(() => 
-  hasDebugOutput.value && hasOptimizedOutput.value && hasWitnessOutput.value
-);
-
-const constraintTabLabel = computed(() => 
-  allCompilesComplete.value ? 'Soundness Check' : 'Constraints'
-);
-
-const verificationTabLabel = computed(() => 
-  allCompilesComplete.value ? 'Intent Alignment' : 'Verification'
-);
-
-const signalsTabLabel = computed(() => 
-  allCompilesComplete.value ? 'Formal Conformance' : 'Signals'
-);
-
-const handleConfirmSoundness = () => {
-  soundnessConfirmed.value = true;
-  activeTab.value = 'verification';
-};
-
-const handleConfirmIntent = () => {
-  intentConfirmed.value = true;
-  if (intentAlignmentRef.value && formalConformanceRef.value) {
-    formalConformanceRef.value.storeGroups(intentAlignmentRef.value.groups);
-  }
-  activeTab.value = 'signals';
-};
-
-const handleConfirmFormal = () => {
-  formalConfirmed.value = true;
-  const templateName = circuitStore.selectedTemplate?.templateName;
-  if (templateName) {
-    circuitStore.confirmTemplateName(templateName);
-  }
-  emit('confirm');
-  emit('formalConformanceConfirmed');
-};
 </script>
 
 <style scoped>
@@ -235,42 +106,5 @@ const handleConfirmFormal = () => {
 .interaction-panel-container {
   background: white;
   border-radius: 8px;
-}
-
-.step-tab-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 6px;
-  border: 1px solid #dcdfe6;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: #fff;
-  color: #606266;
-}
-
-.step-tab-btn:hover {
-  border-color: #409eff;
-  color: #409eff;
-}
-
-.step-tab-active {
-  border-color: #409eff;
-  color: #409eff;
-  background: #ecf5ff;
-}
-
-.step-tab-inactive {
-  border-color: #dcdfe6;
-  color: #606266;
-  background: #fff;
-}
-
-.step-tab-confirmed {
-  border-color: #67c23a;
-  color: #67c23a;
-  background: #f0f9eb;
 }
 </style>

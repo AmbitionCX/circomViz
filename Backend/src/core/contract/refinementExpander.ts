@@ -21,14 +21,21 @@ export class RefinementExpander {
     templateName: string,
     childContracts: TemplateContract[],
     expandedChildren: string[],
-    queries: { checkSatisfiability?: boolean; checkDeterminism?: boolean; checkCoverage?: boolean }
+    queries: { checkSatisfiability?: boolean; checkDeterminism?: boolean; checkCoverage?: boolean },
+    constraintIndices?: number[],
   ): Promise<{
     results: { satisfiability?: any; determinism?: any; coverage?: any };
     suspectChildren: string[];
     refinementNeeded: boolean;
   }> {
     const symEntries = await parseSymFile(symPath);
-    this.constraints = await parseConstraintsFile(constraintsJsonPath);
+    let allConstraints = await parseConstraintsFile(constraintsJsonPath);
+
+    if (constraintIndices && constraintIndices.length > 0) {
+      const indexSet = new Set(constraintIndices);
+      allConstraints = allConstraints.filter((_, i) => indexSet.has(i));
+    }
+    this.constraints = allConstraints;
 
     const expandedSet = new Set(expandedChildren);
 
@@ -144,15 +151,42 @@ export class RefinementExpander {
   private buildContractAssertions(contract: TemplateContract): ConstraintObject[] {
     const assertions: ConstraintObject[] = [];
     for (const assumption of contract.assumptions) {
-      if (assumption.kind === 'boolean' && assumption.signal) {
-        const sigIdx = this.indexData.nameToSignal[assumption.signal];
-        if (sigIdx !== undefined) {
-          assertions.push([
-            { [String(sigIdx)]: '1' },
-            { '0': '-1' },
-            {},
-          ] as ConstraintObject);
-        }
+      if (!assumption.signal) continue;
+      const sigIdx = this.indexData.nameToSignal[assumption.signal];
+      if (sigIdx === undefined) continue;
+      const key = String(sigIdx);
+
+      switch (assumption.kind) {
+        case 'boolean':
+          assertions.push([{ [key]: '1' }, { [key]: '-1' }, {}] as ConstraintObject);
+          break;
+        case 'range':
+          assertions.push([{ [key]: '1' }, { [key]: '-1' }, {}] as ConstraintObject);
+          break;
+        case 'equality':
+        case 'hash':
+        case 'commitment':
+        case 'custom':
+          assertions.push([{ [key]: '1' }, { [key]: '-1' }, {}] as ConstraintObject);
+          break;
+      }
+    }
+
+    for (const guarantee of contract.guarantees) {
+      if (!guarantee.signal) continue;
+      const sigIdx = this.indexData.nameToSignal[guarantee.signal];
+      if (sigIdx === undefined) continue;
+      const key = String(sigIdx);
+      assertions.push([{ [key]: '1' }, { [key]: '1' }, { [key]: '-1' }] as ConstraintObject);
+    }
+
+    for (const inv of contract.invariants) {
+      if (!inv.signals || inv.signals.length === 0) continue;
+      const sigIdx = this.indexData.nameToSignal[inv.signals[0]];
+      if (sigIdx === undefined) continue;
+      const key = String(sigIdx);
+      if (inv.kind === 'boolean') {
+        assertions.push([{ [key]: '1' }, { [key]: '-1' }, {}] as ConstraintObject);
       }
     }
     return assertions;

@@ -39,7 +39,7 @@ export async function soundnessCheckHandler(
   reply: FastifyReply
 ) {
   try {
-    const { repo, entry, symPath, constraintsJsonPath, queries } = request.body;
+    const { repo, entry, symPath, constraintsJsonPath, constraintIndices, queries } = request.body;
 
     logger.info(`Running soundness check on project: ${repo}, entry: ${entry}`);
 
@@ -62,7 +62,14 @@ export async function soundnessCheckHandler(
     const absoluteEntryPath = loadResult.entryFile.path;
 
     const symbols = await parseSymFile(symPath);
-    const constraints = await parseConstraintsFile(constraintsJsonPath);
+    let constraints = await parseConstraintsFile(constraintsJsonPath);
+
+    if (constraintIndices && constraintIndices.length > 0) {
+      const indexSet = new Set(constraintIndices);
+      const originalLen = constraints.length;
+      constraints = constraints.filter((_, i) => indexSet.has(i));
+      logger.info(`Filtered constraints: ${constraints.length}/${originalLen} (slice scope)`);
+    }
 
     logger.info(`Loaded ${symbols.length} symbols, ${constraints.length} constraints`);
 

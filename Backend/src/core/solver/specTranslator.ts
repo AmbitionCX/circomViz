@@ -22,44 +22,148 @@ export class SpecTranslator {
     return null;
   }
 
-  private isFpArithmetic(expr: string): boolean {
-    const fpOps = ['\\*', '\\+', '-', '/', '\\(', '\\)', '=', ',', '==', '<', '>', '!=', '\\[', '\\]', '\\{', '\\}'];
-    for (const op of fpOps) {
-      if (new RegExp(op).test(expr)) return true;
-    }
-    return false;
+  private stripComments(line: string): string {
+    const commentIdx = line.indexOf('//');
+    if (commentIdx >= 0) return line.substring(0, commentIdx).trim();
+    return line.trim();
+  }
+
+  private stripTrailingParens(line: string): string {
+    return line.replace(/\s*\([^)]*\)\s*$/g, '').trim();
   }
 
   private tryExtractBinaryEquality(line: string): { lhs: string; rhs: string } | null {
-    const eqMatch = line.match(/^\s*(\S+)\s*(?:===?)\s*(.+)$/);
+    const eqMatch = line.match(/^\s*(.+?)\s*(?:={2,3})\s*(.+)$/);
     if (eqMatch) {
-      return { lhs: eqMatch[1].trim(), rhs: eqMatch[2].trim() };
+      const lhs = eqMatch[1].trim();
+      const rhs = eqMatch[2].trim();
+      if (lhs && rhs) return { lhs, rhs };
+    }
+    const singleEqMatch = line.match(/^\s*(.+?)\s*=\s*(.+)$/);
+    if (singleEqMatch) {
+      const lhs = singleEqMatch[1].trim();
+      const rhs = singleEqMatch[2].trim();
+      if (lhs && rhs && !/^=/.test(rhs) && !/=$/.test(lhs)) {
+        return { lhs, rhs };
+      }
     }
     return null;
   }
 
-  private tryExtractArithmeticExpression(expr: string): { terms: string[]; ops: string[] } | null {
-    const tokens = expr.match(/[a-zA-Z_][\w.]*|\d+|[+\-*=(),]/g);
-    if (!tokens) return null;
-    const terms: string[] = [];
-    const ops: string[] = [];
+  private tokenizeArithmetic(expr: string): { tokens: Array<{ type: 'number' | 'signal' | 'op' | 'lparen' | 'rparen'; value: string }> } | null {
+    const regex = /(\d+)\s*\*\s*\(([^)]+)\)|(\d+)\s*\*\s*([\w.\[\]]+)|([\w.\[\]]+)\s*\*\s*([\w.\[\]]+)|(\d+)|([\w.\[\]]+)|([+\-*,()])/g;
+    const rawTokens: Array<{ type: 'number' | 'signal' | 'op' | 'lparen' | 'rparen'; value: string }> = [];
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(expr)) !== null) {
+      if (match[1] !== undefined && match[2] !== undefined) {
+        rawTokens.push({ type: 'number', value: match[1] });
+        rawTokens.push({ type: 'op', value: '*' });
+        const inner = match[2].trim();
+        for (const t of inner.split(/(?=[+\-*,])|(?<=[+\-*,])/)) {
+          const tt = t.trim();
+          if (!tt) continue;
+          if (/^\d+$/.test(tt)) rawTokens.push({ type: 'number', value: tt });
+          else if (['+', '-', '*', ','].includes(tt)) rawTokens.push({ type: 'op', value: tt });
+          else rawTokens.push({ type: 'signal', value: tt });
+        }
+      } else if (match[3] !== undefined && match[4] !== undefined) {
+        rawTokens.push({ type: 'number', value: match[3] });
+        rawTokens.push({ type: 'op', value: '*' });
+        rawTokens.push({ type: 'signal', value: match[4] });
+      } else if (match[5] !== undefined && match[6] !== undefined) {
+        rawTokens.push({ type: 'signal', value: match[5] });
+        rawTokens.push({ type: 'op', value: '*' });
+        rawTokens.push({ type: 'signal', value: match[6] });
+      } else if (match[7] !== undefined) {
+        rawTokens.push({ type: 'number', value: match[7] });
+      } else if (match[8] !== undefined) {
+        rawTokens.push({ type: 'signal', value: match[8] });
+      } else if (match[9] !== undefined) {
+        if (match[9] === '(') rawTokens.push({ type: 'lparen', value: '(' });
+        else if (match[9] === ')') rawTokens.push({ type: 'rparen', value: ')' });
+        else rawTokens.push({ type: 'op', value: match[9] });
+      }
+    }
+    return rawTokens.length > 0 ? { tokens: rawTokens } : null;
+  }
+
+  private buildSmt2Expression(tokens: Array<{ type: 'number' | 'signal' | 'op' | 'lparen' | 'rparen'; value: string }>): string | null {
+    const addOps: string[] = [];
+    const args: string[] = [];
     let i = 0;
+
     while (i < tokens.length) {
-      if (tokens[i] === '(') { i++; continue; }
-      if (tokens[i] === ')') { i++; continue; }
-      if (['+', '-', '*', '='].includes(tokens[i])) {
-        ops.push(tokens[i]);
+      const t = tokens[i];
+      if (t.type === 'op' && t.value === '+') {
+        addOps.push('+');
         i++;
-      } else if (/^\d+$/.test(tokens[i])) {
-        terms.push(tokens[i]);
+      } else if (t.type === 'op' && t.value === '-') {
+        i++;
+        if (i < tokens.length && (tokens[i].type === 'signal' || tokens[i].type === 'number')) {
+          let val: string;
+          if (tokens[i].type === 'signal') {
+            const idx = this.resolveSignal(tokens[i].value);
+            if (idx === null) return null;
+            val = `s_${idx}`;
+          } else {
+            val = tokens[i].value;
+          }
+          args.push(`(- ${val})`);
+          i++;
+        }
+      } else if (t.type === 'op' && t.value === '*') {
+        i++;
+        if (i < tokens.length && (tokens[i].type === 'signal' || tokens[i].type === 'number')) {
+          let val: string;
+          if (tokens[i].type === 'signal') {
+            const idx = this.resolveSignal(tokens[i].value);
+            if (idx === null) return null;
+            val = `s_${idx}`;
+          } else {
+            val = tokens[i].value;
+          }
+          if (args.length === 0) {
+            return null;
+          }
+          const prev = args.pop()!;
+          args.push(`(* ${prev} ${val})`);
+          i++;
+        }
+      } else if (t.type === 'lparen' || t.type === 'rparen') {
         i++;
       } else {
-        terms.push(tokens[i]);
+        let val: string;
+        if (t.type === 'signal') {
+          const idx = this.resolveSignal(t.value);
+          if (idx === null) return null;
+          val = `s_${idx}`;
+        } else if (t.type === 'number') {
+          val = t.value;
+        } else {
+          return null;
+        }
+        args.push(val);
         i++;
       }
     }
-    if (terms.length === 0) return null;
-    return { terms, ops };
+
+    if (args.length === 0) return null;
+
+    if (addOps.length === 0) return args[0];
+
+    let result = args[0];
+    for (let j = 1; j < args.length; j++) {
+      result = `(+ ${result} ${args[j]})`;
+    }
+    return result;
+  }
+
+  private extractBooleanSignal(line: string): string | null {
+    const match = line.match(/^\s*([\w.\[\]]+)\s*\*\s*\1\s*=\s*0\s*$/);
+    if (match) return match[1].trim();
+    const match2 = line.match(/^\s*([\w.\[\]]+)\s*\*\s*\(1\s*-\s*([\w.\[\]]+)\)\s*=\s*0\s*$/);
+    if (match2 && match2[1].trim() === match2[2].trim()) return match2[1].trim();
+    return null;
   }
 
   private translateAssumptionBoolean(line: string): SpecTranslation['assumptions'][0] | null {
@@ -96,71 +200,144 @@ export class SpecTranslator {
   }
 
   private translateAssumptionPublic(line: string): SpecTranslation['assumptions'][0] | null {
-    const match = line.match(/^\s*(\S+)\s+is\s+(public|private)/);
+    const match = line.match(/^\s*([\w.\[\],\s]+?)\s+are\s+(public|private)/);
     if (match) {
-      const signal = match[1].trim();
+      const signalsStr = match[1].trim();
+      const signals = signalsStr.split(',').map(s => s.trim()).filter(Boolean);
+      const visibility = match[2];
+      for (const sig of signals) {
+        this.resolveSignal(sig);
+      }
+      return {
+        raw: line.trim(),
+        signal: signals.join(', '),
+        kind: 'constant',
+        params: { visibility },
+        smt2Lines: signals.map(s => `; ${s} is ${visibility} (informational, no SMT constraint)`),
+      };
+    }
+    const singleMatch = line.match(/^\s*(\S+)\s+is\s+(public|private)/);
+    if (singleMatch) {
+      const signal = singleMatch[1].trim();
       const idx = this.resolveSignal(signal);
       if (idx === null) return null;
       return {
         raw: line.trim(),
         signal,
         kind: 'constant',
-        params: { visibility: match[2] },
+        params: { visibility: singleMatch[2] },
         smt2Lines: [
-          `; ${signal} is ${match[2]} (informational, no SMT constraint)`,
+          `; ${signal} is ${singleMatch[2]} (informational, no SMT constraint)`,
         ],
       };
     }
     return null;
   }
 
+  private translateInformational(line: string): SpecTranslation['assumptions'][0] | null {
+    const cleaned = this.stripTrailingParens(line);
+    const descPatterns = [
+      /^\s*([\w.\[\]]+)\s+is\s+a\s+/i,
+      /^\s*([\w.\[\]]+(?:\[[^\]]*\])?)\s+are\s+/i,
+    ];
+    for (const pat of descPatterns) {
+      const match = cleaned.match(pat);
+      if (match) return { raw: line.trim(), signal: match[1].trim(), kind: 'constant' as const, params: {}, smt2Lines: [`; ${cleaned}`] };
+    }
+    const broaderPatterns = [
+      /^\s*([\w.\[\]]+)\s+is\s+/i,
+    ];
+    for (const pat of broaderPatterns) {
+      const match = cleaned.match(pat);
+      if (match) return { raw: line.trim(), signal: match[1].trim(), kind: 'constant' as const, params: {}, smt2Lines: [`; ${cleaned}`] };
+    }
+    return null;
+  }
+
+  private buildSmt2FromExpr(expr: string): string | null {
+    const tokenized = this.tokenizeArithmetic(expr);
+    if (!tokenized) return null;
+    const smt2 = this.buildSmt2Expression(tokenized.tokens);
+    return smt2;
+  }
+
+  private extractSignalsFromExpr(expr: string): string[] {
+    const signals: string[] = [];
+    const regex = /[\w.\[\]]+/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(expr)) !== null) {
+      const name = match[0];
+      if (!/^\d+$/.test(name)) {
+        signals.push(name);
+      }
+    }
+    return signals;
+  }
+
   private translatePostEquality(line: string): SpecTranslation['posts'][0] | null {
-    const eq = this.tryExtractBinaryEquality(line);
+    const cleanLine = this.stripComments(line).trim();
+    const cleanLineNoParens = this.stripTrailingParens(cleanLine);
+
+    const boolSignal = this.extractBooleanSignal(cleanLineNoParens);
+    if (boolSignal) {
+      const idx = this.resolveSignal(boolSignal);
+      if (idx !== null) {
+        return {
+          raw: line.trim(),
+          kind: 'equality',
+          lhsSignals: [boolSignal],
+          rhsSignals: [],
+          smt2Lines: [
+            `(assert (or (= s_${idx} 0) (= s_${idx} 1)))`,
+          ],
+          parseable: true,
+        };
+      }
+    }
+
+    const eq = this.tryExtractBinaryEquality(cleanLineNoParens);
     if (!eq) return null;
 
-    const lhsIdx = this.resolveSignal(eq.lhs);
-    const rhsIdx = this.resolveSignal(eq.rhs);
+    const lhsExpr = this.buildSmt2FromExpr(eq.lhs);
+    const rhsExpr = this.buildSmt2FromExpr(eq.rhs);
 
-    if (lhsIdx !== null && rhsIdx !== null) {
+    if (lhsExpr !== null && rhsExpr !== null) {
+      const lhsSignals = this.extractSignalsFromExpr(eq.lhs);
+      const rhsSignals = this.extractSignalsFromExpr(eq.rhs);
       return {
         raw: line.trim(),
         kind: 'equality',
-        lhsSignals: [eq.lhs],
-        rhsSignals: [eq.rhs],
+        lhsSignals,
+        rhsSignals,
         smt2Lines: [
-          `(assert (= s_${lhsIdx} s_${rhsIdx}))`,
+          `(assert (= (mod ${lhsExpr} P) (mod ${rhsExpr} P)))`,
         ],
         parseable: true,
       };
     }
 
-    if (lhsIdx !== null) {
-      const parsed = this.tryExtractArithmeticExpression(eq.rhs);
-      if (parsed) {
-        const smt2Expr = this.buildSmt2FromTokens(parsed.terms, parsed.ops);
-        if (smt2Expr) {
-          return {
-            raw: line.trim(),
-            kind: 'equality',
-            lhsSignals: [eq.lhs],
-            rhsSignals: parsed.terms.filter(t => !/^\d+$/.test(t)),
-            smt2Lines: [
-              `(assert (= s_${lhsIdx} ${smt2Expr}))`,
-            ],
-            parseable: true,
-          };
-        }
-      }
-    }
-
-    if (this.isFpArithmetic(eq.rhs)) {
-      const allSignals = [...(eq.lhs.match(/[\w.]+/g) || []), ...(eq.rhs.match(/[\w.]+/g) || [])]
-        .filter(s => !/^\d+$/.test(s) && s !== '=');
+    if (lhsExpr !== null) {
+      const lhsSignals = this.extractSignalsFromExpr(eq.lhs);
       return {
         raw: line.trim(),
         kind: 'equality',
-        lhsSignals: [eq.lhs],
-        rhsSignals: allSignals.filter(s => s !== eq.lhs),
+        lhsSignals,
+        rhsSignals: this.extractSignalsFromExpr(eq.rhs),
+        smt2Lines: [
+          `; Cannot translate RHS: ${eq.rhs}`,
+        ],
+        parseable: false,
+      };
+    }
+
+    const lhsSignals = this.extractSignalsFromExpr(eq.lhs);
+    const rhsSignals = this.extractSignalsFromExpr(eq.rhs);
+    if (lhsSignals.length > 0 || rhsSignals.length > 0) {
+      return {
+        raw: line.trim(),
+        kind: 'equality',
+        lhsSignals,
+        rhsSignals,
         smt2Lines: [
           `; Cannot auto-translate: ${line.trim()}`,
         ],
@@ -171,37 +348,9 @@ export class SpecTranslator {
     return null;
   }
 
-  private buildSmt2FromTokens(terms: string[], ops: string[]): string | null {
-    let result = '';
-    let i = 0;
-    let expectOperand = true;
-    while (i < terms.length) {
-      const term = terms[i];
-      if (/^\d+$/.test(term)) {
-        result = result ? `${result} ${term}` : term;
-        expectOperand = false;
-      } else {
-        const idx = this.resolveSignal(term);
-        if (idx === null) return null;
-        const varName = `s_${idx}`;
-        if (ops[i - 1] === '*' && !expectOperand && result) {
-          result = `(* ${result} ${varName})`;
-        } else if (ops[i - 1] === '-' && !expectOperand && result) {
-          result = `(- ${result} ${varName})`;
-        } else if (ops[i - 1] === '+' && !expectOperand && result) {
-          result = `(+ ${result} ${varName})`;
-        } else {
-          result = result ? `${result} ${varName}` : varName;
-        }
-        expectOperand = false;
-      }
-      i++;
-    }
-    return result || null;
-  }
-
   private translateInvariantBoolean(line: string): SpecTranslation['invariants'][0] | null {
-    const match = line.match(/^\s*(\S+)\s+is\s+boolean/);
+    const cleanLine = this.stripComments(line).trim();
+    const match = cleanLine.match(/^\s*(\S+)\s+is\s+boolean/);
     if (match) {
       const signal = match[1].trim();
       const idx = this.resolveSignal(signal);
@@ -215,30 +364,39 @@ export class SpecTranslator {
         parseable: true,
       };
     }
+    const boolSignal = this.extractBooleanSignal(cleanLine);
+    if (boolSignal) {
+      const idx = this.resolveSignal(boolSignal);
+      if (idx !== null) {
+        return {
+          raw: line.trim(),
+          kind: 'boolean',
+          smt2Lines: [
+            `(assert (or (= s_${idx} 0) (= s_${idx} 1)))`,
+          ],
+          parseable: true,
+        };
+      }
+    }
     return null;
   }
 
   private translateInvariantEquality(line: string): SpecTranslation['invariants'][0] | null {
-    const match = line.match(/^\s*(.+?)\s*=\s*(.+)$/);
-    if (!match) return null;
-    const lhs = match[1].trim();
-    const rhs = match[2].trim();
+    const cleanLine = this.stripComments(line).trim();
+    const cleanLineNoParens = this.stripTrailingParens(cleanLine);
 
-    const lhsTokens = lhs.match(/[\w.]+/g) || [];
-    const rhsTokens = rhs.match(/[\w.]+/g) || [];
-    const allSignals = [...lhsTokens, ...rhsTokens].filter(s => !/^\d+$/.test(s));
+    const eq = this.tryExtractBinaryEquality(cleanLineNoParens);
+    if (!eq) return null;
 
-    const lhsParsed = this.tryExtractArithmeticExpression(lhs);
-    const rhsParsed = this.tryExtractArithmeticExpression(rhs);
-    const lhsSmt2 = lhsParsed ? this.buildSmt2FromTokens(lhsParsed.terms, lhsParsed.ops) : null;
-    const rhsSmt2 = rhsParsed ? this.buildSmt2FromTokens(rhsParsed.terms, rhsParsed.ops) : null;
+    const lhsExpr = this.buildSmt2FromExpr(eq.lhs);
+    const rhsExpr = this.buildSmt2FromExpr(eq.rhs);
 
-    if (lhsSmt2 && rhsSmt2) {
+    if (lhsExpr !== null && rhsExpr !== null) {
       return {
         raw: line.trim(),
         kind: 'equality',
         smt2Lines: [
-          `(assert (= ${lhsSmt2} ${rhsSmt2}))`,
+          `(assert (= (mod ${lhsExpr} P) (mod ${rhsExpr} P)))`,
         ],
         parseable: true,
       };
@@ -267,23 +425,25 @@ export class SpecTranslator {
 
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('//')) continue;
+      if (!trimmed) continue;
+      const noComment = this.stripComments(trimmed);
+      if (!noComment) continue;
 
-      if (/^assumptions\s*:?\s*$/i.test(trimmed)) {
+      if (/^assumptions\s*:?\s*$/i.test(noComment)) {
         section = 'assumptions';
         continue;
       }
-      if (/^post\s*:?\s*$/i.test(trimmed)) {
+      if (/^post\s*:?\s*$/i.test(noComment)) {
         section = 'post';
         continue;
       }
-      if (/^invariants\s*:?\s*$/i.test(trimmed)) {
+      if (/^invariants\s*:?\s*$/i.test(noComment)) {
         section = 'invariants';
         continue;
       }
 
       if (trimmed.startsWith('- ')) {
-        const content = trimmed.slice(2).trim();
+        const content = this.stripComments(trimmed.slice(2).trim());
         if (!content) continue;
 
         if (section === 'assumptions') {
@@ -297,11 +457,21 @@ export class SpecTranslator {
             result.assumptions.push(pubResult);
             continue;
           }
+          const infoResult = this.translateInformational(content);
+          if (infoResult) {
+            result.assumptions.push(infoResult);
+            continue;
+          }
           result.parseErrors.push(`Unparseable assumption: ${content}`);
         } else if (section === 'post') {
           const eqResult = this.translatePostEquality(content);
           if (eqResult) {
             result.posts.push(eqResult);
+            continue;
+          }
+          const infoResult = this.translateInformational(content);
+          if (infoResult) {
+            result.posts.push({ ...infoResult, kind: 'equality', lhsSignals: [], rhsSignals: [], parseable: false } as SpecTranslation['posts'][0]);
             continue;
           }
           result.parseErrors.push(`Unparseable post: ${content}`);

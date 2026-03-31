@@ -35,6 +35,7 @@ interface intent_alignment_request {
   entry: string;
   symPath: string;
   constraintsJsonPath: string;
+  constraintIndices?: number[];
   templatePath: string[];
   templateName: string;
   groupingStrategy?: string;
@@ -411,6 +412,7 @@ export async function intentAlignmentHandler(
       entry,
       symPath,
       constraintsJsonPath,
+      constraintIndices,
       templatePath,
       templateName,
     } = request.body;
@@ -492,7 +494,15 @@ export async function intentAlignmentHandler(
     console.log(`[IntentAlign] ${symEntries.length} symbol entries`);
 
     console.log(`[IntentAlign] Reading constraints: ${constraintsJsonPath}`);
-    const constraints = await parseConstraintsFile(constraintsJsonPath);
+    let constraints = await parseConstraintsFile(constraintsJsonPath);
+
+    if (constraintIndices && constraintIndices.length > 0) {
+      const indexSet = new Set(constraintIndices);
+      const originalLen = constraints.length;
+      constraints = constraints.filter((_, i) => indexSet.has(i));
+      console.log(`[IntentAlign] Filtered constraints: ${constraints.length}/${originalLen} (slice scope)`);
+    }
+
     console.log(`[IntentAlign] ${constraints.length} constraints`);
 
     console.log(`[IntentAlign] Normalizing constraints...`);

@@ -21,14 +21,21 @@ export class ContractBasedVerifier {
     constraintsJsonPath: string,
     templateName: string,
     childContracts: TemplateContract[],
-    queries: { checkSatisfiability?: boolean; checkDeterminism?: boolean; checkCoverage?: boolean }
+    queries: { checkSatisfiability?: boolean; checkDeterminism?: boolean; checkCoverage?: boolean },
+    constraintIndices?: number[],
   ): Promise<{
     results: { satisfiability?: any; determinism?: any; coverage?: any };
     suspectChildren: string[];
     refinementNeeded: boolean;
   }> {
     this.symEntries = await parseSymFile(symPath);
-    this.constraints = await parseConstraintsFile(constraintsJsonPath);
+    let allConstraints = await parseConstraintsFile(constraintsJsonPath);
+
+    if (constraintIndices && constraintIndices.length > 0) {
+      const indexSet = new Set(constraintIndices);
+      allConstraints = allConstraints.filter((_, i) => indexSet.has(i));
+    }
+    this.constraints = allConstraints;
 
     const { glueConstraints, childConstraintMap, interfaceConstraints } =
       this.partitionConstraints(childContracts);
@@ -160,15 +167,87 @@ export class ContractBasedVerifier {
     const assertions: ConstraintObject[] = [];
 
     for (const assumption of contract.assumptions) {
-      if (assumption.kind === 'boolean' && assumption.signal) {
-        const sigIdx = this.indexData.nameToSignal[assumption.signal];
-        if (sigIdx !== undefined) {
+      if (!assumption.signal) continue;
+      const sigIdx = this.indexData.nameToSignal[assumption.signal];
+      if (sigIdx === undefined) continue;
+      const key = String(sigIdx);
+
+      switch (assumption.kind) {
+        case 'boolean':
           assertions.push([
-            { [String(sigIdx)]: '1' },
-            { '0': '-1' },
+            { [key]: '1' },
+            { [key]: '-1' },
             {},
           ] as ConstraintObject);
-        }
+          break;
+        case 'range':
+          assertions.push([
+            { [key]: '1' },
+            { [key]: '-1' },
+            {},
+          ] as ConstraintObject);
+          break;
+        case 'equality':
+          if (assumption.smt2Representation) {
+            assertions.push([
+              { [key]: '1' },
+              { '0': '-1' },
+              {},
+            ] as ConstraintObject);
+          }
+          break;
+        case 'hash':
+        case 'commitment':
+        case 'custom':
+          assertions.push([
+            { [key]: '1' },
+            { [key]: '-1' },
+            {},
+          ] as ConstraintObject);
+          break;
+      }
+    }
+
+    for (const guarantee of contract.guarantees) {
+      if (!guarantee.signal) continue;
+      const sigIdx = this.indexData.nameToSignal[guarantee.signal];
+      if (sigIdx === undefined) continue;
+      const key = String(sigIdx);
+
+      switch (guarantee.kind) {
+        case 'equality':
+          assertions.push([
+            { [key]: '1' },
+            { [key]: '1' },
+            { [key]: '-1' },
+          ] as ConstraintObject);
+          break;
+        case 'hash':
+        case 'commitment':
+        case 'custom':
+          if (guarantee.smt2Representation) {
+            assertions.push([
+              { [key]: '1' },
+              { [key]: '1' },
+              { [key]: '-1' },
+            ] as ConstraintObject);
+          }
+          break;
+      }
+    }
+
+    for (const inv of contract.invariants) {
+      if (!inv.signals || inv.signals.length === 0) continue;
+      const sigIdx = this.indexData.nameToSignal[inv.signals[0]];
+      if (sigIdx === undefined) continue;
+      const key = String(sigIdx);
+
+      if (inv.kind === 'boolean') {
+        assertions.push([
+          { [key]: '1' },
+          { [key]: '-1' },
+          {},
+        ] as ConstraintObject);
       }
     }
 

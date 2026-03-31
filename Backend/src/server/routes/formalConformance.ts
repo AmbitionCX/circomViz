@@ -162,6 +162,22 @@ async function checkSoundness(
     }
   }
 
+  if (negatedPostClauses.length === 0) {
+    return {
+      conformant: false,
+      noVerifiableSpec: true,
+      violation: {
+        inputValues: {},
+        outputValues: {},
+        violatedSpec: '',
+      },
+      solverOutput: 'Skipped: no parseable post-conditions in spec DSL. The LLM-generated spec could not be translated to SMT2.',
+      executionTimeMs: performance.now() - startTime,
+      translatedSpecLines: specLines.length,
+      parseErrors: translation.parseErrors,
+    };
+  }
+
   const allSmt2 = [...baseLines, ...specLines, ...negatedPostClauses, '(check-sat)', '(get-model)'].join('\n');
   const output = await runCvc5(allSmt2);
   const executionTimeMs = performance.now() - startTime;
@@ -426,7 +442,7 @@ export async function formalConformanceHandler(
   reply: FastifyReply
 ) {
   try {
-    const { repo, entry, symPath, constraintsJsonPath, candidateSpecDSL, queries } = request.body;
+    const { repo, entry, symPath, constraintsJsonPath, constraintIndices, candidateSpecDSL, queries } = request.body;
 
     logger.info(`Running formal conformance: repo=${repo}, entry=${entry}`);
 
@@ -439,7 +455,15 @@ export async function formalConformanceHandler(
     }
 
     const symbols = await parseSymFile(symPath);
-    const constraints = await parseConstraintsFile(constraintsJsonPath);
+    let constraints = await parseConstraintsFile(constraintsJsonPath);
+
+    if (constraintIndices && constraintIndices.length > 0) {
+      const indexSet = new Set(constraintIndices);
+      const originalLen = constraints.length;
+      constraints = constraints.filter((_, i) => indexSet.has(i));
+      logger.info(`Filtered constraints: ${constraints.length}/${originalLen} (slice scope)`);
+    }
+
     logger.info(`Loaded ${symbols.length} symbols, ${constraints.length} constraints`);
 
     const projectLoader = new ProjectLoader();

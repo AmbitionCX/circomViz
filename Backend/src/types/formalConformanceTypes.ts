@@ -3,6 +3,7 @@ export interface formal_conformance_request {
   entry: string;
   symPath: string;
   constraintsJsonPath: string;
+  constraintIndices?: number[];
   candidateSpecDSL: string;
   templateName: string;
   templatePath: string[];
@@ -41,6 +42,7 @@ export interface SpecTranslation {
 
 export interface SoundnessConformanceResult {
   conformant: boolean;
+  noVerifiableSpec?: boolean;
   violation?: {
     inputValues: Record<string, string>;
     outputValues: Record<string, string>;
@@ -49,6 +51,7 @@ export interface SoundnessConformanceResult {
   solverOutput: string;
   executionTimeMs: number;
   translatedSpecLines: number;
+  parseErrors?: string[];
 }
 
 export interface CompletenessConformanceResult {

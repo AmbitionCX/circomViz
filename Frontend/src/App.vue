@@ -37,17 +37,16 @@
                 :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
                 @click="handleCircuitViewClick"
               >
-               <CircuitView 
-                 @template-selected="handleTemplateSelected"
-                 @template-params-selected="handleWrapTemplate"
-               />
+                <CircuitView 
+                  @template-params-selected="handleWrapTemplate"
+                />
              </div>
             
               <div 
                 :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
                 @click="handleInteractionPanelClick"
               >
-               <InteractionPanel @formal-conformance-confirmed="handleFormalConformanceConfirmed" />
+               <InteractionPanel />
              </div>
          </el-col>
        </el-row>
@@ -62,7 +61,6 @@ import SignalSelection from './components/SignalSelection.vue';
 import CircuitView from './components/CircuitView.vue';
 import InteractionPanel from './components/InteractionPanel.vue';
 import { useCircuitStore } from '@/stores/circuit';
-import type { TemplateInfo } from '@/types/circuitTypes';
 import { ElMessage } from 'element-plus';
 import { generateWrapper } from '@/apis';
 
@@ -97,10 +95,6 @@ const handleInteractionPanelClick = () => {
   activePanel.value = 'interaction';
 };
 
-const handleFormalConformanceConfirmed = () => {
-  activePanel.value = 'circuit';
-};
-
 const handleSubmoduleClick = () => {
   activeLeftPanel.value = 'submodule';
 };
@@ -129,10 +123,6 @@ const handleParseComplete = (data: any) => {
   circuitStore.clearSelectedTemplate();
   circuitStore.resetCompilationData();
   activeLeftPanel.value = 'signal';
-};
-
-const handleTemplateSelected = (template: TemplateInfo, path: string[]) => {
-  console.log('Template selected:', template.templateName, 'at path:', path);
 };
 
 const handleWrapTemplate = async (data: any) => {

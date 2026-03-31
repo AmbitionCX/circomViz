@@ -1,16 +1,20 @@
 export interface SignalRef {
-  name: string;
   index: number;
-  kind: 'input' | 'output' | 'intermediate';
+  name: string;
+  witness: number;
+  component: string;
+  classification: 'input' | 'output' | 'intermediate';
 }
 
 export interface ComponentGroup {
   prefix: string;
-  signalIndices: number[];
+  signalCount: number;
   constraintCount: number;
   inputCount: number;
   outputCount: number;
   intermediateCount: number;
+  kindCounts: Record<string, number>;
+  childComponents: string[];
 }
 
 export interface ArrayFamily {
@@ -28,18 +32,20 @@ export interface ConstraintIndexData {
   signalToComponent: Record<string, string>;
   arrayFamilies: ArrayFamily[];
   signalClassification: Record<string, 'input' | 'output' | 'intermediate'>;
-  componentGroups: ComponentGroup[];
-  totalSignals: number;
-  totalConstraints: number;
-  builtAt: number;
+  metadata: IndexMetadata;
 }
 
 export interface IndexMetadata {
-  totalSignals: number;
-  totalConstraints: number;
+  signalCount: number;
+  constraintCount: number;
   componentCount: number;
   arrayFamilyCount: number;
-  cachePath: string;
+  inputCount: number;
+  outputCount: number;
+  intermediateCount: number;
+  maxComponentDepth: number;
+  componentGroups: ComponentGroup[];
+  buildTimeMs: number;
 }
 
 export type SliceDirection = 'backward' | 'forward' | 'bidirectional';
@@ -51,6 +57,7 @@ export interface SliceRequest {
   targetSignals: string[];
   sourceSignals?: string[];
   maxDepth?: number;
+  indexCachePath?: string;
 }
 
 export interface SliceResult {
@@ -58,50 +65,147 @@ export interface SliceResult {
   signalIndices: number[];
   constraintCount: number;
   signalCount: number;
-  totalConstraints: number;
-  totalSignals: number;
-  reductionPercent: number;
+  resolvedConstraints: ResolvedSliceConstraint[];
   componentGroups: ComponentGroup[];
-  resolvedConstraints: Array<{
-    index: number;
-    formula: string;
-    signalsUsed: string[];
-  }>;
+  signals: SignalRef[];
 }
 
-export interface BuildIndexRequest {
+export interface ResolvedSliceConstraint {
+  index: number;
+  formula: string;
+  signalsUsed: string[];
+  kind: string;
+  component: string;
+}
+
+export interface SliceResponse {
+  success: boolean;
+  slice?: SliceResult;
+  totalConstraintCount: number;
+  totalSignalCount: number;
+  reductionPercent: number;
+  error?: string;
+}
+
+export interface BuildConstraintIndexRequest {
   symPath: string;
   constraintsJsonPath: string;
 }
 
-export interface BuildIndexResponse {
+export interface BuildConstraintIndexResponse {
   success: boolean;
+  metadata?: IndexMetadata;
+  cachePath?: string;
+  error?: string;
+}
+
+export interface BipartiteGraphRequest {
+  symPath: string;
+  constraintsJsonPath: string;
+  indexCachePath?: string;
+}
+
+export interface BipartiteSignalNode {
+  id: string;
+  index: number;
+  name: string;
+  shortName: string;
+  component: string;
+  classification: 'input' | 'output' | 'intermediate';
+  witness: number;
+  constraintCount: number;
+}
+
+export interface BipartiteConstraintCluster {
+  id: string;
+  kind: string;
+  indexRange: string;
+  count: number;
+  sampleFormula: string;
+  signals: string[];
+}
+
+export interface BipartiteComponentNode {
+  id: string;
+  prefix: string;
+  label: string;
+  signalCount: number;
+  constraintCount: number;
+  inputCount: number;
+  outputCount: number;
+  intermediateCount: number;
+  kindCounts: Record<string, number>;
+  childComponents: string[];
+  signals: BipartiteSignalNode[];
+  constraints: BipartiteConstraintCluster[];
+}
+
+export interface BipartiteGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  type: 'signal-constraint' | 'component-flow';
+}
+
+export interface BipartiteGraphResponse {
+  success: boolean;
+  components: BipartiteComponentNode[];
+  topLevelSignals: BipartiteSignalNode[];
+  edges: BipartiteGraphEdge[];
   metadata: IndexMetadata;
   error?: string;
 }
 
-export interface ConeSliceResponse {
+export interface SliceCandidate {
+  id: string;
+  name: string;
+  direction: SliceDirection;
+  targetSignals: string[];
+  sourceSignals: string[];
+  groupKind: 'output_array' | 'input_array' | 'output_single' | 'input_single' | 'component' | 'heuristic';
+  signalCount: number;
+  priority: number;
+}
+
+export interface SliceCandidatesRequest {
+  symPath: string;
+  constraintsJsonPath: string;
+}
+
+export interface SliceCandidatesResponse {
   success: boolean;
-  slice: SliceResult | null;
+  candidates: SliceCandidate[];
   error?: string;
 }
 
-export interface ComponentEdge {
-  fromComponent: string;
-  toComponent: string;
-  signalCount: number;
-  sharedConstraints: number;
+export interface LinearTerm {
+  signal: string;
+  signalIndex: number;
+  coefficient: string;
 }
 
-export interface ConstraintKindSummary {
-  component: string;
-  kindCounts: Record<string, number>;
-  total: number;
+export interface LinearExpression {
+  terms: LinearTerm[];
+  constant: string;
 }
 
-export interface BipartiteGraphData {
-  componentGroups: ComponentGroup[];
-  boundarySignals: SignalRef[];
-  constraintSummaries: ConstraintKindSummary[];
-  componentEdges: ComponentEdge[];
+export interface ConstraintTree {
+  index: number;
+  kind: string;
+  description: string;
+  a: LinearExpression;
+  b: LinearExpression;
+  c: LinearExpression;
+}
+
+export interface ConstraintTreesRequest {
+  symPath: string;
+  constraintsJsonPath: string;
+  constraintIndices: number[];
+}
+
+export interface ConstraintTreesResponse {
+  success: boolean;
+  trees: ConstraintTree[];
+  error?: string;
 }

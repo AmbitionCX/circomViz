@@ -8,7 +8,7 @@ export async function generateContractHandler(
   reply: FastifyReply
 ) {
   try {
-    const { symPath, constraintsJsonPath, templateName, instancePath, soundnessResult, intentResult, formalResult } = request.body;
+    const { symPath, constraintsJsonPath, templateName, instancePath, constraintIndices, soundnessResult, intentResult, formalResult } = request.body;
 
     if (!symPath || !constraintsJsonPath || !templateName || !instancePath) {
       return reply.code(400).send({
@@ -26,6 +26,7 @@ export async function generateContractHandler(
       constraintsJsonPath,
       templateName,
       instancePath,
+      constraintIndices,
       soundnessResult,
       intentResult,
       formalResult

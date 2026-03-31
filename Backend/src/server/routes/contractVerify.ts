@@ -9,7 +9,7 @@ export async function contractVerifyHandler(
   reply: FastifyReply
 ) {
   try {
-    const { symPath, constraintsJsonPath, templateName, childContracts, queries } = request.body;
+    const { symPath, constraintsJsonPath, templateName, childContracts, constraintIndices, queries } = request.body;
 
     if (!symPath || !constraintsJsonPath) {
       return reply.code(400).send({
@@ -32,15 +32,16 @@ export async function contractVerifyHandler(
     logger.info(`Contract-based verification: template=${templateName}, children=${childContracts.map((c: TemplateContract) => c.instancePath).join(',')}`);
 
     const indexer = new ConstraintIndexer();
-    const { data } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
 
-    const verifier = new ContractBasedVerifier(data);
+    const verifier = new ContractBasedVerifier(index);
     const { results, suspectChildren, refinementNeeded } = await verifier.verify(
       symPath,
       constraintsJsonPath,
       templateName,
       childContracts,
-      queries || { checkSatisfiability: true, checkDeterminism: true }
+      queries || { checkSatisfiability: true, checkDeterminism: true },
+      constraintIndices
     );
 
     logger.info(`Contract verification done: suspects=${suspectChildren.join(',')}, refinementNeeded=${refinementNeeded}`);

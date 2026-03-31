@@ -8,15 +8,7 @@
             <QuestionFilled />
           </el-icon>
         </el-tooltip>
-        <el-tooltip :content="viewMode === 'text' ? 'Switch to Visualization' : 'Switch to Plain Text'" placement="top">
-          <el-icon
-            class="cursor-pointer transition-colors duration-200"
-            :class="viewMode === 'visualization' ? 'text-indigo-500' : 'text-gray-400 hover:text-indigo-400'"
-            @click.stop="viewMode = viewMode === 'text' ? 'visualization' : 'text'"
-          >
-            <Switch />
-          </el-icon>
-        </el-tooltip>
+
       </div>
       <div class="flex items-center justify-end text-xs text-gray-500">
         <div class="flex items-center mr-2">
@@ -34,7 +26,7 @@
       </div>
     </div>
     
-    <div v-if="viewMode === 'text'" class="flex-1 overflow-auto min-h-0 mt-2">
+    <div class="flex-1 overflow-auto min-h-0 mt-2">
       <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
       
       <el-tree
@@ -82,10 +74,6 @@
       <el-empty v-else description="No signals found" :image-size="80" />
     </div>
 
-    <div v-else class="flex-1 min-h-0 mt-2">
-      <SignalViewVisualization />
-    </div>
-
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
@@ -101,11 +89,10 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue';
-import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box, Switch } from '@element-plus/icons-vue';
+import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { getFileContent } from '@/apis';
 import { ElMessage } from 'element-plus';
-import SignalViewVisualization from './SignalViewVisualization.vue';
 import { hexToRgba } from '@/composables/colors';
 import hljs from 'highlight.js/lib/core';
 import c from 'highlight.js/lib/languages/c';
@@ -126,8 +113,6 @@ function templateColorStyle(templateName: string) {
     fontWeight: '600' as const,
   };
 }
-
-const viewMode = ref<'text' | 'visualization'>('text');
 
 const treeProps = {
   children: 'children',

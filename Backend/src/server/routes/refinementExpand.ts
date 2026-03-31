@@ -9,7 +9,7 @@ export async function refinementExpandHandler(
   reply: FastifyReply
 ) {
   try {
-    const { symPath, constraintsJsonPath, templateName, childContracts, expandedChildren, queries } = request.body;
+    const { symPath, constraintsJsonPath, templateName, childContracts, expandedChildren, constraintIndices, queries } = request.body;
 
     if (!symPath || !constraintsJsonPath) {
       return reply.code(400).send({
@@ -32,16 +32,17 @@ export async function refinementExpandHandler(
     logger.info(`Refinement expansion: template=${templateName}, expanding=${expandedChildren.join(',')}`);
 
     const indexer = new ConstraintIndexer();
-    const { data } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
 
-    const expander = new RefinementExpander(data);
+    const expander = new RefinementExpander(index);
     const { results, suspectChildren, refinementNeeded } = await expander.refine(
       symPath,
       constraintsJsonPath,
       templateName,
       childContracts,
       expandedChildren,
-      queries || { checkSatisfiability: true, checkDeterminism: true }
+      queries || { checkSatisfiability: true, checkDeterminism: true },
+      constraintIndices
     );
 
     logger.info(`Refinement done: suspects=${suspectChildren.join(',')}, refinementNeeded=${refinementNeeded}`);

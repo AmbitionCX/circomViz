@@ -1,6 +1,6 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, ResolveConstraintsResponse, FormalConformanceResponse, BuildIndexResponse, SliceResult, SliceDirection, BipartiteGraphData, TemplateContract, ContractVerifyResult } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse, BuildIndexResponse, SliceResponse, SliceDirection, BipartiteGraphResponse, SliceCandidatesResponse, ConstraintTreesResponse } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
@@ -19,7 +19,10 @@ const enum API {
   bipartite_graph = '/bipartite_graph',
   generate_contract = '/generate_contract',
   contract_verify = '/contract_verify',
-  refinement_expand = '/refinement_expand'
+  refinement_expand = '/refinement_expand',
+  slice_candidates = '/slice_candidates',
+  constraint_trees = '/constraint_trees',
+  ai_advice = '/ai_advice',
 }
 
 export interface getSubmodules_response {
@@ -152,6 +155,7 @@ export interface soundness_check_request {
   entry: string;
   symPath: string;
   constraintsJsonPath: string;
+  constraintIndices?: number[];
   queries: {
     satisfiability?: boolean;
     determinism?: boolean;
@@ -181,13 +185,14 @@ export const getFileContent = (data: { filePath: string }) =>
   request.post<any, FileContentResponse>(API.file_content, data)
 
 export const resolveConstraints = (data: { symPath: string; constraintsJsonPath: string }) =>
-  request.post<any, ResolveConstraintsResponse>(API.resolve_constraints, data)
+  request.post<any, { success: boolean; constraints: any[]; signalCount: number; constraintCount: number; error?: string }>(API.resolve_constraints, data)
 
 export const intentAlignment = (data: {
   repo: string;
   entry: string;
   symPath: string;
   constraintsJsonPath: string;
+  constraintIndices?: number[];
   templatePath: string[];
   templateName: string;
   groupingStrategy: 'by-template' | 'by-file' | 'by-statement';
@@ -199,6 +204,7 @@ export interface formal_conformance_request {
   entry: string;
   symPath: string;
   constraintsJsonPath: string;
+  constraintIndices?: number[];
   candidateSpecDSL: string;
   templateName: string;
   templatePath: string[];
@@ -212,3 +218,55 @@ export interface formal_conformance_request {
 
 export const formalConformance = (data: formal_conformance_request) =>
   request.post<any, FormalConformanceResponse>(API.formal_conformance, data)
+
+export const buildConstraintIndex = (data: { symPath: string; constraintsJsonPath: string }) =>
+  request.post<any, BuildIndexResponse>(API.build_constraint_index, data)
+
+export const coneSlice = (data: {
+  symPath: string;
+  constraintsJsonPath: string;
+  direction: SliceDirection;
+  targetSignals: string[];
+  sourceSignals?: string[];
+  maxDepth?: number;
+}) =>
+  request.post<any, SliceResponse>(API.cone_slice, data)
+
+export const bipartiteGraph = (data: { symPath: string; constraintsJsonPath: string }) =>
+  request.post<any, BipartiteGraphResponse>(API.bipartite_graph, data)
+
+export const generateContract = (data: any) =>
+  request.post<any, any>(API.generate_contract, data)
+
+export const contractVerify = (data: any) =>
+  request.post<any, any>(API.contract_verify, data)
+
+export const refinementExpand = (data: any) =>
+  request.post<any, any>(API.refinement_expand, data)
+
+export const sliceCandidates = (data: { symPath: string; constraintsJsonPath: string }) =>
+  request.post<any, SliceCandidatesResponse>(API.slice_candidates, data)
+
+export const constraintTrees = (data: { symPath: string; constraintsJsonPath: string; constraintIndices: number[] }) =>
+  request.post<any, ConstraintTreesResponse>(API.constraint_trees, data)
+
+export interface AiAdviceRequest {
+  repo: string;
+  entry: string;
+  templateName: string;
+  violation: {
+    violatedSpec: string;
+    inputValues: Record<string, string>;
+    outputValues: Record<string, string>;
+    solverOutput: string;
+  };
+  specDSL: string;
+}
+
+export interface AiAdviceResponse {
+  success: boolean;
+  advice: string;
+}
+
+export const aiAdvice = (data: AiAdviceRequest) =>
+  request.post<any, AiAdviceResponse>(API.ai_advice, data)

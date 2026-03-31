@@ -22,6 +22,9 @@ import { bipartiteGraphHandler } from './server/routes/bipartiteGraph.js';
 import { generateContractHandler } from './server/routes/generateContract.js';
 import { contractVerifyHandler } from './server/routes/contractVerify.js';
 import { refinementExpandHandler } from './server/routes/refinementExpand.js';
+import { sliceCandidatesHandler } from './server/routes/sliceCandidates.js';
+import { constraintTreesHandler } from './server/routes/constraintTrees.js';
+import { aiAdviceHandler } from './server/routes/aiAdvice.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,6 +111,15 @@ server.post('/contract_verify', contractVerifyHandler);
 
 // refinement expansion
 server.post('/refinement_expand', refinementExpandHandler);
+
+// slice candidates for auto-slicing
+server.post('/slice_candidates', sliceCandidatesHandler);
+
+// constraint tree structure
+server.post('/constraint_trees', constraintTreesHandler);
+
+// AI advice for verification violations
+server.post('/ai_advice', aiAdviceHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
   if (err) {

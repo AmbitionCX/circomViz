@@ -3,6 +3,7 @@ export interface soundness_check_request {
   entry: string;
   symPath: string;
   constraintsJsonPath: string;
+  constraintIndices?: number[];
   queries: {
     satisfiability?: boolean;
     determinism?: boolean;

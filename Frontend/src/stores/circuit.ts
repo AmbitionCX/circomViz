@@ -10,7 +10,7 @@ import type {
   ConstraintVerification,
   IndexMetadata,
   SliceResult,
-  BipartiteGraphData,
+  BipartiteGraphResponse,
   TemplateContract,
   ContractVerifyResult
 } from '@/types/circuitTypes';
@@ -71,7 +71,7 @@ interface CircuitState {
   };
 
   bipartiteData: {
-    graph: BipartiteGraphData | null;
+    graph: BipartiteGraphResponse | null;
     loading: boolean;
     expandedComponent: string | null;
     highlightedSignals: Set<number>;
