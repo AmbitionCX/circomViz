@@ -41,7 +41,11 @@
       >
         <template #default="{ data }">
           <!-- File node -->
-          <div v-if="data.type === 'file'" class="tree-node-content file-node" @dblclick.stop="handleNodeDblClick(data)">
+          <div
+            v-if="data.type === 'file'"
+            :class="['tree-node-content file-node', { 'file-node-highlighted': isFileHighlighted(data.sourceFile) }]"
+            @dblclick.stop="handleNodeDblClick(data)"
+          >
             <el-icon class="mr-1 text-gray-400"><Document /></el-icon>
             <span class="file-name">{{ data.name }}</span>
             <el-tag v-if="extractNodeModulesPackage(data.sourceFile)" size="small" type="info" class="ml-2">
@@ -82,13 +86,13 @@
       destroy-on-close
       @opened="scrollToHighlight"
     >
-      <pre class="file-content-viewer hljs" v-html="highlightedContent"></pre>
+      <pre class="file-content-viewer hljs"><table class="w-full"><tbody><tr v-for="(line, idx) in displayLines" :key="idx"><td class="line-num">{{ idx + 1 }}</td><td class="line-content" v-html="line"></td></tr></tbody></table></pre>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { getFileContent } from '@/apis';
@@ -132,6 +136,12 @@ const highlightedContent = computed(() => {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})(?![^<]*>)`, 'g');
   return highlighted.replace(regex, '<mark class="highlight-name">$1</mark>');
+});
+
+const displayLines = computed(() => {
+  const html = highlightedContent.value;
+  if (!html) return [];
+  return html.split('\n');
 });
 
 const isParsed = computed(() => circuitStore.isParsed);
@@ -183,6 +193,28 @@ function scrollToHighlight() {
     mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
+
+const highlightedFilePaths = ref<Set<string>>(new Set());
+
+function isFileHighlighted(sourceFile: string | undefined): boolean {
+  if (!sourceFile) return false;
+  return highlightedFilePaths.value.has(sourceFile);
+}
+
+watch(
+  () => circuitStore.fileHighlight?.version,
+  () => {
+    const hl = circuitStore.fileHighlight;
+    if (!hl || hl.filePaths.length === 0) return;
+    highlightedFilePaths.value = new Set(hl.filePaths);
+    nextTick(() => {
+      const el = document.querySelector('.file-node-highlighted');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }
+);
 
 function extractBaseName(filePath: string | undefined): string {
   if (!filePath) return 'unknown';
@@ -326,6 +358,23 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
   cursor: pointer;
 }
 
+.file-node-highlighted {
+  background-color: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 4px;
+  animation: highlight-pulse 2s ease-in-out 1;
+}
+
+@keyframes highlight-pulse {
+  0% { background-color: rgba(59, 130, 246, 0.3); }
+  100% { background-color: rgba(59, 130, 246, 0.12); }
+}
+
+.file-node-highlighted .file-name {
+  color: #2563eb;
+  font-weight: 700;
+}
+
 .template-node {
   cursor: pointer;
 }
@@ -355,6 +404,26 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
   overflow: auto;
   white-space: pre;
   tab-size: 4;
+  margin: 0;
+}
+
+.file-content-viewer table {
+  border-collapse: collapse;
+}
+
+.line-num {
+  text-align: right;
+  padding-right: 16px;
+  padding-left: 8px;
+  color: #6e7681;
+  user-select: none;
+  white-space: nowrap;
+  width: 1%;
+  vertical-align: top;
+}
+
+.line-content {
+  white-space: pre;
 }
 
 .highlight-name {

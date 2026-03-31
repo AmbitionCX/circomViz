@@ -2,9 +2,6 @@
   <div class="verification-results h-full flex flex-col overflow-hidden bg-white border-t border-gray-200">
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex-shrink-0">
       <span class="text-xs font-semibold text-gray-600">Verification Results</span>
-      <el-button v-if="props.constraintIndices.length > 0 && !anyRunning" size="small" type="primary" plain @click="runAllChecks">
-        Run All
-      </el-button>
     </div>
 
     <div class="flex-1 overflow-auto min-h-0">
@@ -19,6 +16,8 @@
             :status="steps.soundness.status"
             :summary="steps.soundness.summary"
             :detail="steps.soundness.detail"
+            :expanded="expandedStep === 'soundness'"
+            :is-available="nextAvailable() === 'soundness'"
             @click="toggleOrRun('soundness')"
           />
           <SectionBlock
@@ -26,71 +25,118 @@
             :status="steps.intent.status"
             :summary="steps.intent.summary"
             :detail="steps.intent.detail"
+            :expanded="expandedStep === 'intent'"
+            :is-available="nextAvailable() === 'intent'"
             @click="toggleOrRun('intent')"
           />
+
+          <div v-if="expandedStep === 'intent' && steps.intent.status === 'passed'" class="px-3 py-2 space-y-2 border-b border-gray-100">
+            <div>
+              <div class="text-xs font-medium text-gray-600 mb-1">Explanation</div>
+              <div class="text-xs p-2 rounded border border-gray-200 bg-gray-50 text-gray-700 whitespace-pre-wrap leading-relaxed">{{ intentSummary }}</div>
+            </div>
+            <div v-if="intentAmbiguities.length > 0">
+              <div class="text-xs font-medium text-amber-600 mb-1">Ambiguities</div>
+              <ul class="text-xs p-2 rounded border border-amber-200 bg-amber-50 text-amber-800 space-y-1">
+                <li v-for="(a, i) in intentAmbiguities" :key="i" class="pl-3 relative before:content-['•'] before:absolute before:left-0">{{ a }}</li>
+              </ul>
+            </div>
+            <div v-if="intentRiskNotes.length > 0">
+              <div class="text-xs font-medium text-orange-600 mb-1">Risk Notes</div>
+              <ul class="text-xs p-2 rounded border border-orange-200 bg-orange-50 text-orange-800 space-y-1">
+                <li v-for="(r, i) in intentRiskNotes" :key="i" class="pl-3 relative before:content-['•'] before:absolute before:left-0">{{ r }}</li>
+              </ul>
+            </div>
+          </div>
+
+          <div v-if="editableSpecDSL" class="border-b border-gray-200 px-3 py-2">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-medium text-gray-600">Spec DSL <span class="text-gray-400 font-normal">(edit before running Formal Conformance)</span></span>
+            </div>
+            <textarea
+              v-model="editableSpecDSL"
+              class="spec-editor"
+              rows="6"
+              spellcheck="false"
+            />
+            <div v-if="specTranslation" class="mt-1.5 flex flex-wrap gap-1.5 text-xs text-gray-400">
+              <el-tag v-if="parseablePosts > 0" size="small" type="success" effect="plain">
+                {{ parseablePosts }} parseable post{{ parseablePosts > 1 ? 's' : '' }}
+              </el-tag>
+              <el-tag v-if="parseableInvariants > 0" size="small" type="success" effect="plain">
+                {{ parseableInvariants }} parseable invariant{{ parseableInvariants > 1 ? 's' : '' }}
+              </el-tag>
+              <el-tag v-if="specParseErrors > 0" size="small" type="danger" effect="plain">
+                {{ specParseErrors }} parse error{{ specParseErrors > 1 ? 's' : '' }}
+              </el-tag>
+            </div>
+          </div>
+
           <SectionBlock
             title="Formal Conformance"
             :status="steps.formal.status"
             :summary="steps.formal.summary"
             :detail="steps.formal.detail"
+            :expanded="expandedStep === 'formal'"
+            :is-available="nextAvailable() === 'formal'"
             @click="toggleOrRun('formal')"
           />
-        </div>
 
-        <div v-if="specDSL" class="border-t border-gray-200 px-3 py-2">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs font-medium text-gray-600">Spec DSL</span>
-            <el-button size="small" :disabled="steps.intent.status !== 'passed'" @click="rerunFormalConformance">
-              Re-run Formal Conformance
-            </el-button>
-          </div>
-          <textarea
-            v-model="editableSpecDSL"
-            class="spec-editor"
-            rows="6"
-            spellcheck="false"
-          />
-          <div v-if="specTranslation" class="mt-1.5 flex flex-wrap gap-1.5 text-xs text-gray-400">
-            <el-tag v-if="parseablePosts > 0" size="small" type="success" effect="plain">
-              {{ parseablePosts }} parseable post{{ parseablePosts > 1 ? 's' : '' }}
-            </el-tag>
-            <el-tag v-if="parseableInvariants > 0" size="small" type="success" effect="plain">
-              {{ parseableInvariants }} parseable invariant{{ parseableInvariants > 1 ? 's' : '' }}
-            </el-tag>
-            <el-tag v-if="specParseErrors > 0" size="small" type="danger" effect="plain">
-              {{ specParseErrors }} parse error{{ specParseErrors > 1 ? 's' : '' }}
-            </el-tag>
-          </div>
-        </div>
-
-        <div v-if="steps.formal.status === 'failed' && violationData" class="border-t border-gray-200 px-3 py-2">
-          <div class="text-xs font-medium text-red-600 mb-1.5">Violation Details</div>
-          <div v-if="violationData.violation?.violatedSpec" class="text-xs text-gray-500 mb-2 font-mono break-all">
-            {{ violationData.violation.violatedSpec }}
-          </div>
-          <div class="space-y-1.5">
-            <SignalChipSet
-              label="Input signals"
-              :signals="violationData.violation?.inputValues ?? {}"
-              @click-signal="emitSignalClick"
-            />
-            <SignalChipSet
-              label="Output signals"
-              :signals="violationData.violation?.outputValues ?? {}"
-              @click-signal="emitSignalClick"
-            />
-          </div>
-          <div class="mt-2">
-            <el-button
-              size="small"
-              :loading="adviceLoading"
-              @click="requestAiAdvice"
-            >
-              Ask AI
-            </el-button>
-          </div>
-          <div v-if="adviceText" class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 whitespace-pre-wrap leading-relaxed">
-            {{ adviceText }}
+          <div v-if="steps.formal.status === 'failed' && violationData" class="border-t border-gray-200 px-3 py-2">
+            <div class="text-xs font-medium text-red-600 mb-1.5">Violation Details</div>
+            <div v-if="violationData.violation?.violatedSpec" class="text-xs text-gray-500 mb-2 font-mono break-all">
+              {{ violationData.violation.violatedSpec }}
+            </div>
+            <div class="space-y-1.5">
+              <SignalChipSet
+                label="Input signals"
+                :signals="violationData.violation?.inputValues ?? {}"
+                @click-signal="emitSignalClick"
+              />
+              <SignalChipSet
+                label="Output signals"
+                :signals="violationData.violation?.outputValues ?? {}"
+                @click-signal="emitSignalClick"
+              />
+            </div>
+            <div class="mt-2">
+              <el-button
+                size="small"
+                :loading="adviceLoading"
+                @click="requestAiAdvice"
+              >
+                Ask AI
+              </el-button>
+            </div>
+            <div v-if="adviceResult" class="mt-2 space-y-2">
+              <div class="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 whitespace-pre-wrap leading-relaxed">
+                {{ adviceResult.explanation }}
+              </div>
+              <div v-if="adviceResult.fix.description" class="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 whitespace-pre-wrap leading-relaxed">
+                {{ adviceResult.fix.description }}
+              </div>
+              <div v-if="adviceResult.fix.modifiedCode" class="rounded border border-gray-200 overflow-hidden">
+                <div class="text-xs font-medium text-gray-600 px-2 py-1 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <span>Suggested Fix</span>
+                  <span class="text-gray-400 font-normal text-[10px]">{{ sourceFileName }}</span>
+                </div>
+                <div class="max-h-48 overflow-auto">
+                  <table class="w-full text-xs font-mono">
+                    <tbody>
+                      <tr
+                        v-for="(line, idx) in modifiedCodeLines"
+                        :key="idx"
+                        class="leading-5"
+                        :class="isChangedLine(idx) ? 'bg-green-50' : ''"
+                      >
+                        <td class="text-right text-gray-400 pr-3 pl-2 select-none w-10 align-top sticky left-0 bg-inherit">{{ idx + 1 }}</td>
+                        <td class="whitespace-pre px-2 text-gray-700"><span v-if="isChangedLine(idx)" class="text-green-600 mr-1">+</span>{{ line }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </template>
@@ -103,11 +149,6 @@ import { ref, computed, reactive, watch } from 'vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { soundnessCheck, intentAlignment, formalConformance, aiAdvice } from '@/apis';
 import type { SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse } from '@/types/circuitTypes';
-
-interface AiAdviceResponse {
-  success: boolean;
-  advice: string;
-}
 import SectionBlock from './SectionBlock.vue';
 import SignalChipSet from './SignalChipSet.vue';
 
@@ -125,7 +166,20 @@ const circuitStore = useCircuitStore();
 const expandedStep = ref<string | null>(null);
 const editableSpecDSL = ref('');
 const adviceLoading = ref(false);
-const adviceText = ref('');
+const intentSummary = ref('');
+const intentAmbiguities = ref<string[]>([]);
+const intentRiskNotes = ref<string[]>([]);
+const sourceCode = ref('');
+const sourceFileName = ref('');
+const sourceLineRange = ref<[number, number]>([0, 0]);
+
+interface AdviceFix {
+  description: string;
+  modifiedCode: string;
+  changedLines: number[];
+}
+
+const adviceResult = ref<{ explanation: string; fix: AdviceFix } | null>(null);
 
 interface StepState {
   status: 'idle' | 'running' | 'passed' | 'failed';
@@ -144,8 +198,6 @@ type ViolationData = NonNullable<FormalConformanceResponse['results']>['soundnes
 const specTranslation = ref<FormalConformanceResponse['specTranslation'] | null>(null);
 const violationData = ref<ViolationData | null>(null);
 
-const specDSL = computed(() => editableSpecDSL.value.trim());
-
 const parseablePosts = computed(() => {
   if (!specTranslation.value) return 0;
   return specTranslation.value.posts.filter(p => p.parseable).length;
@@ -161,7 +213,15 @@ const specParseErrors = computed(() => {
   return specTranslation.value.parseErrors.length;
 });
 
-const anyRunning = computed(() => Object.values(steps).some(s => s.status === 'running'));
+const modifiedCodeLines = computed(() => {
+  if (!adviceResult.value?.fix.modifiedCode) return [];
+  return adviceResult.value.fix.modifiedCode.split('\n');
+});
+
+function isChangedLine(lineIndex: number): boolean {
+  if (!adviceResult.value) return false;
+  return adviceResult.value.fix.changedLines.includes(lineIndex + 1);
+}
 
 const order = ['soundness', 'intent', 'formal'] as const;
 
@@ -209,8 +269,16 @@ async function executeStep(key: string) {
   step.summary = '';
   step.detail = '';
   expandedStep.value = null;
-  adviceText.value = '';
+  adviceResult.value = null;
   violationData.value = null;
+  if (key === 'intent') {
+    intentSummary.value = '';
+    intentAmbiguities.value = [];
+    intentRiskNotes.value = [];
+    sourceCode.value = '';
+    sourceFileName.value = '';
+    sourceLineRange.value = [0, 0];
+  }
 
   const sliceIndices = props.constraintIndices.length > 0 ? props.constraintIndices : undefined;
 
@@ -253,23 +321,31 @@ async function executeStep(key: string) {
       if (response.success && groupCount > 0) {
         step.status = 'passed';
         step.summary = `${groupCount} intent group${groupCount > 1 ? 's' : ''} found`;
-        const detailLines: string[] = [];
+        step.detail = '';
         const specParts: string[] = [];
+        const allAmbiguities: string[] = [];
+        const allRiskNotes: string[] = [];
+        let combinedSummary = '';
         for (const g of response.groups) {
-          detailLines.push(`[${g.templateName} lines ${g.lineRange[0]}–${g.lineRange[1]}]`);
           if (g.llmResult) {
-            detailLines.push(g.llmResult.summary);
+            combinedSummary += (combinedSummary ? '\n\n' : '') +
+              `[${g.templateName} lines ${g.lineRange[0]}–${g.lineRange[1]}]\n${g.llmResult.summary}`;
             if (g.llmResult.candidateSpecDSL) {
               specParts.push(g.llmResult.candidateSpecDSL);
             }
-            if (g.llmResult.ambiguities.length > 0) {
-              detailLines.push(`Ambiguities: ${g.llmResult.ambiguities.join('; ')}`);
-            }
+            allAmbiguities.push(...g.llmResult.ambiguities);
+            allRiskNotes.push(...g.llmResult.riskNotes);
           }
-          if (g.error) detailLines.push(`Error: ${g.error}`);
-          detailLines.push('');
+          if (g.error) combinedSummary += `\n\nError: ${g.error}`;
+          if (!sourceCode.value && g.sourceSnippet) {
+            sourceCode.value = g.sourceSnippet;
+            sourceFileName.value = g.sourceFile || '';
+            sourceLineRange.value = g.lineRange || [0, 0];
+          }
         }
-        step.detail = detailLines.join('\n');
+        intentSummary.value = combinedSummary;
+        intentAmbiguities.value = allAmbiguities;
+        intentRiskNotes.value = allRiskNotes;
         editableSpecDSL.value = specParts.join('\n');
       } else {
         step.status = 'failed';
@@ -325,35 +401,27 @@ async function executeStep(key: string) {
       }
     }
 
-    if (nextAvailable() && step.status === 'passed') {
-      const next = nextAvailable()!;
-      setTimeout(() => executeStep(next), 100);
-    }
   } catch (err: any) {
     step.status = 'failed';
     step.summary = err?.response?.data?.error || err?.message || 'Step failed';
     step.detail = step.summary;
+  } finally {
+    expandedStep.value = key;
   }
-}
-
-async function rerunFormalConformance() {
-  steps.formal.status = 'idle';
-  specTranslation.value = null;
-  violationData.value = null;
-  adviceText.value = '';
-  await executeStep('formal');
-  expandedStep.value = 'formal';
 }
 
 async function requestAiAdvice() {
   if (!violationData.value) return;
   adviceLoading.value = true;
-  adviceText.value = '';
+  adviceResult.value = null;
   try {
-    const response: AiAdviceResponse = await aiAdvice({
+    const response = await aiAdvice({
       repo: circuitStore.parseData.repo,
       entry: circuitStore.parseData.entry,
       templateName: circuitStore.selectedTemplate?.templateName || '',
+      sourceCode: sourceCode.value,
+      sourceFile: sourceFileName.value,
+      lineRange: sourceLineRange.value,
       violation: {
         violatedSpec: violationData.value.violation?.violatedSpec || '',
         inputValues: violationData.value.violation?.inputValues || {},
@@ -362,23 +430,32 @@ async function requestAiAdvice() {
       },
       specDSL: editableSpecDSL.value,
     });
-    adviceText.value = response.advice || 'No advice available.';
+    if (response.success) {
+      adviceResult.value = {
+        explanation: response.explanation || '',
+        fix: {
+          description: response.fix?.description || '',
+          modifiedCode: response.fix?.modifiedCode || '',
+          changedLines: response.fix?.changedLines || [],
+        },
+      };
+      if (sourceFileName.value && response.fix?.modifiedCode) {
+        circuitStore.highlightFiles([sourceFileName.value]);
+      }
+    } else {
+      adviceResult.value = {
+        explanation: response.explanation || 'Failed to get advice.',
+        fix: { description: '', modifiedCode: '', changedLines: [] },
+      };
+    }
   } catch (err: any) {
-    adviceText.value = `Failed to get AI advice: ${err?.message || 'Unknown error'}`;
+    adviceResult.value = {
+      explanation: `Failed to get AI advice: ${err?.message || 'Unknown error'}`,
+      fix: { description: '', modifiedCode: '', changedLines: [] },
+    };
   } finally {
     adviceLoading.value = false;
   }
-}
-
-async function runAllChecks() {
-  steps.soundness = { status: 'idle', summary: '', detail: '' };
-  steps.intent = { status: 'idle', summary: '', detail: '' };
-  steps.formal = { status: 'idle', summary: '', detail: '' };
-  editableSpecDSL.value = '';
-  specTranslation.value = null;
-  violationData.value = null;
-  adviceText.value = '';
-  await executeStep('soundness');
 }
 
 watch(
@@ -390,7 +467,14 @@ watch(
     editableSpecDSL.value = '';
     specTranslation.value = null;
     violationData.value = null;
-    adviceText.value = '';
+    adviceResult.value = null;
+    intentSummary.value = '';
+    intentAmbiguities.value = [];
+    intentRiskNotes.value = [];
+    sourceCode.value = '';
+    sourceFileName.value = '';
+    sourceLineRange.value = [0, 0];
+    expandedStep.value = null;
   }
 );
 </script>

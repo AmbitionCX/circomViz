@@ -348,6 +348,38 @@ export class SpecTranslator {
     return null;
   }
 
+  private expandLoopLine(line: string): string[] {
+    const forMatch = line.match(/^for\s+i\s+in\s*\[?\s*(\d+)\s*,\s*(.+?)\]?\s*:?\s*(.+)$/i);
+    if (!forMatch) {
+      const forMatch2 = line.match(/^for\s+(?:each\s+)?(\w+)\s+in\s*\[?\s*(\d+)\s*\.\.\s*(.+?)\]?\s*:?\s*(.+)$/i);
+      if (!forMatch2) return [line];
+      const start = parseInt(forMatch2[2], 10);
+      const endRaw = forMatch2[3].trim();
+      const end = endRaw === 'n-1' || endRaw === 'n' ? 999 : parseInt(endRaw, 10);
+      const body = forMatch2[4].trim();
+      const results: string[] = [];
+      for (let i = start; i <= end; i++) {
+        const expanded = body.replace(/\bindex\b/g, String(i)).replace(new RegExp(`\\b${forMatch2[1]}\\b`, 'g'), String(i));
+        if (this.resolveSignal(expanded.split(/\s/)[0].split(/\*|\{/)[0]) !== null) {
+          results.push(expanded);
+        }
+      }
+      return results.length > 0 ? results : [line];
+    }
+    const start = parseInt(forMatch[1], 10);
+    const endRaw = forMatch[2].trim();
+    const end = endRaw === 'n-1' || endRaw === 'n' ? 999 : parseInt(endRaw, 10);
+    const body = forMatch[3].trim();
+    const results: string[] = [];
+    for (let i = start; i <= end; i++) {
+      const expanded = body.replace(/\bi\b/g, String(i));
+      if (this.resolveSignal(expanded.split(/\s/)[0].split(/\*|\{/)[0]) !== null) {
+        results.push(expanded);
+      }
+    }
+    return results.length > 0 ? results : [line];
+  }
+
   private translateInvariantBoolean(line: string): SpecTranslation['invariants'][0] | null {
     const cleanLine = this.stripComments(line).trim();
     const match = cleanLine.match(/^\s*(\S+)\s+is\s+boolean/);
@@ -446,61 +478,65 @@ export class SpecTranslator {
         const content = this.stripComments(trimmed.slice(2).trim());
         if (!content) continue;
 
-        if (section === 'assumptions') {
-          const boolResult = this.translateAssumptionBoolean(content);
-          if (boolResult) {
-            result.assumptions.push(boolResult);
-            continue;
-          }
-          const pubResult = this.translateAssumptionPublic(content);
-          if (pubResult) {
-            result.assumptions.push(pubResult);
-            continue;
-          }
-          const infoResult = this.translateInformational(content);
-          if (infoResult) {
-            result.assumptions.push(infoResult);
-            continue;
-          }
-          result.parseErrors.push(`Unparseable assumption: ${content}`);
-        } else if (section === 'post') {
-          const eqResult = this.translatePostEquality(content);
-          if (eqResult) {
-            result.posts.push(eqResult);
-            continue;
-          }
-          const infoResult = this.translateInformational(content);
-          if (infoResult) {
-            result.posts.push({ ...infoResult, kind: 'equality', lhsSignals: [], rhsSignals: [], parseable: false } as SpecTranslation['posts'][0]);
-            continue;
-          }
-          result.parseErrors.push(`Unparseable post: ${content}`);
-        } else if (section === 'invariants') {
-          if (content.startsWith('[') && content.endsWith(']')) {
+        const expandedLines = this.expandLoopLine(content);
+
+        for (const expanded of expandedLines) {
+          if (section === 'assumptions') {
+            const boolResult = this.translateAssumptionBoolean(expanded);
+            if (boolResult) {
+              result.assumptions.push(boolResult);
+              continue;
+            }
+            const pubResult = this.translateAssumptionPublic(expanded);
+            if (pubResult) {
+              result.assumptions.push(pubResult);
+              continue;
+            }
+            const infoResult = this.translateInformational(expanded);
+            if (infoResult) {
+              result.assumptions.push(infoResult);
+              continue;
+            }
+            result.parseErrors.push(`Unparseable assumption: ${expanded}`);
+          } else if (section === 'post') {
+            const eqResult = this.translatePostEquality(expanded);
+            if (eqResult) {
+              result.posts.push(eqResult);
+              continue;
+            }
+            const infoResult = this.translateInformational(expanded);
+            if (infoResult) {
+              result.posts.push({ ...infoResult, kind: 'equality', lhsSignals: [], rhsSignals: [], parseable: false } as SpecTranslation['posts'][0]);
+              continue;
+            }
+            result.parseErrors.push(`Unparseable post: ${expanded}`);
+          } else if (section === 'invariants') {
+            if (expanded.startsWith('[') && expanded.endsWith(']')) {
+              result.invariants.push({
+                raw: expanded,
+                kind: 'unknown',
+                smt2Lines: [`; Informational: ${expanded}`],
+                parseable: false,
+              });
+              continue;
+            }
+            const boolResult = this.translateInvariantBoolean(expanded);
+            if (boolResult) {
+              result.invariants.push(boolResult);
+              continue;
+            }
+            const eqResult = this.translateInvariantEquality(expanded);
+            if (eqResult) {
+              result.invariants.push(eqResult);
+              continue;
+            }
             result.invariants.push({
-              raw: content,
+              raw: expanded,
               kind: 'unknown',
-              smt2Lines: [`; Informational: ${content}`],
+              smt2Lines: [`; Cannot parse: ${expanded}`],
               parseable: false,
             });
-            continue;
           }
-          const boolResult = this.translateInvariantBoolean(content);
-          if (boolResult) {
-            result.invariants.push(boolResult);
-            continue;
-          }
-          const eqResult = this.translateInvariantEquality(content);
-          if (eqResult) {
-            result.invariants.push(eqResult);
-            continue;
-          }
-          result.invariants.push({
-            raw: content,
-            kind: 'unknown',
-            smt2Lines: [`; Cannot parse: ${content}`],
-            parseable: false,
-          });
         }
       }
     }

@@ -84,6 +84,13 @@ interface CircuitState {
     generating: boolean;
     verifying: boolean;
   };
+
+  fileHighlight: {
+    filePaths: string[];
+    version: number;
+  } | null;
+
+  activeLeftPanel: 'signal' | 'submodule';
 }
 
 export const useCircuitStore = defineStore('circuit', {
@@ -149,7 +156,9 @@ export const useCircuitStore = defineStore('circuit', {
       verificationResults: {},
       generating: false,
       verifying: false
-    }
+    },
+    fileHighlight: null,
+    activeLeftPanel: 'submodule' as 'signal' | 'submodule',
   }),
   
   getters: {
@@ -433,6 +442,15 @@ export const useCircuitStore = defineStore('circuit', {
 
     getTemplateColor(templateName: string): string {
       return this.templateColorMap[templateName] ?? '#5f6368';
+    },
+
+    highlightFiles(filePaths: string[]) {
+      this.fileHighlight = { filePaths: [...filePaths], version: Date.now() };
+      this.activeLeftPanel = 'signal';
+    },
+
+    clearFileHighlight() {
+      this.fileHighlight = null;
     }
   }
 });

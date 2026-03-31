@@ -254,6 +254,9 @@ export interface AiAdviceRequest {
   repo: string;
   entry: string;
   templateName: string;
+  sourceCode: string;
+  sourceFile: string;
+  lineRange: [number, number];
   violation: {
     violatedSpec: string;
     inputValues: Record<string, string>;
@@ -265,7 +268,12 @@ export interface AiAdviceRequest {
 
 export interface AiAdviceResponse {
   success: boolean;
-  advice: string;
+  explanation: string;
+  fix: {
+    description: string;
+    modifiedCode: string;
+    changedLines: number[];
+  };
 }
 
 export const aiAdvice = (data: AiAdviceRequest) =>

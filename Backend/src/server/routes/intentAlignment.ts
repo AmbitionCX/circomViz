@@ -92,50 +92,61 @@ You are NOT expected to reverse-engineer from raw R1CS — the normalization has
 
 Return a JSON object with EXACTLY these 4 fields:
 
-1. "summary" (string, in Chinese): 一段自然语言摘要，描述这段代码在做什么。
-   关注：这个 template 的整体目的、输入输出的语义角色、子组件的功能组合方式。
-   示例格式："该模板实现了对 Aadhaar QR 码中签名完整性的验证。通过 RSA 验证子组件校验签名，
-   提取年龄/性别/PIN 码字段，并使用 Poseidon 哈希计算 nullifier 和 pubkeyHash。
-   revealAgeAbove18 等信号作为 disclosure toggle 控制哪些字段被公开。"
+1. "summary" (string, in English): A natural language description of what this code does.
+   Focus on: the overall purpose of this template, the semantic roles of inputs/outputs,
+   and how subcomponents are composed together.
+   Example: "This template verifies RSA signature integrity on an Aadhaar QR code. It uses
+   an RSA verification subcomponent to validate the signature, extracts age/gender/PIN fields,
+   and computes a nullifier and pubkeyHash using Poseidon hashing. Signals like revealAgeAbove18
+   act as disclosure toggles controlling which fields are made public."
 
-2. "candidateSpecDSL" (string, in English): 供下一层 formal conformance 使用的候选规范。
-   使用结构化 DSL 格式：
+2. "candidateSpecDSL" (string, in English): A candidate specification for formal conformance.
+   Use a structured DSL format. CRITICAL RULES:
+   - Each line must refer to EXACTLY ONE signal by its fully qualified name (e.g., out[1], out[2], NOT out[i]).
+   - NEVER use loop constructs like "For i in ..." or ranges like "out[0..n-1]".
+   - NEVER use parameter variables (n, k, etc.) — use the ACTUAL signal names from the source code.
+   - If there are 7 boolean signals, write 7 separate lines, not a loop.
+   - Each bullet MUST be a parseable constraint, NOT a description or comment.
+   Format:
    assumptions:
-     - signal_name in {0,1}   // for boolean flags
+     - signal_name in {0,1}   // for boolean flags — ONE signal per line
      - signal_name is public/private
    post:
      - output = H(input)     // hash constraints
      - output = sel * value  // selector/gate constraints
-     - nullifier = N(seed, pubkeyHash)
    invariants:
-     - bool_signal is boolean
-     - out = a * b
-   示例：
+     - bool_signal is boolean  // ONE signal per line, no loops
+   Example for Num2Bits with 7 bits:
    assumptions:
-     - revealAgeAbove18 in {0,1}
-     - revealGender in {0,1}
-     - revealPinCode in {0,1}
-     - revealState in {0,1}
+     - out[1] in {0,1}
+     - out[2] in {0,1}
+     - out[3] in {0,1}
+     - out[4] in {0,1}
+     - out[5] in {0,1}
+     - out[6] in {0,1}
+     - out[7] in {0,1}
    post:
-     - pubkeyHash = H(pubKey)
-     - nullifier = N(nullifierSeed, pubkeyHash)
-     - ageAbove18 = revealAgeAbove18 * extractedAgeAbove18
-     - gender = revealGender * extractedGender
+     - in === 1 + 2*out[1] + 4*out[2] + 8*out[3] + 16*out[4] + 32*out[5] + 64*out[6] + 128*out[7]
    invariants:
-     - [12 boolean constraints detected]
-     - [multiplication patterns for selector gating]
+     - out[1] is boolean
+     - out[2] is boolean
+     - out[3] is boolean
+     - out[4] is boolean
+     - out[5] is boolean
+     - out[6] is boolean
+     - out[7] is boolean
 
-3. "ambiguities" (string array, in Chinese): 歧义点清单 — 代码中哪些地方可能有多种解读，
-   需要用户确认。例如：
-   - "revealAgeAbove18 看起来是 disclosure toggle，但也可能直接存储年龄比较结果"
-   - "nullifier 的计算是否包含额外 salt 不得而知"
+3. "ambiguities" (string array, in English): A list of ambiguous points in the code that
+   could have multiple interpretations and require user confirmation. For example:
+   - "revealAgeAbove18 appears to be a disclosure toggle, but may directly store the age comparison result"
+   - "It is unknown whether the nullifier computation includes an additional salt"
 
-4. "riskNotes" (string array, in Chinese): 风险提示 — 代码行为可能比命名更宽或更窄的地方。
-   例如：
-   - "selector gate 约束未覆盖所有可能的中间信号，可能存在未约束的自由变量"
-   - "某些 private signal 可能通过侧信道被推断"
+4. "riskNotes" (string array, in English): Risk notes about places where the code behavior
+   may be broader or narrower than what the naming suggests. For example:
+   - "Selector gate constraints do not cover all possible intermediate signals; there may be unconstrained free variables"
+   - "Some private signals may be inferable through side channels"
 
-Be precise and technical. Output valid JSON only.`;
+Be precise and technical. Output valid JSON only. All text fields MUST be in English.`;
 
 function serializeExpr(expr: ExpressionNode): string {
   if (!expr) return '';

@@ -67,9 +67,7 @@ import { generateWrapper } from '@/apis';
 const circuitStore = useCircuitStore();
 
 type PanelState = 'circuit' | 'interaction';
-type LeftPanelState = 'signal' | 'submodule';
 const activePanel = ref<PanelState>('circuit');
-const activeLeftPanel = ref<LeftPanelState>('submodule');
 
 const circuitViewHeightClass = computed(() => {
   return activePanel.value === 'circuit' ? 'h-4/5' : 'h-1/5';
@@ -80,11 +78,11 @@ const interactionPanelHeightClass = computed(() => {
 });
 
 const submoduleHeightClass = computed(() => {
-  return activeLeftPanel.value === 'submodule' ? 'h-2/3' : 'h-1/3';
+  return circuitStore.activeLeftPanel === 'submodule' ? 'h-2/3' : 'h-1/3';
 });
 
 const signalViewHeightClass = computed(() => {
-  return activeLeftPanel.value === 'signal' ? 'h-2/3' : 'h-1/3';
+  return circuitStore.activeLeftPanel === 'signal' ? 'h-2/3' : 'h-1/3';
 });
 
 const handleCircuitViewClick = () => {
@@ -96,11 +94,11 @@ const handleInteractionPanelClick = () => {
 };
 
 const handleSubmoduleClick = () => {
-  activeLeftPanel.value = 'submodule';
+  circuitStore.activeLeftPanel = 'submodule';
 };
 
 const handleSignalViewClick = () => {
-  activeLeftPanel.value = 'signal';
+  circuitStore.activeLeftPanel = 'signal';
 };
 
 const handleParseComplete = (data: any) => {
@@ -122,7 +120,7 @@ const handleParseComplete = (data: any) => {
   
   circuitStore.clearSelectedTemplate();
   circuitStore.resetCompilationData();
-  activeLeftPanel.value = 'signal';
+  circuitStore.activeLeftPanel = 'signal';
 };
 
 const handleWrapTemplate = async (data: any) => {

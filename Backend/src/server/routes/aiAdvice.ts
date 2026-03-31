@@ -6,6 +6,9 @@ interface AiAdviceRequest {
   repo: string;
   entry: string;
   templateName: string;
+  sourceCode: string;
+  sourceFile: string;
+  lineRange: [number, number];
   violation: {
     violatedSpec: string;
     inputValues: Record<string, string>;
@@ -16,24 +19,25 @@ interface AiAdviceRequest {
 }
 
 const SYSTEM_PROMPT = `You are a ZK circuit verification expert specializing in circom circuits.
-The user is running a formal conformance check on a template and has encountered a violation.
-Your job is to explain what the violation means in plain language and suggest how to fix it.
+The user ran a formal conformance check and found a violation. You are given the raw circom source code.
 
-Guidelines:
-- Explain what the violated constraint means
-- Explain why the solver found a counterexample (if one exists)
-- Suggest whether the spec DSL needs to be updated or whether the circuit has a bug
-- If the spec DSL is wrong, suggest the correct fix
-- If the circuit has a bug, describe what constraint is missing
-- Keep your response concise (3-5 sentences max)
-- Use English`;
+Your response MUST be a JSON object with exactly 2 fields:
+
+1. "explanation" (string, 1-2 short sentences): What the violation means and why it occurred.
+
+2. "fix" (object with these fields):
+   - "description" (string, 2-3 sentences): What specific lines in the source code need to change and why.
+   - "modifiedCode" (string): The full corrected source code for this template, with the fix applied. Include line numbers matching the original format.
+   - "changedLines" (number[]): The line numbers that were changed (1-indexed, relative to the provided source code).
+
+Be precise about which line numbers need modification. Output valid JSON only. Use English.`;
 
 export async function aiAdviceHandler(
   request: FastifyRequest<{ Body: AiAdviceRequest }>,
   reply: FastifyReply
 ) {
   try {
-    const { templateName, violation, specDSL } = request.body;
+    const { templateName, sourceCode, sourceFile, lineRange, violation, specDSL } = request.body;
 
     if (!templateName || !violation) {
       return reply.code(400).send({
@@ -45,7 +49,11 @@ export async function aiAdviceHandler(
     logger.info(`AI advice request for template: ${templateName}`);
 
     const userMessage = [
-      `Template: ${templateName}`,
+      `Source file: ${sourceFile || 'unknown'}`,
+      `Lines ${lineRange?.[0] || '?'}–${lineRange?.[1] || '?'}`,
+      ``,
+      `Source code:`,
+      sourceCode || '(no source code provided)',
       ``,
       `Spec DSL:`,
       specDSL || '(no spec DSL provided)',
@@ -67,21 +75,28 @@ export async function aiAdviceHandler(
     logger.info(`AI advice LLM done in ${Date.now() - llmStart}ms, success=${result.success}`);
 
     if (result.success) {
-      reply.send({
-        success: true,
-        advice: result.content,
-      });
+      let parsed: { explanation: string; fix: { description: string; modifiedCode: string; changedLines: number[] } };
+      try {
+        const jsonMatch = result.content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) parsed = JSON.parse(jsonMatch[1]);
+        else parsed = JSON.parse(result.content);
+      } catch {
+        parsed = { explanation: result.content, fix: { description: '', modifiedCode: '', changedLines: [] } };
+      }
+      reply.send({ success: true, ...parsed });
     } else {
       reply.send({
         success: false,
-        advice: `Failed to get AI advice: ${result.error}`,
+        explanation: `Failed to get AI advice: ${result.error}`,
+        fix: { description: '', modifiedCode: '', changedLines: [] },
       });
     }
   } catch (error: any) {
     logger.error(`Error in AI advice: ${error.message}`);
     reply.code(500).send({
       success: false,
-      advice: `Error: ${error.message}`,
+      explanation: `Error: ${error.message}`,
+      fix: { description: '', modifiedCode: '', changedLines: [] },
     });
   }
 }
