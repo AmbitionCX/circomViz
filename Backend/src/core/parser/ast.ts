@@ -71,6 +71,20 @@ export interface SignalNode {
   line: number;
 }
 
+export interface TupleSignalElement {
+  name: string;
+  isArray?: boolean;
+  arraySizes?: (number | ExpressionNode)[];
+}
+
+export interface TupleSignalDeclarationNode {
+  type: 'TupleSignalDeclaration';
+  kind: 'input' | 'output' | 'intermediate';
+  elements: TupleSignalElement[];
+  initialValue?: ExpressionNode;
+  line: number;
+}
+
 export interface VariableNode {
   type: 'Variable';
   name: string;
@@ -116,6 +130,9 @@ export type StatementNode =
   | AssignmentNode
   | ExpressionStatementNode
   | VariableNode
+  | SignalNode
+  | ComponentInstantiationNode
+  | ComponentArrayInitNode
   | BlockStatementNode
   | ComponentDeclarationNode
   | ComponentInstantiationWithInitNode
@@ -123,7 +140,8 @@ export type StatementNode =
   | ForLoopNode
   | WhileLoopNode
   | ReturnNode
-  | AssertNode;
+  | AssertNode
+  | TupleSignalDeclarationNode;
 
 export interface AssignmentNode {
   type: 'Assignment';

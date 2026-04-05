@@ -2,7 +2,7 @@
 // Construct the tree structure based on circom grammar rules.
 
 import { CircomLexer, Token, TokenType } from './lexer.js';
-import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, ComponentArrayInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode, TupleNode } from './ast.js';
+import { ASTNode, PragmaNode, IncludeNode, TemplateDefinitionNode, FunctionDefinitionNode, SignalNode, VariableNode, ComponentInstantiationNode, ComponentDeclarationNode, ComponentInstantiationWithInitNode, ComponentArrayInitNode, AssignmentNode, IfStatementNode, ForLoopNode, WhileLoopNode, ReturnNode, AssertNode, Parameter, ExpressionNode, StatementNode, BlockStatementNode, TupleNode, TupleSignalDeclarationNode, TupleSignalElement } from './ast.js';
 
 export class CircomParser {
   private lexer: CircomLexer;
@@ -157,7 +157,12 @@ export class CircomParser {
       
       if (this.matchKeyword('signal')) {
         // console.log(`[Parser DEBUG]   -> parsing signal`);
-        signals.push(this.parseSignal());
+        const sig = this.parseSignal();
+        if (sig.type === 'Signal') {
+          signals.push(sig);
+        } else {
+          statements.push(sig);
+        }
       } else if (this.matchKeyword('var')) {
         // console.log(`[Parser DEBUG]   -> parsing variable`);
         variables.push(this.parseVariable());
@@ -210,7 +215,7 @@ export class CircomParser {
     return { name, isArray, arraySizes };
   }
 
-  private parseSignal(): SignalNode {
+  private parseSignal(): SignalNode | TupleSignalDeclarationNode {
     const line = this.previous().line;
     let kind: 'input' | 'output' | 'intermediate' = 'intermediate';
 
@@ -218,6 +223,11 @@ export class CircomParser {
       kind = 'input';
     } else if (this.matchKeyword('output')) {
       kind = 'output';
+    }
+
+    // Check for tuple signal declaration: signal (a, b[n]) <== expr;
+    if (this.checkPunctuation('(')) {
+      return this.parseTupleSignalDeclaration(line, kind);
     }
 
     const name = this.consumeIdentifier();
@@ -253,6 +263,47 @@ export class CircomParser {
       kind,
       isArray,
       arraySizes,
+      initialValue,
+      line
+    };
+  }
+
+  private parseTupleSignalDeclaration(line: number, kind: 'input' | 'output' | 'intermediate'): TupleSignalDeclarationNode {
+    this.consumePunctuation('(');
+    const elements: TupleSignalElement[] = [];
+
+    do {
+      const name = this.consumeIdentifier();
+      let isArray = false;
+      let arraySizes: (number | ExpressionNode)[] | undefined;
+
+      if (this.matchPunctuation('[')) {
+        isArray = true;
+        arraySizes = [];
+        arraySizes.push(this.parseExpression());
+        this.consumePunctuation(']');
+        while (this.matchPunctuation('[')) {
+          arraySizes.push(this.parseExpression());
+          this.consumePunctuation(']');
+        }
+      }
+
+      elements.push({ name, isArray, arraySizes });
+    } while (this.matchPunctuation(','));
+
+    this.consumePunctuation(')');
+
+    let initialValue: ExpressionNode | undefined;
+    if (this.matchOperator('<==')) {
+      initialValue = this.parseExpression();
+    }
+
+    this.consumePunctuation(';');
+
+    return {
+      type: 'TupleSignalDeclaration',
+      kind,
+      elements,
       initialValue,
       line
     };
@@ -547,6 +598,12 @@ export class CircomParser {
     if (this.matchKeyword('var')) {
       // console.log(`[Parser DEBUG] -> parsing variable`);
       return this.parseVariable();
+    }
+    if (this.matchKeyword('signal')) {
+      return this.parseSignal();
+    }
+    if (this.matchKeyword('component')) {
+      return this.parseComponentInstantiation();
     }
     if (this.checkPunctuation('{')) {
       // Handle block statement

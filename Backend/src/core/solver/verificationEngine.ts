@@ -23,12 +23,10 @@ function extractAllSignalIndices(constraints: ConstraintObject[], symbols: Symbo
 
 function parseModel(modelOutput: string): Record<string, string> {
   const model: Record<string, string> = {};
-  // Match: (define-fun s_1 () Int 0) or (define-fun s_1 () Int (- 5))
   const regex = /\(define-fun\s+s_(\d+)\s+\(\)\s+Int\s+([^\)]+)\)/g;
   let match;
   while ((match = regex.exec(modelOutput)) !== null) {
     let value = match[2].trim();
-    // Handle negative numbers: (- N) -> "-N"
     const negMatch = value.match(/^\(\s*-\s+(\d+)\s*\)$/);
     if (negMatch) {
       value = `-${negMatch[1]}`;
@@ -108,34 +106,26 @@ export class VerificationEngine {
 
     try {
       const allIndices = extractAllSignalIndices(constraints, symbols);
-      const smt2 = this.translator.generateSatCheckSMT2(constraints, allIndices);
-      const output = await this.solver.executeSMT2(smt2);
+
+      const directResult = this.translator.solveSATDirect(constraints, allIndices);
       const executionTimeMs = performance.now() - startTime;
 
-      const satResult = parseFirstLine(output);
-
-      if (satResult === 'unsat') {
-        return {
-          satisfiable: false,
-          solverOutput: output,
-          executionTimeMs,
-        };
-      }
-
-      if (satResult === 'sat') {
-        const modelStr = extractModelFromOutput(output);
-        const model = parseModel(modelStr);
+      if (directResult.satisfiable && directResult.model) {
+        const model: Record<string, string> = {};
+        for (const [idx, val] of directResult.model) {
+          model[String(idx)] = val.toString();
+        }
         return {
           satisfiable: true,
-          model: Object.keys(model).length > 0 ? model : undefined,
-          solverOutput: output,
+          model,
+          solverOutput: `Direct solver: SAT (${executionTimeMs.toFixed(1)}ms)`,
           executionTimeMs,
         };
       }
 
       return {
         satisfiable: false,
-        solverOutput: output,
+        solverOutput: `Direct solver: UNSAT (${executionTimeMs.toFixed(1)}ms)`,
         executionTimeMs,
       };
     } finally {

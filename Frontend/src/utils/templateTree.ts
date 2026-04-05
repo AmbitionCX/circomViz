@@ -95,5 +95,5 @@ export function isNodeSelectable(node: TreeNodeData, confirmedNames: Set<string>
 }
 
 export function isNodeConfirmable(node: TreeNodeData): boolean {
-  return !!node.nodeModulesLibrary && !!node.templateInfo;
+  return !!node.templateInfo;
 }

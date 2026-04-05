@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'child_process';
 
 type SatResult = 'sat' | 'unsat' | 'unknown';
 
-const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_TIMEOUT_MS = 6000000;
 
 export class Cvc5Solver {
   private binaryPath = '/opt/cvc5/bin/cvc5';
