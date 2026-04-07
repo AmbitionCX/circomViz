@@ -1,0 +1,80 @@
+import { exec } from 'child_process';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { logger } from '../../utils/logger.js';
+
+export interface CompileOptimizedResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  constraints?: number;
+  privateInputs?: string[];
+  publicInputs?: string[];
+  outputs?: string[];
+}
+
+export async function compileOptimized(
+  wrapperFilePath: string,
+  includeFlags: string,
+  outputDir: string
+): Promise<CompileOptimizedResult> {
+  try {
+    await fs.mkdir(outputDir, { recursive: true });
+
+    logger.info('Running optimized compilation (O2, simplification)...');
+    const cmd = `circom ${includeFlags} "${wrapperFilePath}" --r1cs --json --sym --simplification_substitution --O2 -o "${outputDir}"`;
+    logger.debug(`Executing: ${cmd}`);
+
+    const result = await execPromise(cmd, join(outputDir, '..'));
+
+    logger.info(`Optimized compilation completed`);
+
+    try {
+      const jsonPath = join(outputDir, 'wrapper_constraints.json');
+      const json = JSON.parse(await fs.readFile(jsonPath, 'utf-8'));
+
+      logger.info(`Optimized output: ${JSON.stringify({
+        constraints: json.constraints?.length || 0,
+        privateInputs: Object.keys(json.private_inputs || {}),
+        publicInputs: Object.keys(json.public_inputs || {}),
+        outputs: Object.keys(json.outputs || {})
+      })}`);
+
+      return {
+        success: true,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        constraints: json.constraints?.length || 0,
+        privateInputs: Object.keys(json.private_inputs || {}),
+        publicInputs: Object.keys(json.public_inputs || {}),
+        outputs: Object.keys(json.outputs || {})
+      };
+    } catch (jsonError) {
+      logger.warn(`Failed to parse optimized JSON: ${jsonError}`);
+      return {
+        success: true,
+        stdout: result.stdout,
+        stderr: result.stderr
+      };
+    }
+  } catch (error: any) {
+    logger.error(`Optimized compilation failed: ${error.message}`);
+    return {
+      success: false,
+      stdout: '',
+      stderr: error.message
+    };
+  }
+}
+
+function execPromise(command: string, cwd: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    exec(command, { cwd, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+  });
+}
