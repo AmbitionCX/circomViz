@@ -13,6 +13,7 @@
       </div>
       <span class="text-xs font-medium" :class="titleClass">{{ title }}</span>
       <span v-if="summary" class="text-xs truncate" :class="summaryClass">{{ summary }}</span>
+      <slot name="action" />
       <el-icon v-if="status === 'passed' || status === 'failed'" class="text-gray-400 flex-shrink-0 transition-transform ml-auto" :size="12">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
       </el-icon>

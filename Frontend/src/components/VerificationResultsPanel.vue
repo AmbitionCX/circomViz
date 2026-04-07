@@ -80,7 +80,18 @@
             :expanded="expandedStep === 'formal'"
             :is-available="nextAvailable() === 'formal'"
             @click="toggleOrRun('formal')"
-          />
+          >
+            <template v-if="editableSpecDSL && (steps.formal.status === 'passed' || steps.formal.status === 'failed')" #action>
+              <el-button
+                size="small"
+                circle
+                :loading="steps.formal.status === 'running'"
+                @click.stop="reRunFormalConformance"
+              >
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+            </template>
+          </SectionBlock>
 
           <div v-if="steps.formal.status === 'failed' && violationData" class="border-t border-gray-200 px-3 py-2">
             <div class="text-xs font-medium text-red-600 mb-1.5">Violation Details</div>
@@ -151,6 +162,7 @@ import { soundnessCheck, intentAlignment, formalConformance, aiAdvice } from '@/
 import type { SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse } from '@/types/circuitTypes';
 import SectionBlock from './SectionBlock.vue';
 import SignalChipSet from './SignalChipSet.vue';
+import { Refresh } from '@element-plus/icons-vue';
 
 const props = defineProps<{
   constraintIndices: number[];
@@ -245,6 +257,17 @@ function toggleOrRun(key: string) {
   if (nextAvailable() === key) {
     executeStep(key);
   }
+}
+
+function reRunFormalConformance() {
+  if (steps.formal.status === 'running') return;
+  steps.formal.status = 'idle';
+  steps.formal.summary = '';
+  steps.formal.detail = '';
+  violationData.value = null;
+  adviceResult.value = null;
+  specTranslation.value = null;
+  executeStep('formal');
 }
 
 function emitSignalClick(signalName: string) {
