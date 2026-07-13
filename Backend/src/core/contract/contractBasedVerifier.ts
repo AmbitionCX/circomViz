@@ -1,11 +1,11 @@
 import { parseSymFile, parseConstraintsFile, type SymEntry } from '../utils/symbolParser.js';
 import { normalizeConstraints } from '../utils/constraintNormalizer.js';
 import { VerificationEngine } from '../solver/verificationEngine.js';
+import { GROTH16_PRIME } from '../utils/fieldConstants.js';
+import { partitionConstraints, buildContractAssertions } from './contractUtils.js';
 import type { ConstraintObject } from '../../types/constraint.js';
 import type { ConstraintIndexData } from '../../types/slicerTypes.js';
 import type { TemplateContract } from '../../types/contractTypes.js';
-
-const GROTH16_PRIME = '21888242871839275222246405745257275088548364400416034343698204186575808495617';
 
 export class ContractBasedVerifier {
   private indexData: ConstraintIndexData;
@@ -38,13 +38,16 @@ export class ContractBasedVerifier {
     this.constraints = allConstraints;
 
     const { glueConstraints, childConstraintMap, interfaceConstraints } =
-      this.partitionConstraints(childContracts);
+      partitionConstraints(this.constraints, this.indexData, childContracts);
 
-    const abstractConstraints = this.buildAbstractConstraints(
-      glueConstraints,
-      interfaceConstraints,
-      childContracts
-    );
+    const abstractConstraints: ConstraintObject[] = [
+      ...glueConstraints,
+      ...interfaceConstraints,
+    ];
+
+    for (const contract of childContracts) {
+      abstractConstraints.push(...buildContractAssertions(this.indexData, contract));
+    }
 
     const engine = new VerificationEngine(GROTH16_PRIME);
     const results: any = {};
@@ -92,166 +95,6 @@ export class ContractBasedVerifier {
       results.determinism?.deterministic === false;
 
     return { results, suspectChildren, refinementNeeded };
-  }
-
-  private partitionConstraints(childContracts: TemplateContract[]): {
-    glueConstraints: ConstraintObject[];
-    childConstraintMap: Map<string, number[]>;
-    interfaceConstraints: ConstraintObject[];
-  } {
-    const childSignalSets = new Map<string, Set<number>>();
-    for (const contract of childContracts) {
-      childSignalSets.set(contract.instancePath, new Set(contract.coveredSignals));
-    }
-
-    const childConstraintMap = new Map<string, number[]>();
-    const glueConstraints: ConstraintObject[] = [];
-    const interfaceConstraints: ConstraintObject[] = [];
-
-    for (let ci = 0; ci < this.constraints.length; ci++) {
-      const sigIndices = this.indexData.constraintToSignals[String(ci)];
-      if (!sigIndices) continue;
-
-      const involvedComponents = new Set<string>();
-      for (const sig of sigIndices) {
-        const comp = this.indexData.signalToComponent[String(sig)];
-        if (comp) involvedComponents.add(comp);
-      }
-
-      let belongsToChild: string | null = null;
-      let isChildConstraint = false;
-
-      for (const [childPath, childSigs] of childSignalSets) {
-        const allInChild = sigIndices.every(s => childSigs.has(s));
-        if (allInChild) {
-          belongsToChild = childPath;
-          isChildConstraint = true;
-          break;
-        }
-      }
-
-      if (isChildConstraint && belongsToChild) {
-        if (!childConstraintMap.has(belongsToChild)) {
-          childConstraintMap.set(belongsToChild, []);
-        }
-        childConstraintMap.get(belongsToChild)!.push(ci);
-      } else if (involvedComponents.size > 1) {
-        interfaceConstraints.push(this.constraints[ci]);
-      } else {
-        glueConstraints.push(this.constraints[ci]);
-      }
-    }
-
-    return { glueConstraints, childConstraintMap, interfaceConstraints };
-  }
-
-  private buildAbstractConstraints(
-    glueConstraints: ConstraintObject[],
-    interfaceConstraints: ConstraintObject[],
-    childContracts: TemplateContract[]
-  ): ConstraintObject[] {
-    const abstractConstraints: ConstraintObject[] = [
-      ...glueConstraints,
-      ...interfaceConstraints,
-    ];
-
-    for (const contract of childContracts) {
-      const contractConstraints = this.buildContractAssertions(contract);
-      abstractConstraints.push(...contractConstraints);
-    }
-
-    return abstractConstraints;
-  }
-
-  private buildContractAssertions(contract: TemplateContract): ConstraintObject[] {
-    const assertions: ConstraintObject[] = [];
-
-    for (const assumption of contract.assumptions) {
-      if (!assumption.signal) continue;
-      const sigIdx = this.indexData.nameToSignal[assumption.signal];
-      if (sigIdx === undefined) continue;
-      const key = String(sigIdx);
-
-      switch (assumption.kind) {
-        case 'boolean':
-          assertions.push([
-            { [key]: '1' },
-            { [key]: '-1' },
-            {},
-          ] as ConstraintObject);
-          break;
-        case 'range':
-          assertions.push([
-            { [key]: '1' },
-            { [key]: '-1' },
-            {},
-          ] as ConstraintObject);
-          break;
-        case 'equality':
-          if (assumption.smt2Representation) {
-            assertions.push([
-              { [key]: '1' },
-              { '0': '-1' },
-              {},
-            ] as ConstraintObject);
-          }
-          break;
-        case 'hash':
-        case 'commitment':
-        case 'custom':
-          assertions.push([
-            { [key]: '1' },
-            { [key]: '-1' },
-            {},
-          ] as ConstraintObject);
-          break;
-      }
-    }
-
-    for (const guarantee of contract.guarantees) {
-      if (!guarantee.signal) continue;
-      const sigIdx = this.indexData.nameToSignal[guarantee.signal];
-      if (sigIdx === undefined) continue;
-      const key = String(sigIdx);
-
-      switch (guarantee.kind) {
-        case 'equality':
-          assertions.push([
-            { [key]: '1' },
-            { [key]: '1' },
-            { [key]: '-1' },
-          ] as ConstraintObject);
-          break;
-        case 'hash':
-        case 'commitment':
-        case 'custom':
-          if (guarantee.smt2Representation) {
-            assertions.push([
-              { [key]: '1' },
-              { [key]: '1' },
-              { [key]: '-1' },
-            ] as ConstraintObject);
-          }
-          break;
-      }
-    }
-
-    for (const inv of contract.invariants) {
-      if (!inv.signals || inv.signals.length === 0) continue;
-      const sigIdx = this.indexData.nameToSignal[inv.signals[0]];
-      if (sigIdx === undefined) continue;
-      const key = String(sigIdx);
-
-      if (inv.kind === 'boolean') {
-        assertions.push([
-          { [key]: '1' },
-          { [key]: '-1' },
-          {},
-        ] as ConstraintObject);
-      }
-    }
-
-    return assertions;
   }
 
   private identifySuspectChildren(

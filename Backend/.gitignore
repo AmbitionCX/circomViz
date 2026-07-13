@@ -2,6 +2,7 @@
 dist
 logs
 
+compilations
 node_modules
 circomlib
 wrappers

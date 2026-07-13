@@ -3,6 +3,7 @@ import { dirname, join } from 'path';
 import { parseSymFile, parseConstraintsFile } from '../utils/symbolParser.js';
 import { normalizeConstraints } from '../utils/constraintNormalizer.js';
 import { SpecTranslator } from '../solver/specTranslator.js';
+import { GROTH16_PRIME } from '../utils/fieldConstants.js';
 import type { ConstraintObject } from '../../types/constraint.js';
 import type { ConstraintIndexData } from '../../types/slicerTypes.js';
 import type {
@@ -12,8 +13,6 @@ import type {
   ContractVerificationSummary,
 } from '../../types/contractTypes.js';
 import { ConstraintIndexer } from '../indexer/constraintIndex.js';
-
-const GROTH16_PRIME = '21888242871839275222246405745257275088548364400416034343698204186575808495617';
 
 export class ContractGenerator {
 

@@ -120,6 +120,7 @@ const handleParseComplete = (data: any) => {
   
   circuitStore.clearSelectedTemplate();
   circuitStore.resetCompilationData();
+  circuitStore.autoConfirmNodeModulesTemplates();
   circuitStore.activeLeftPanel = 'signal';
 };
 
@@ -136,7 +137,9 @@ const handleWrapTemplate = async (data: any) => {
       publicSignals: data.publicSignals || [],
       repo: circuitStore.parseData.repo,
       entry: circuitStore.parseData.entry,
-      templatePath: circuitStore.selectedTemplatePath
+      templatePath: circuitStore.selectedTemplatePath,
+      confirmedTemplateNames: circuitStore.confirmedTemplateNames,
+      mode: 'interface-mock'
     });
     
     if (!result.success) {
@@ -153,6 +156,13 @@ const handleWrapTemplate = async (data: any) => {
     circuitStore.setWitnessStatus(result.witnessSuccess ? 'success' : 'failure');
     circuitStore.setSymPath('symPath' in result ? (result.symPath ?? null) : null);
     circuitStore.setConstraintsJsonPath('constraintsJsonPath' in result ? (result.constraintsJsonPath ?? null) : null);
+    circuitStore.setAbstractCompileMeta({
+      abstractCompile: !!result.abstractCompile,
+      mockedChildren: result.mockedChildren,
+      unmockedChildren: result.unmockedChildren,
+      validatorWarnings: result.validatorWarnings,
+      boundaryInputs: result.boundaryInputs,
+    });
     if (typeof circuitStore.bumpCompilationVersion === 'function') {
       circuitStore.bumpCompilationVersion();
     } else {

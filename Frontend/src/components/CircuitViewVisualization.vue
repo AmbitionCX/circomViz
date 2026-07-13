@@ -5,6 +5,42 @@
       <div v-if="!circuitStore.isParsed" class="absolute inset-0 flex items-center justify-center">
         <el-empty description="No circuit loaded" :image-size="80" />
       </div>
+      <div v-if="circuitStore.isParsed"
+           class="absolute bottom-3 left-3 z-30 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm px-3 py-2.5 flex flex-col gap-1.5">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center justify-center h-3.5 px-1.5 rounded bg-indigo-300 flex-shrink-0">
+            <span class="text-white font-bold leading-none" style="font-size: 9px;">name</span>
+          </span>
+          <span class="text-gray-600 text-xs">Template name</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center h-3.5 px-1 rounded bg-indigo-300 gap-0.5 flex-shrink-0">
+            <span class="text-white font-bold leading-none" style="font-size: 9px;">name</span>
+            <span class="bg-white/25 rounded px-0.5 text-white/90 leading-none" style="font-size: 9px;">pkg</span>
+          </span>
+          <span class="text-gray-600 text-xs">Package</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Input signal</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-green-600 inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Output signal</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-3 border-2 border-dashed border-blue-600 rounded inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Selectable template</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-3 border border-green-600 bg-green-600/30 rounded inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Confirmed template</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-3 border border-dashed border-gray-500 rounded inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Duplicate template</span>
+        </div>
+      </div>
     </div>
 
     <transition name="slide">
@@ -31,31 +67,65 @@
             </div>
           </div>
 
-          <div v-if="detailPanel.node?.instanceName" class="mb-2 text-xs text-gray-500">
-            Instance: <span class="font-mono">{{ detailPanel.node.instanceName }}</span>
-          </div>
-
-          <div class="mb-3 text-xs text-gray-500">
-            Path: <span class="font-mono">{{ detailPanel.node?.path.join(' → ') }}</span>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2 text-xs mb-3">
-            <div class="bg-gray-50 rounded px-2 py-1.5">
-              <div class="text-gray-400">Components</div>
-              <div class="text-gray-700 font-semibold">{{ detailPanel.node?.componentCount ?? 0 }}</div>
+          <div v-if="detailPanel.node?.pathInfo && detailPanel.node.pathInfo.length > 0" class="mb-4 flex flex-col items-center">
+            <div class="text-xs font-semibold text-gray-500 mb-1.5">Path</div>
+            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-center">
+              <div class="text-xs font-semibold text-gray-700">{{ rootTemplateName }}</div>
+              <div class="text-[10px] text-gray-400">root</div>
             </div>
-            <div class="bg-gray-50 rounded px-2 py-1.5">
-              <div class="text-gray-400">Parameters</div>
-              <div class="text-gray-700 font-semibold">{{ detailPanel.node?.parameters.length ?? 0 }}</div>
-            </div>
+
+            <template v-for="(item, idx) in panelAncestorPath" :key="idx">
+              <span class="text-gray-300 leading-none my-0.5">▼</span>
+              <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-center">
+                <div class="text-xs font-semibold text-gray-700">{{ item.templateName }}</div>
+                <div class="text-[10px] text-gray-400 font-mono">{{ item.instanceName }}</div>
+              </div>
+            </template>
+
+            <span class="text-gray-300 leading-none my-0.5">▼</span>
           </div>
 
-          <div v-if="detailPanel.node?.parameters && detailPanel.node.parameters.length > 0" class="mb-3">
-            <div class="text-xs font-semibold text-gray-600 mb-1">Parameters</div>
-            <div class="flex flex-wrap gap-1">
-              <el-tag v-for="p in detailPanel.node.parameters" :key="p.name" size="small" type="info">
-                {{ p.name }}
-              </el-tag>
+          <div v-if="detailPanel.node?.templateInfo" class="mb-4">
+            <div class="flex justify-center mb-0">
+              <div v-for="sig in panelInputSignals" :key="sig.name"
+                   class="flex flex-col items-center flex-shrink-0" style="width: 16px;">
+                <div style="position: relative; height: 36px; width: 16px; overflow: visible;">
+                  <span class="text-[10px] text-gray-600 font-mono whitespace-nowrap"
+                        style="position: absolute; left: 50%; bottom: 0; transform-origin: bottom left; transform: rotate(-45deg);">
+                    {{ sig.name }}{{ arraySuffix(sig) }}
+                  </span>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-blue-600 inline-block flex-shrink-0"></span>
+                <span class="w-px h-3 bg-gray-300"></span>
+              </div>
+            </div>
+
+            <div class="flex justify-center">
+              <div class="rounded-lg px-4 py-2 text-center"
+                   :style="{
+                     backgroundColor: hexToRgba(circuitStore.getTemplateColor(detailPanel.node?.templateName ?? ''), 0.1),
+                     border: '1.5px solid ' + circuitStore.getTemplateColor(detailPanel.node?.templateName ?? ''),
+                     color: circuitStore.getTemplateColor(detailPanel.node?.templateName ?? '')
+                   }">
+                <div class="text-sm font-bold">{{ detailPanel.node?.templateName }}</div>
+                <div v-if="panelParamNames" class="text-xs text-gray-500 font-normal mt-0.5">
+                  ({{ panelParamNames }})
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-center mt-0">
+              <div v-for="sig in panelOutputSignals" :key="sig.name"
+                   class="flex flex-col items-center flex-shrink-0" style="width: 16px;">
+                <span class="w-px h-3 bg-gray-300"></span>
+                <span class="w-2 h-2 rounded-full bg-green-600 inline-block flex-shrink-0"></span>
+                <div style="position: relative; height: 18px; width: 16px; overflow: visible;">
+                  <span class="text-[10px] text-gray-600 font-mono whitespace-nowrap"
+                        style="position: absolute; left: 50%; bottom: 50%; transform-origin: bottom left; transform: rotate(45deg);">
+                    {{ sig.name }}{{ arraySuffix(sig) }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -200,7 +270,7 @@ import type { TreeNodeData } from '@/utils/templateTree';
 import { hexToRgba } from '@/composables/colors';
 import { findTemplateParams } from '@/apis';
 import { ElMessage } from 'element-plus';
-import type { FindTemplateParamsResponse } from '@/types/circuitTypes';
+import type { FindTemplateParamsResponse, SignalInfo } from '@/types/circuitTypes';
 
 const emit = defineEmits<{
   'template-params-selected': [data: {
@@ -221,7 +291,6 @@ const BODY_HEIGHT = 50;
 const NODE_HEIGHT = HEADER_HEIGHT + BODY_HEIGHT;
 const NODE_GAP_Y = 16;
 const NODE_GAP_X = 400;
-const PORT_RADIUS = 5;
 
 const CONFIRMED_GREEN = '#16a34a';
 
@@ -263,6 +332,35 @@ const isNodeConfirmableForPanel = computed(() => {
   return isNodeConfirmable(detailPanel.node);
 });
 
+const rootTemplateName = computed(() => circuitStore.parseData.tree?.templateName ?? '');
+
+const panelAncestorPath = computed(() => {
+  const info = detailPanel.node?.pathInfo ?? [];
+  return info.slice(0, -1);
+});
+
+const panelInputSignals = computed(() =>
+  detailPanel.node?.templateInfo?.signals.filter(s => s.kind === 'input') ?? []
+);
+
+const panelOutputSignals = computed(() =>
+  detailPanel.node?.templateInfo?.signals.filter(s => s.kind === 'output') ?? []
+);
+
+const panelParamNames = computed(() =>
+  (detailPanel.node?.parameters ?? []).map(p => p.name).join(', ')
+);
+
+function arraySuffix(sig: SignalInfo): string {
+  if (!sig.isArray) return '';
+  const sizes = sig.arraySizes.map(s => {
+    if (s.type === 'Literal') return String(s.value);
+    if (s.type === 'Identifier') return s.name;
+    return '';
+  }).join(',');
+  return `[${sizes}]`;
+}
+
 function textEllipsis(text: string, maxWidth: number): string {
   const charWidth = 7;
   const maxChars = Math.floor(maxWidth / charWidth);
@@ -272,11 +370,6 @@ function textEllipsis(text: string, maxWidth: number): string {
 
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
 let resizeObserver: ResizeObserver | null = null;
-
-function bezierMidpoint(sx: number, sy: number, tx: number, ty: number): { x: number; y: number } {
-  const mx = (sx + tx) / 2;
-  return { x: mx, y: (sy + ty) / 2 };
-}
 
 function renderTree() {
   const svg = d3.select(svgRef.value);
@@ -369,44 +462,6 @@ function renderTree() {
     .attr('stroke-width', 2)
     .attr('marker-end', 'url(#arrowhead)');
 
-  linkElements.each(function (d) {
-    const linkGroup = d3.select(this);
-    const instanceName = d.target.data.instanceName;
-    if (!instanceName) return;
-
-    const sx = (d.source.y ?? 0) + NODE_WIDTH / 2;
-    const sy = d.source.x ?? 0;
-    const tx = (d.target.y ?? 0) - NODE_WIDTH / 2;
-    const ty = d.target.x ?? 0;
-    const mid = bezierMidpoint(sx, sy, tx, ty);
-
-    const label = instanceName;
-
-    const textWidth = label.length * 7;
-    const padX = 6;
-    const padY = 3;
-
-    linkGroup.append('rect')
-      .attr('x', mid.x - textWidth / 2 - padX)
-      .attr('y', mid.y - 8 - padY)
-      .attr('width', textWidth + padX * 2)
-      .attr('height', 16 + padY * 2)
-      .attr('rx', 4)
-      .attr('fill', 'rgba(248, 250, 252, 0.75)')
-      .attr('stroke', 'rgba(203, 213, 225, 0.6)')
-      .attr('stroke-width', 1);
-
-    linkGroup.append('text')
-      .attr('x', mid.x)
-      .attr('y', mid.y)
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'middle')
-      .attr('fill', 'rgba(100, 116, 139, 0.8)')
-      .attr('font-size', '10px')
-      .attr('font-family', 'monospace')
-      .text(label);
-  });
-
   const nodeGroups = nodesGroup.selectAll('g')
     .data(root.descendants())
     .join('g')
@@ -422,100 +477,12 @@ function renderTree() {
     const isNmLib = !!d.data.nodeModulesLibrary;
     const hw = NODE_WIDTH / 2;
 
-    if (isConfirmed && !isExternal) {
-      const totalH = NODE_HEIGHT;
-      nodeG.append('rect')
-        .attr('class', 'node-bg')
-        .attr('x', -hw)
-        .attr('y', -totalH / 2)
-        .attr('width', NODE_WIDTH)
-        .attr('height', totalH)
-        .attr('rx', 8)
-        .attr('fill', CONFIRMED_GREEN)
-        .attr('stroke', CONFIRMED_GREEN)
-        .attr('stroke-width', 2)
-        .attr('filter', 'url(#node-shadow)');
-
-      let headerLabel = d.data.templateName;
-
-      if (isNmLib && d.data.nodeModulesLibrary) {
-        const libLabel = d.data.nodeModulesLibrary;
-        const lineSpacing = 20;
-        const line1Y = -lineSpacing / 2;
-        const line2Y = lineSpacing / 2;
-
-        nodeG.append('text')
-          .attr('x', 0)
-          .attr('y', line1Y)
-          .attr('text-anchor', 'middle')
-          .attr('dominant-baseline', 'middle')
-          .attr('fill', '#ffffff')
-          .attr('font-size', '18px')
-          .attr('font-weight', '700')
-          .text(() => textEllipsis(headerLabel, NODE_WIDTH - 20));
-
-        const tagTextWidth = libLabel.length * 7.5;
-        const tagPadX = 8;
-        const tagPadY = 3;
-        const tagWidth = tagTextWidth + tagPadX * 2;
-
-        nodeG.append('rect')
-          .attr('x', -tagWidth / 2)
-          .attr('y', line2Y - 9 - tagPadY)
-          .attr('width', tagWidth)
-          .attr('height', 18 + tagPadY * 2)
-          .attr('rx', 4)
-          .attr('fill', 'rgba(255, 255, 255, 0.25)');
-
-        nodeG.append('text')
-          .attr('x', 0)
-          .attr('y', line2Y)
-          .attr('text-anchor', 'middle')
-          .attr('dominant-baseline', 'middle')
-          .attr('fill', 'rgba(255, 255, 255, 0.9)')
-          .attr('font-size', '16px')
-          .attr('font-weight', '500')
-          .text(libLabel);
-      } else {
-        nodeG.append('text')
-          .attr('x', 0)
-          .attr('y', 0)
-          .attr('text-anchor', 'middle')
-          .attr('dominant-baseline', 'middle')
-          .attr('fill', '#ffffff')
-          .attr('font-size', '15px')
-          .attr('font-weight', '700')
-          .text(() => textEllipsis(headerLabel, NODE_WIDTH - 20));
-      }
-
-      const portColor = CONFIRMED_GREEN;
-      nodeG.append('circle')
-        .attr('cx', -hw)
-        .attr('cy', 0)
-        .attr('r', PORT_RADIUS)
-        .attr('fill', portColor)
-        .attr('stroke', '#ffffff')
-        .attr('stroke-width', 1.5);
-
-      if (d.children && d.children.length > 0) {
-        nodeG.append('circle')
-          .attr('cx', hw)
-          .attr('cy', 0)
-          .attr('r', PORT_RADIUS)
-          .attr('fill', portColor)
-          .attr('stroke', '#ffffff')
-          .attr('stroke-width', 1.5);
-      }
-
-      return;
-    }
-
     nodeG.attr('opacity', 0.85);
 
     const headerColor = color;
     const bodyFill = '#ffffff';
     const isSelectable = isNodeSelectable(d.data, confirmed);
-    const borderColor = isSelectable ? '#2563eb' : '#e2e8f0';
+    const borderColor = isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0');
 
     const bgRect = nodeG.append('rect')
       .attr('class', 'node-bg')
@@ -526,8 +493,8 @@ function renderTree() {
       .attr('rx', 8)
       .attr('fill', bodyFill)
       .attr('stroke', borderColor)
-      .attr('stroke-width', isSelectable ? 2.5 : 1.5)
-      .attr('stroke-dasharray', (isExternal || isSelectable) ? '6 3' : 'none');
+      .attr('stroke-width', isConfirmed ? 2 : (isSelectable ? 2.5 : 1.5))
+      .attr('stroke-dasharray', isConfirmed ? 'none' : ((isExternal || isSelectable) ? '6 3' : 'none'));
 
     if (!isExternal) {
       bgRect.attr('filter', 'url(#node-shadow)');
@@ -605,56 +572,136 @@ function renderTree() {
 
     const bodyTop = -NODE_HEIGHT / 2 + HEADER_HEIGHT + 4;
 
+    const bodyCenterY = bodyTop + BODY_HEIGHT / 2 - 2;
+
     if (isExternal) {
       nodeG.append('text')
         .attr('x', 0)
-        .attr('y', bodyTop + 14)
+        .attr('y', bodyCenterY)
         .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
         .attr('fill', '#94a3b8')
         .attr('font-size', '10px')
         .attr('font-style', 'italic')
         .text('external / primitive');
     } else {
-      const line1 = bodyTop + 12;
-      const line2 = bodyTop + 25;
+      const signals = d.data.templateInfo?.signals || [];
+      const inputSignals = signals.filter(s => s.kind === 'input');
+      const outputSignals = signals.filter(s => s.kind === 'output');
 
-      nodeG.append('text')
-        .attr('x', 0)
-        .attr('y', line1)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#475569')
-        .attr('font-size', '10px')
-        .text(() => `components: ${d.data.componentCount}`);
+      const dotR = 5;
+      const dotSpacing = 15;
+      const leftStart = -hw + 15;
+      const rightStart = hw - 15;
 
-      if (d.data.parameters.length > 0) {
-        const paramsStr = d.data.parameters.map(p => p.name).join(', ');
-        nodeG.append('text')
-          .attr('x', 0)
-          .attr('y', line2)
+      for (let i = 0; i < inputSignals.length; i++) {
+        const cx = leftStart + i * dotSpacing;
+        if (cx >= -4) break;
+        const sig = inputSignals[i];
+        const signalId = `in-${i}`;
+
+        const labelW = sig.name.length * 6 + 8;
+        const labelY = NODE_HEIGHT / 2 + 4;
+
+        const labelG = nodeG.append('g')
+          .attr('data-signal', signalId)
+          .attr('opacity', 0);
+
+        labelG.append('rect')
+          .attr('x', cx - labelW / 2)
+          .attr('y', labelY)
+          .attr('width', labelW)
+          .attr('height', 16)
+          .attr('rx', 3)
+          .attr('fill', '#ffffff')
+          .attr('stroke', '#2563eb')
+          .attr('stroke-width', 1);
+
+        labelG.append('text')
+          .attr('x', cx)
+          .attr('y', labelY + 8)
           .attr('text-anchor', 'middle')
-          .attr('fill', '#64748b')
-          .attr('font-size', '10px')
-          .text(() => `params: ${textEllipsis(paramsStr, NODE_WIDTH - 24)}`);
+          .attr('dominant-baseline', 'middle')
+          .attr('fill', '#475569')
+          .attr('font-size', '9px')
+          .attr('font-family', 'monospace')
+          .attr('pointer-events', 'none')
+          .text(sig.name);
+
+        nodeG.append('circle')
+          .attr('cx', cx)
+          .attr('cy', bodyCenterY)
+          .attr('r', dotR)
+          .attr('fill', '#2563eb')
+          .style('cursor', 'pointer')
+          .on('click', function (event) {
+            event.stopPropagation();
+            const label = d3.select(this.parentNode as SVGGElement).select(`g[data-signal="${signalId}"]`);
+            const visible = label.attr('opacity') === '1';
+            label.attr('opacity', visible ? 0 : 1);
+          });
+      }
+
+      for (let i = 0; i < outputSignals.length; i++) {
+        const cx = rightStart - i * dotSpacing;
+        if (cx <= 4) break;
+        const sig = outputSignals[i];
+        const signalId = `out-${i}`;
+
+        const outLabelW = sig.name.length * 6 + 8;
+        const outLabelY = NODE_HEIGHT / 2 + 8;
+
+        const outLabelG = nodeG.append('g')
+          .attr('data-signal', signalId)
+          .attr('opacity', 0);
+
+        outLabelG.append('rect')
+          .attr('x', cx - outLabelW / 2)
+          .attr('y', outLabelY)
+          .attr('width', outLabelW)
+          .attr('height', 16)
+          .attr('rx', 3)
+          .attr('fill', '#ffffff')
+          .attr('stroke', '#16a34a')
+          .attr('stroke-width', 1);
+
+        outLabelG.append('text')
+          .attr('x', cx)
+          .attr('y', outLabelY + 8)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle')
+          .attr('fill', '#475569')
+          .attr('font-size', '9px')
+          .attr('font-family', 'monospace')
+          .attr('pointer-events', 'none')
+          .text(sig.name);
+
+        nodeG.append('circle')
+          .attr('cx', cx)
+          .attr('cy', bodyCenterY)
+          .attr('r', dotR)
+          .attr('fill', '#16a34a')
+          .style('cursor', 'pointer')
+          .on('click', function (event) {
+            event.stopPropagation();
+            const label = d3.select(this.parentNode as SVGGElement).select(`g[data-signal="${signalId}"]`);
+            const visible = label.attr('opacity') === '1';
+            label.attr('opacity', visible ? 0 : 1);
+          });
       }
     }
 
-    const portColor = color;
-    nodeG.append('circle')
-      .attr('cx', -hw)
-      .attr('cy', 0)
-      .attr('r', PORT_RADIUS)
-      .attr('fill', portColor)
-      .attr('stroke', '#ffffff')
-      .attr('stroke-width', 1.5);
-
-    if (d.children && d.children.length > 0) {
-      nodeG.append('circle')
-        .attr('cx', hw)
-        .attr('cy', 0)
-        .attr('r', PORT_RADIUS)
-        .attr('fill', portColor)
-        .attr('stroke', '#ffffff')
-        .attr('stroke-width', 1.5);
+    if (isConfirmed && !isExternal) {
+      nodeG.append('rect')
+        .attr('class', 'node-confirmed-overlay')
+        .attr('x', -hw)
+        .attr('y', -NODE_HEIGHT / 2)
+        .attr('width', NODE_WIDTH)
+        .attr('height', NODE_HEIGHT)
+        .attr('rx', 8)
+        .attr('fill', CONFIRMED_GREEN)
+        .attr('opacity', 0.3)
+        .attr('pointer-events', 'none');
     }
   });
 
@@ -664,10 +711,10 @@ function renderTree() {
     })
     .on('mouseleave', function (_event, d) {
       const isSelected = d.data.templateInfo === circuitStore.selectedTemplate;
-      const isConfirmed = confirmed.has(d.data.templateName);
+      const isConfirmedNode = confirmed.has(d.data.templateName);
       const isSel = isNodeSelectable(d.data, confirmed);
-      const border = isConfirmed ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0'));
-      const sw = isSelected ? 2.5 : (isSel ? 2.5 : 1.5);
+      const border = isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0'));
+      const sw = isConfirmedNode ? 2 : (isSelected ? 2.5 : (isSel ? 2.5 : 1.5));
       d3.select(this).select('.node-bg')
         .attr('stroke', border)
         .attr('stroke-width', sw);
@@ -685,6 +732,63 @@ function renderTree() {
       detailPanel.node = d.data;
       detailPanel.visible = true;
     });
+
+  const bordersGroup = g.append('g').attr('class', 'subtree-borders');
+
+  root.descendants().forEach(node => {
+    if (!node.data.instanceCount || node.data.instanceCount <= 1) return;
+
+    const desc = node.descendants();
+    const borderPad = 10;
+
+    const yGroups = new Map<number, typeof desc>();
+    for (const d of desc) {
+      const y = d.y ?? 0;
+      if (!yGroups.has(y)) yGroups.set(y, []);
+      yGroups.get(y)!.push(d);
+    }
+    const yValues = Array.from(yGroups.keys()).sort((a, b) => a - b);
+
+    const layers = yValues.map(y => {
+      const nodes = yGroups.get(y)!;
+      return {
+        leftX: y - NODE_WIDTH / 2 - borderPad,
+        rightX: y + NODE_WIDTH / 2 + borderPad,
+        topY: Math.min(...nodes.map(n => n.x ?? 0)) - NODE_HEIGHT / 2 - borderPad,
+        bottomY: Math.max(...nodes.map(n => n.x ?? 0)) + NODE_HEIGHT / 2 + borderPad,
+      };
+    });
+
+    const points: string[] = [];
+    for (const layer of layers) {
+      points.push(`${layer.leftX},${layer.topY}`);
+      points.push(`${layer.rightX},${layer.topY}`);
+    }
+    const deepest = layers[layers.length - 1];
+    for (let i = layers.length - 1; i >= 0; i--) {
+      points.push(`${layers[i].rightX},${layers[i].bottomY}`);
+      points.push(`${layers[i].leftX},${layers[i].bottomY}`);
+    }
+
+    bordersGroup.append('polygon')
+      .attr('points', points.join(' '))
+      .attr('fill', 'none')
+      .attr('stroke', '#64748b')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '6 3')
+      .attr('pointer-events', 'none');
+
+    bordersGroup.append('text')
+      .attr('x', deepest.rightX + 8)
+      .attr('y', (deepest.topY + deepest.bottomY) / 2)
+      .attr('text-anchor', 'start')
+      .attr('dominant-baseline', 'middle')
+      .attr('fill', '#475569')
+      .attr('font-size', '18px')
+      .attr('font-weight', '700')
+      .attr('pointer-events', 'none')
+      .text(`×${node.data.instanceCount}`);
+  });
 
   zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.15, 3])
@@ -716,6 +820,8 @@ function renderTree() {
       d3.zoomIdentity.translate(tx, ty).scale(scale)
     );
   });
+
+  updateSelection();
 }
 
 async function handlePanelSelect() {
@@ -819,17 +925,23 @@ function updateSelection() {
     const nodeGroup = d3.select(this);
     const data = d.data;
     const isSelected = data.templateInfo === circuitStore.selectedTemplate;
-    const isConfirmed = confirmed.has(data.templateName);
-
-    if (isConfirmed && !data.isExternal) return;
+    const isConfirmedNode = confirmed.has(data.templateName);
 
     const isSel = isNodeSelectable(data, confirmed);
     const bgRect = nodeGroup.select('.node-bg');
-    if (isSelected) {
+    if (isConfirmedNode && !data.isExternal) {
+      bgRect
+        .attr('filter', 'url(#node-shadow)')
+        .attr('stroke', CONFIRMED_GREEN)
+        .attr('stroke-width', 2)
+        .attr('stroke-dasharray', 'none')
+        .attr('fill', '#ffffff');
+    } else if (isSelected) {
       bgRect
         .attr('filter', 'url(#selected-glow)')
         .attr('stroke', '#1a73e8')
         .attr('stroke-width', 2.5)
+        .attr('stroke-dasharray', 'none')
         .attr('fill', '#ffffff');
     } else if (isSel) {
       bgRect

@@ -1,6 +1,7 @@
 import type { SymbolObject } from '../../types/constraint.js';
 import type { ConstraintObject, ConstraintComponent } from '../../types/constraint.js';
 import type { SpecTranslation } from '../../types/formalConformanceTypes.js';
+import { simplifyFieldElement } from '../utils/fieldConstants.js';
 
 export class SpecTranslator {
   private primeField: bigint;
@@ -620,15 +621,7 @@ export class SpecTranslator {
   }
 
   private normalizeCoefficient(rawVal: string | number): bigint {
-    let val = BigInt(rawVal);
-    if (val < BigInt(0)) {
-      val = ((val % this.primeField) + this.primeField) % this.primeField;
-    } else if (val >= this.primeField) {
-      val = val % this.primeField;
-    }
-    const half = this.primeField / BigInt(2);
-    if (val > half) return val - this.primeField;
-    return val;
+    return simplifyFieldElement(rawVal);
   }
 
   getIndexToName(): Map<number, string> {

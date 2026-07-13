@@ -101,6 +101,8 @@ export interface ComponentInstantiationNode {
   arguments: ExpressionNode[];
   publicSignals: string[];
   line: number;
+  isAnonymous?: boolean;
+  callArgs?: ExpressionNode[];
 }
 
 export interface ComponentDeclarationNode {

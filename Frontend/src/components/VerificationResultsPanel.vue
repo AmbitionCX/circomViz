@@ -85,7 +85,7 @@
               <el-button
                 size="small"
                 circle
-                :loading="steps.formal.status === 'running'"
+                :loading="false"
                 @click.stop="reRunFormalConformance"
               >
                 <el-icon><Refresh /></el-icon>

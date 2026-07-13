@@ -1,9 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import * as fs from 'fs/promises';
 import { Cvc5Solver } from '../../core/solver/cvc5Solver.js';
 import { SpecTranslator } from '../../core/solver/specTranslator.js';
 import { OutputSignalIdentifier } from '../../core/soundness/outputIdentifier.js';
 import { ProjectLoader } from '../../core/project/loadProject.js';
+import { parseSymFile, parseConstraintsFile } from '../../core/utils/symbolParser.js';
 import { logger } from '../../utils/logger.js';
 import type {
   formal_conformance_request,
@@ -15,30 +15,6 @@ import type {
   TotalityConformanceResult,
 } from '../../types/formalConformanceTypes.js';
 import type { SymbolObject, ConstraintObject } from '../../types/constraint.js';
-
-async function parseSymFile(symPath: string): Promise<SymbolObject[]> {
-  const content = await fs.readFile(symPath, 'utf-8');
-  const lines = content.trim().split('\n');
-  return lines
-    .filter(line => line.trim().length > 0)
-    .map(line => {
-      const fields = line.split(',');
-      return {
-        index: parseInt(fields[0]),
-        witness: parseInt(fields[1]),
-        component: parseInt(fields[2]),
-        name: fields[3].trim(),
-      };
-    });
-}
-
-async function parseConstraintsFile(constraintsJsonPath: string): Promise<ConstraintObject[]> {
-  const content = await fs.readFile(constraintsJsonPath, 'utf-8');
-  const json = JSON.parse(content);
-  return json.constraints.map(
-    (triple: Array<Record<string, string | number>>) => triple as ConstraintObject
-  );
-}
 
 function extractAllSignalIndices(constraints: ConstraintObject[], symbols: SymbolObject[]): number[] {
   const indexSet = new Set<number>();

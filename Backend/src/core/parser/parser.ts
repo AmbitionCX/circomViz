@@ -170,8 +170,12 @@ export class CircomParser {
         // console.log(`[Parser DEBUG]   -> parsing component`);
         components.push(this.parseComponentInstantiation());
       } else {
-        // console.log(`[Parser DEBUG]   -> parsing statement`);
-        statements.push(this.parseStatement());
+        const stmt = this.parseStatement();
+        if (stmt.type === 'ComponentInstantiationNode') {
+          components.push(stmt);
+        } else {
+          statements.push(stmt);
+        }
       }
     }
     // console.log(`[Parser DEBUG] Parsed ${statementCount} statements in template body`);
@@ -635,37 +639,7 @@ export class CircomParser {
           
           this.consumePunctuation(')');
           
-          // Now check for assignment operator
-          let operator: '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=' = '=';
-          if (this.matchOperator('<==')) {
-            operator = '<==';
-          } else if (this.matchOperator('==>')) {
-            operator = '==>';
-          } else if (this.matchOperator('===')) {
-            operator = '===';
-          } else if (this.matchOperator('<--')) {
-            operator = '<--';
-          } else if (this.matchOperator('-->')) {
-            operator = '-->';
-          } else if (this.matchOperator('+=')) {
-            operator = '+=';
-          } else if (this.matchOperator('-=')) {
-            operator = '-=';
-          } else if (this.matchOperator('*=')) {
-            operator = '*=';
-          } else if (this.matchOperator('/=')) {
-            operator = '/=';
-          } else if (this.matchOperator('&=')) {
-            operator = '&=';
-          } else if (this.matchOperator('|=')) {
-            operator = '|=';
-          } else if (this.matchOperator('^=')) {
-            operator = '^=';
-          } else if (this.matchOperator('\\=')) {
-            operator = '\\=';
-          } else {
-            this.consumeOperator('=');
-          }
+          const operator = this.matchAssignmentOperator();
           
           const right = this.parseExpression();
           this.consumePunctuation(';');
@@ -697,8 +671,23 @@ export class CircomParser {
     
     // Check if NEXT token is a semicolon (standalone expression statement)
     if (this.checkPunctuation(';')) {
-      // console.log(`[Parser DEBUG] -> found standalone expression statement`);
       this.consumePunctuation(';');
+
+      // Anonymous component as statement: Template(args)(inputs);
+      if ((expr as any).type === 'ComponentCall') {
+        const call = expr as any;
+        return {
+          type: 'ComponentInstantiationNode',
+          name: call.template,
+          templateName: call.template,
+          arguments: call.templateArgs,
+          callArgs: call.callArgs,
+          publicSignals: [],
+          isAnonymous: true,
+          line: call.line
+        } as any;
+      }
+
       return {
         type: 'ExpressionStatement',
         expression: expr,
@@ -711,43 +700,28 @@ export class CircomParser {
     return this.parseAssignment(expr);
   }
 
-  private parseAssignment(left: ExpressionNode): AssignmentNode {
-    // Left side is passed as parameter from parseStatement
+  private parseAssignment(left: ExpressionNode): AssignmentNode | ComponentInstantiationNode {
     const leftExpr = left;
-    
-    let operator: '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=' = '=';
-    if (this.matchOperator('<==')) {
-      operator = '<==';
-    } else if (this.matchOperator('==>')) {
-      operator = '==>';
-    } else if (this.matchOperator('===')) {
-      operator = '===';
-    } else if (this.matchOperator('<--')) {
-      operator = '<--';
-    } else if (this.matchOperator('-->')) {
-      operator = '-->';
-    } else if (this.matchOperator('+=')) {
-      operator = '+=';
-    } else if (this.matchOperator('-=')) {
-      operator = '-=';
-    } else if (this.matchOperator('*=')) {
-      operator = '*=';
-    } else if (this.matchOperator('/=')) {
-      operator = '/=';
-    } else if (this.matchOperator('&=')) {
-      operator = '&=';
-    } else if (this.matchOperator('|=')) {
-      operator = '|=';
-    } else if (this.matchOperator('^=')) {
-      operator = '^=';
-    } else if (this.matchOperator('\\=')) {
-      operator = '\\=';
-    } else {
-      this.consumeOperator('=');
-    }
+    const operator = this.matchAssignmentOperator();
 
     const right = this.parseExpression();
     this.consumePunctuation(';');
+
+    // Anonymous component in assignment: target <== Template(args)(inputs);
+    if ((right as any).type === 'ComponentCall') {
+      const call = right as any;
+      const targetName = leftExpr.type === 'Identifier' ? leftExpr.name : `__anon_${call.line}`;
+      return {
+        type: 'ComponentInstantiationNode',
+        name: targetName,
+        templateName: call.template,
+        arguments: call.templateArgs,
+        callArgs: call.callArgs,
+        publicSignals: [],
+        isAnonymous: true,
+        line: (leftExpr as any).line
+      };
+    }
 
     return {
       type: 'Assignment',
@@ -756,6 +730,17 @@ export class CircomParser {
       right,
       line: (leftExpr as any).line
     };
+  }
+
+  private matchAssignmentOperator(): '<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\=' | '=' {
+    const ops: Array<'<==' | '==>' | '===' | '<--' | '-->' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '\\='> = [
+      '<==', '==>', '===', '<--', '-->', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '\\=',
+    ];
+    for (const op of ops) {
+      if (this.matchOperator(op)) return op;
+    }
+    this.consumeOperator('=');
+    return '=';
   }
 
   private parseBlock(): StatementNode[] {
@@ -1408,11 +1393,6 @@ export class CircomParser {
     return token.value;
   }
 
-  private parseNumberLiteral(): number {
-    const token = this.consume('NUMBER', 'Expected number');
-    return parseInt(token.value);
-  }
-
   private advance(): Token {
     if (!this.isAtEnd()) {
       this.current++;
@@ -1436,60 +1416,33 @@ export class CircomParser {
   }
 
   private checkForComponentArrayInitialization(componentName: string): boolean {
-    // Look ahead to see if next statements initialize this component array
-    // Pattern to look for: componentName[...] = Template(...) or componentName = Template(...)
+    // Look ahead to see if the NEXT statement directly initializes this component array.
+    // Only detect direct element assignments: componentName[...] = ... or componentName = ...
+    // Do NOT collect for/while loops or blocks — those remain regular template statements.
     const savedPos = this.current;
 
     try {
-      // Skip whitespace and comments if any
       while (this.checkPunctuation(';')) {
         this.advance();
       }
 
-      // Check if next statement is an initialization
-      // Pattern: IDENTIFIER (componentName) [ ... ] = IDENTIFIER ... (
       if (this.checkType('IDENTIFIER') && this.peek().value === componentName) {
         this.advance(); // Skip component name
-        if (this.matchPunctuation('[')) {
-          // Array access: component[i] = Template()
+
+        if (this.checkPunctuation('[')) {
           this.advance(); // Skip '['
-          // Skip index expression
           while (!this.checkPunctuation(']') && !this.isAtEnd()) {
             this.advance();
           }
-          if (this.matchPunctuation(']')) {
-            // Check for assignment operator
-            if (this.matchOperator('=') || this.matchOperator('<==')) {
-              // Check if right side starts with a template call (IDENTIFIER)
-              if (this.checkType('IDENTIFIER')) {
-                // console.log(`[Parser DEBUG] Found component array initialization pattern: ${componentName}[...] = IDENTIFIER`);
-                return true;
-              }
+          if (this.checkPunctuation(']')) {
+            this.advance(); // Skip ']'
+            if (this.checkOperator('=') || this.checkOperator('<==') || this.checkPunctuation('.')) {
+              return true;
             }
           }
-        } else if (this.matchOperator('=') || this.matchOperator('<==')) {
-          // Direct assignment: component = Template()
-          if (this.checkType('IDENTIFIER')) {
-            // console.log(`[Parser DEBUG] Found component array initialization pattern: ${componentName} = IDENTIFIER`);
-            return true;
-          }
-        }
-      }
-
-      // Check if next statement is a for/while loop
-      // component c[n]; for (i=0; i<n; i++) { c[i] = Template(); }
-      if (this.checkType('KEYWORD')) {
-        const keyword = this.peek().value;
-        if (keyword === 'for' || keyword === 'while') {
-          // console.log(`[Parser DEBUG] Found component array initialization in loop: ${componentName}`);
+        } else if (this.checkOperator('=') || this.checkOperator('<==')) {
           return true;
         }
-      }
-
-      // Check if next statement is a block (might contain initialization)
-      if (this.checkPunctuation('{')) {
-        // console.log(`[Parser DEBUG] Found component array initialization block for ${componentName}`);
-        return true;
       }
 
       return false;
@@ -1499,78 +1452,42 @@ export class CircomParser {
   }
 
   private isComponentArrayInitStatement(componentName: string): boolean {
-    // Check if the current statement is an initialization statement for this component
+    // Check if the current statement directly initializes this component array.
+    // Only collect statements that start with componentName[...] or componentName.
+    // For/while loops and blocks are NOT collected — they remain regular statements.
     const savedPos = this.current;
 
     try {
-      // Skip any leading punctuation (like ';')
       while (this.checkPunctuation(';')) {
         this.advance();
       }
 
-      // Check for end of file
       if (this.isAtEnd()) {
         return false;
       }
 
-      // Pattern 1: componentName[i] = Template()
+      // componentName[...] ... (instantiation, signal assignment, or member access)
       if (this.checkType('IDENTIFIER') && this.peek().value === componentName) {
         this.advance(); // Skip component name
-        if (this.matchPunctuation('[')) {
-          // Array access
+
+        if (this.checkPunctuation('[')) {
           this.advance(); // Skip '['
-          // Skip index expression
           while (!this.checkPunctuation(']') && !this.isAtEnd()) {
             this.advance();
           }
-          if (this.matchPunctuation(']')) {
-            // Check for assignment operator
-            if (this.matchOperator('=') || this.matchOperator('<==')) {
-              // Check if right side is a template call (IDENTIFIER followed by '(')
-              if (this.checkType('IDENTIFIER')) {
-                this.advance();
-                if (this.checkPunctuation('(')) {
-                  // console.log(`[Parser DEBUG] Statement is component array init: ${componentName}[...] = IDENTIFIER(`);
-                  return true;
-                }
-              }
-            }
+          if (this.checkPunctuation(']')) {
+            this.advance(); // Skip ']'
+            // Any statement starting with componentName[...] is an init statement
+            return true;
           }
         }
-      }
 
-      // Pattern 2: componentName = Template() (less common but possible)
-      if (this.checkType('IDENTIFIER') && this.peek().value === componentName) {
-        this.advance(); // Skip component name
-        if (this.matchOperator('=') || this.matchOperator('<==')) {
-          if (this.checkType('IDENTIFIER')) {
-            this.advance();
-            if (this.checkPunctuation('(')) {
-              // console.log(`[Parser DEBUG] Statement is component array init: ${componentName} = IDENTIFIER(`);
-              return true;
-            }
-          }
-        }
-      }
-
-      // Pattern 3: for/while loop (continue collecting if it's a loop)
-      if (this.checkType('KEYWORD')) {
-        const keyword = this.peek().value;
-        if (keyword === 'for' || keyword === 'while') {
-          // console.log(`[Parser DEBUG] Statement is loop, continuing init collection for ${componentName}`);
+        // componentName = ... or componentName <== ...
+        if (this.checkOperator('=') || this.checkOperator('<==')) {
           return true;
         }
       }
 
-      // Pattern 4: Block statement (continue collecting)
-      if (this.checkPunctuation('{')) {
-        // console.log(`[Parser DEBUG] Statement is block, continuing init collection for ${componentName}`);
-        return true;
-      }
-
-      // Not an init statement
-      // console.log(`[Parser DEBUG] Statement is NOT component array init for ${componentName}`);
-      // console.log(`[Parser DEBUG] Next token: ${this.peek().type}:${this.peek().value}`);
       return false;
     } finally {
       this.current = savedPos;

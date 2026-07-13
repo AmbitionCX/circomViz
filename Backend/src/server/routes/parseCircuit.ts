@@ -350,6 +350,56 @@ function extractComponentCallsFromStatements(statements: any[]): any[] {
   return componentCalls;
 }
 
+/**
+ * Detect component array element instantiations: arr[i] = Template(args)
+ *
+ * These appear as Assignment nodes where:
+ *   - left is an ArrayAccess on a known component array
+ *   - right is a FunctionCall (the template name + constructor args)
+ *
+ * Unlike anonymous component calls (ComponentCall nodes), these are plain
+ * FunctionCalls and are missed by extractComponentCallsFromStatements.
+ *
+ * Returns one entry per array name (first template found wins), deduplicated.
+ */
+function extractComponentArrayInstantiations(
+  statements: any[],
+  componentArrayNames: Set<string>,
+): Array<{ name: string; templateName: string; arguments?: any[] }> {
+  const found = new Map<string, { name: string; templateName: string; arguments?: any[] }>();
+
+  function visit(node: any): void {
+    if (!node) return;
+
+    if (node.type === 'Assignment' &&
+        node.left?.type === 'ArrayAccess' &&
+        node.left.array?.type === 'Identifier' &&
+        componentArrayNames.has(node.left.array.name) &&
+        node.right?.type === 'FunctionCall' &&
+        node.right.function) {
+      const arrayName = node.left.array.name;
+      if (!found.has(arrayName)) {
+        found.set(arrayName, {
+          name: arrayName,
+          templateName: node.right.function,
+          arguments: node.right.arguments || [],
+        });
+      }
+    }
+
+    if (node.body && Array.isArray(node.body)) node.body.forEach((s: any) => visit(s));
+    if (node.thenBranch && Array.isArray(node.thenBranch)) node.thenBranch.forEach((s: any) => visit(s));
+    if (node.elseBranch && Array.isArray(node.elseBranch)) node.elseBranch.forEach((s: any) => visit(s));
+    if (node.initStatements && Array.isArray(node.initStatements)) node.initStatements.forEach((s: any) => visit(s));
+    if (node.initBlock && Array.isArray(node.initBlock)) node.initBlock.forEach((s: any) => visit(s));
+  }
+
+  for (const stmt of statements) {
+    visit(stmt);
+  }
+  return [...found.values()];
+}
+
 function buildTemplateTree(
   templateOrComponent: any,
   parsedFiles: Map<string, any>,
@@ -504,6 +554,50 @@ function buildTemplateTree(
     };
     tree.components.push(componentTree);
     // logger.debug(`Added anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
+  }
+
+  // 4th pass: detect component array element instantiations (arr[i] = Template(args))
+  // These are in for-loop bodies / init statements as Assignment+FunctionCall nodes,
+  // missed by all three passes above.
+  const componentArrayNames = new Set<string>();
+  for (const component of template.components) {
+    if ((component.type === 'ComponentDeclaration' || component.type === 'ComponentArrayInit') && component.arraySizes) {
+      componentArrayNames.add(component.name);
+    }
+  }
+
+  if (componentArrayNames.size > 0) {
+    const existingNames = new Set(tree.components.map((c: any) => c.name));
+
+    // Scan template.statements (for-loop bodies, if-branches, etc.)
+    const arrayInstances = extractComponentArrayInstantiations(template.statements, componentArrayNames);
+
+    // Also scan ComponentArrayInit.initStatements
+    for (const component of template.components) {
+      if (component.type === 'ComponentArrayInit' && component.initStatements) {
+        const initInstances = extractComponentArrayInstantiations(
+          component.initStatements, new Set([component.name]),
+        );
+        arrayInstances.push(...initInstances);
+      }
+    }
+
+    for (const inst of arrayInstances) {
+      if (existingNames.has(inst.name)) continue;
+      existingNames.add(inst.name);
+
+      const childTemplate = findTemplate(parsedFiles, inst.templateName);
+      const componentTree: any = {
+        name: inst.name,
+        templateName: inst.templateName,
+        arguments: inst.arguments || [],
+        isArray: true,
+        sourceFile: childTemplate?.sourceFile,
+        template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null,
+      };
+      tree.components.push(componentTree);
+      logger.info(`Added component array to tree: ${inst.name} -> ${inst.templateName} (array element instantiation)`);
+    }
   }
 
   return tree;

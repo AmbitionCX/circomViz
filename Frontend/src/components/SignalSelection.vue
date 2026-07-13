@@ -12,7 +12,7 @@
       </div>
       <div class="flex items-center justify-end text-xs text-gray-500">
         <div class="flex items-center mr-2">
-          <el-icon class="text-blue-500"><CircleCheck /></el-icon>
+          <el-icon class="text-blue-500"><CircleCheckFilled /></el-icon>
           <span>Input</span>
         </div>
         <div class="flex items-center mr-2">
@@ -61,7 +61,7 @@
           <!-- Signal node -->
           <div v-else class="tree-node-content" @dblclick.stop="handleNodeDblClick(data)">
             <el-icon v-if="data.kind === 'input'" class="mr-1 text-blue-500">
-              <CircleCheck />
+              <CircleCheckFilled />
             </el-icon>
             <el-icon v-else-if="data.kind === 'output'" class="mr-1 text-green-500">
               <CircleCheckFilled />
@@ -93,7 +93,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue';
-import { CircleCheck, CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box } from '@element-plus/icons-vue';
+import { CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { getFileContent } from '@/apis';
 import { ElMessage } from 'element-plus';

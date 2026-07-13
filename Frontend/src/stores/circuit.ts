@@ -14,6 +14,7 @@ import type {
   TemplateContract,
   ContractVerifyResult
 } from '@/types/circuitTypes';
+import { extractNodeModulesLibrary } from '@/utils/templateTree';
 
 interface CircuitState {
   parseData: {
@@ -52,6 +53,11 @@ interface CircuitState {
       line?: number;
     }>;
     error: string | null;
+    abstractCompile: boolean;
+    mockedChildren: string[];
+    unmockedChildren: string[];
+    validatorWarnings: Array<{ templateName: string; instance: string; reason: string }>;
+    boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }>;
   };
   
   signalFilter: {
@@ -128,7 +134,12 @@ export const useCircuitStore = defineStore('circuit', {
       constraints: null,
       verifications: [],
       staticAnalysisFindings: [],
-      error: null
+      error: null,
+      abstractCompile: false,
+      mockedChildren: [],
+      unmockedChildren: [],
+      validatorWarnings: [],
+      boundaryInputs: []
     },
     
     signalFilter: {
@@ -327,6 +338,20 @@ export const useCircuitStore = defineStore('circuit', {
     }>) {
       this.compilationData.staticAnalysisFindings = findings;
     },
+
+    setAbstractCompileMeta(meta: {
+      abstractCompile: boolean;
+      mockedChildren?: string[];
+      unmockedChildren?: string[];
+      validatorWarnings?: Array<{ templateName: string; instance: string; reason: string }>;
+      boundaryInputs?: Array<{ instance: string; signal: string; isArray: boolean }>;
+    }) {
+      this.compilationData.abstractCompile = meta.abstractCompile;
+      this.compilationData.mockedChildren = meta.mockedChildren ?? [];
+      this.compilationData.unmockedChildren = meta.unmockedChildren ?? [];
+      this.compilationData.validatorWarnings = meta.validatorWarnings ?? [];
+      this.compilationData.boundaryInputs = meta.boundaryInputs ?? [];
+    },
     
     resetCompilationData() {
       this.compilationVersion++;
@@ -344,10 +369,32 @@ export const useCircuitStore = defineStore('circuit', {
         constraints: null,
         verifications: [],
         staticAnalysisFindings: [],
-        error: null
+        error: null,
+        abstractCompile: false,
+        mockedChildren: [],
+        unmockedChildren: [],
+        validatorWarnings: [],
+        boundaryInputs: []
       };
     },
-    
+
+    autoConfirmNodeModulesTemplates() {
+      if (!this.parseData.tree) return;
+      const names = new Set<string>();
+      const walk = (t: TemplateInfo) => {
+        if (extractNodeModulesLibrary(t.sourceFile)) {
+          names.add(t.templateName);
+        }
+        if (t.components) {
+          for (const comp of t.components) {
+            if (comp.template) walk(comp.template);
+          }
+        }
+      };
+      walk(this.parseData.tree);
+      this.confirmedTemplateNames = [...new Set([...this.confirmedTemplateNames, ...names])];
+    },
+
     flattenSignals(template: TemplateInfo): SignalInfo[] {
       let signals: SignalInfo[] = [...template.signals];
       

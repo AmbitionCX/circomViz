@@ -121,9 +121,9 @@ function formatStatement(stmt: any, indent: number = 0): string {
       
     case 'ForLoop':
       const start = formatExpression(stmt.start);
-      const end = formatExpression(stmt.end);
-      const step = stmt.step ? formatExpression(stmt.step) : '1';
-      let forCode = `${prefix}for (var ${stmt.variable} = ${start}; ${stmt.variable} < ${end}; ${stmt.variable}++) {\n`;
+      const cond = formatExpression(stmt.end);
+      const step = stmt.step ? formatExpression(stmt.step) : `${stmt.variable}++`;
+      let forCode = `${prefix}for (var ${stmt.variable} = ${start}; ${cond}; ${step}) {\n`;
       if (stmt.body) {
         forCode += stmt.body.map((s: any) => formatStatement(s, indent + 1)).join('');
       }

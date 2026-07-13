@@ -1,4 +1,9 @@
-import type { TemplateInfo, TemplateParameter } from '@/types/circuitTypes';
+import type { TemplateInfo, TemplateParameter, ComponentInstance } from '@/types/circuitTypes';
+
+export interface PathEntry {
+  instanceName: string;
+  templateName: string;
+}
 
 export interface TreeNodeData {
   id: string;
@@ -6,6 +11,7 @@ export interface TreeNodeData {
   instanceName?: string;
   depth: number;
   path: string[];
+  pathInfo: PathEntry[];
   templateInfo: TemplateInfo | null;
   componentCount: number;
   parameters: TemplateParameter[];
@@ -15,9 +21,10 @@ export interface TreeNodeData {
   isLeaf: boolean;
   nodeModulesLibrary?: string;
   children: TreeNodeData[];
+  instanceCount?: number;
 }
 
-function extractNodeModulesLibrary(sourceFile: string | undefined): string | undefined {
+export function extractNodeModulesLibrary(sourceFile: string | undefined): string | undefined {
   if (!sourceFile) return undefined;
   const match = sourceFile.match(/\/node_modules\/([^/]+)/);
   return match ? match[1] : undefined;
@@ -26,17 +33,35 @@ function extractNodeModulesLibrary(sourceFile: string | undefined): string | und
 function buildTemplateNode(
   template: TemplateInfo,
   currentPath: string[],
+  currentPathInfo: PathEntry[],
   depth: number,
   instanceName?: string
 ): TreeNodeData {
   const hasComponents = template.components && template.components.length > 0;
 
+  let componentGroups: { comp: ComponentInstance; count: number }[] = [];
+  if (hasComponents) {
+    const groupMap = new Map<string, { comp: ComponentInstance; count: number }>();
+    for (const comp of template.components) {
+      const existing = groupMap.get(comp.templateName);
+      if (existing) {
+        existing.count++;
+      } else {
+        groupMap.set(comp.templateName, { comp, count: 1 });
+      }
+    }
+    componentGroups = Array.from(groupMap.values());
+  }
+
   const children: TreeNodeData[] = hasComponents
-    ? template.components.map((comp) => {
+    ? componentGroups.map(({ comp, count }) => {
         const childPath = [...currentPath, comp.name];
+        const childPathInfo = [...currentPathInfo, { instanceName: comp.name, templateName: comp.templateName }];
 
         if (comp.template) {
-          return buildTemplateNode(comp.template, childPath, depth + 1, comp.name);
+          const node = buildTemplateNode(comp.template, childPath, childPathInfo, depth + 1, comp.name);
+          node.instanceCount = count;
+          return node;
         }
 
         return {
@@ -45,6 +70,7 @@ function buildTemplateNode(
           instanceName: comp.name,
           depth: depth + 1,
           path: childPath,
+          pathInfo: childPathInfo,
           templateInfo: null,
           componentCount: 0,
           parameters: [],
@@ -54,6 +80,7 @@ function buildTemplateNode(
           isLeaf: true,
           nodeModulesLibrary: undefined,
           children: [],
+          instanceCount: count,
         };
       })
     : [];
@@ -64,6 +91,7 @@ function buildTemplateNode(
     instanceName,
     depth,
     path: [...currentPath],
+    pathInfo: [...currentPathInfo],
     templateInfo: template,
     componentCount: template.components ? template.components.length : 0,
     parameters: template.parameters || [],
@@ -77,7 +105,7 @@ function buildTemplateNode(
 }
 
 export function buildD3Hierarchy(tree: TemplateInfo): TreeNodeData {
-  return buildTemplateNode(tree, [], 0);
+  return buildTemplateNode(tree, [], [], 0);
 }
 
 export function isAllChildrenConfirmed(node: TreeNodeData, confirmedNames: Set<string>): boolean {

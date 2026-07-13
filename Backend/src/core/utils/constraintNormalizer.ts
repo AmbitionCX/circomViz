@@ -1,16 +1,6 @@
 import type { ConstraintObject } from '../../types/constraint.js';
 import type { SymEntry } from './symbolParser.js';
-
-const GROTH16_PRIME = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-const P = BigInt(GROTH16_PRIME);
-
-function simplifyFieldElement(rawVal: string | number): bigint {
-  let val = BigInt(rawVal);
-  if (val < 0n) val = ((val % P) + P) % P;
-  else if (val >= P) val = val % P;
-  const half = P / 2n;
-  return val > half ? val - P : val;
-}
+import { simplifyFieldElement } from './fieldConstants.js';
 
 interface LinearExprParsed {
   terms: Map<number, bigint>;

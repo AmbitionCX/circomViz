@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import type { ConstraintObject } from '../../types/constraint.js';
+import { simplifyFieldElement } from './fieldConstants.js';
 
 export interface SymEntry {
   index: number;
@@ -30,23 +31,6 @@ export async function parseConstraintsFile(constraintsJsonPath: string): Promise
   return json.constraints.map(
     (triple: Array<Record<string, string | number>>) => triple as ConstraintObject
   );
-}
-
-const GROTH16_PRIME = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-const P = BigInt(GROTH16_PRIME);
-
-function simplifyFieldElement(rawVal: string | number): bigint {
-  let val = BigInt(rawVal);
-  if (val < 0n) {
-    val = ((val % P) + P) % P;
-  } else if (val >= P) {
-    val = val % P;
-  }
-  const half = P / 2n;
-  if (val > half) {
-    return val - P;
-  }
-  return val;
 }
 
 export function formatConstraintWithNames(

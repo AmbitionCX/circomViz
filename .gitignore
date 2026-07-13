@@ -1,2 +1,6 @@
 .aider*
 Backend/compilations/
+logs
+compilations
+
+.DS_Store

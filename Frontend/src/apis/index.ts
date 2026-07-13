@@ -93,6 +93,12 @@ export const findTemplateParams = (data: find_template_params_request) =>
     },
   })
 
+export interface AbstractValidatorWarning {
+  templateName: string;
+  instance: string;
+  reason: string;
+}
+
 export interface generate_wrapper_request {
   templateName: string;
   params: { name: string; value: number }[];
@@ -101,6 +107,8 @@ export interface generate_wrapper_request {
   repo: string;
   entry: string;
   templatePath: string[];
+  confirmedTemplateNames?: string[];
+  mode?: 'full' | 'interface-mock';
 }
 
 export interface generate_wrapper_response {
@@ -115,6 +123,11 @@ export interface generate_wrapper_response {
   symPath?: string;
   constraintsJsonPath?: string;
   error?: string;
+  abstractCompile?: boolean;
+  mockedChildren?: string[];
+  unmockedChildren?: string[];
+  validatorWarnings?: AbstractValidatorWarning[];
+  boundaryInputs?: Array<{ instance: string; signal: string; isArray: boolean }>;
 }
 
 export const generateWrapper = (data: generate_wrapper_request) =>

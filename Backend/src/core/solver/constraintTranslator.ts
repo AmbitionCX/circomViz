@@ -1,4 +1,5 @@
 import type { ConstraintComponent, ConstraintObject } from '../../types/constraint.js';
+import { GROTH16_PRIME } from '../utils/fieldConstants.js';
 
 type FieldExpr = Map<number, bigint>;
 
