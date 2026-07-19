@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ContractGenerator } from '../../core/contract/contractGenerator.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type { GenerateContractRequest, GenerateContractResponse } from '../../types/contractTypes.js';
 
@@ -18,12 +19,22 @@ export async function generateContractHandler(
       } as GenerateContractResponse);
     }
 
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        contract: null,
+        error: artifactValidation.error,
+      } as GenerateContractResponse);
+    }
+
     logger.info(`Generating contract: template=${templateName}, instance=${instancePath}`);
 
     const generator = new ContractGenerator();
     const contract = await generator.generate(
-      symPath,
-      constraintsJsonPath,
+      artifactValidation.symPath!,
+      artifactValidation.constraintsJsonPath!,
       templateName,
       instancePath,
       constraintIndices,

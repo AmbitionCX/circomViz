@@ -2,6 +2,13 @@
   <div class="circuit-visualization h-full w-full flex flex-col overflow-hidden relative">
     <div ref="svgContainer" class="flex-1 min-h-0 relative bg-gray-50 rounded-lg">
       <svg ref="svgRef" class="w-full h-full"></svg>
+      <div
+        v-if="signalTooltip.visible"
+        class="signal-tooltip el-popper is-light"
+        :style="{ left: `${signalTooltip.x}px`, top: `${signalTooltip.y}px` }"
+      >
+        {{ signalTooltip.content }}
+      </div>
       <div v-if="!circuitStore.isParsed" class="absolute inset-0 flex items-center justify-center">
         <el-empty description="No circuit loaded" :image-size="80" />
       </div>
@@ -38,7 +45,7 @@
         </div>
         <div class="flex items-center gap-2">
           <span class="w-4 h-3 border border-dashed border-gray-500 rounded inline-block flex-shrink-0"></span>
-          <span class="text-gray-600 text-xs">Duplicate template</span>
+          <span class="text-gray-600 text-xs">Duplicate pattern</span>
         </div>
       </div>
     </div>
@@ -91,11 +98,13 @@
                    class="flex flex-col items-center flex-shrink-0" style="width: 16px;">
                 <div style="position: relative; height: 36px; width: 16px; overflow: visible;">
                   <span class="text-[10px] text-gray-600 font-mono whitespace-nowrap"
+                        :title="sig.name + arraySuffix(sig)"
                         style="position: absolute; left: 50%; bottom: 0; transform-origin: bottom left; transform: rotate(-45deg);">
-                    {{ sig.name }}{{ arraySuffix(sig) }}
+                    {{ expandedPanelSignals.has(sig.name) ? sig.name + arraySuffix(sig) : textEllipsis(sig.name + arraySuffix(sig), 70) }}
                   </span>
                 </div>
-                <span class="w-2 h-2 rounded-full bg-blue-600 inline-block flex-shrink-0"></span>
+                <span class="w-2 h-2 rounded-full bg-blue-600 inline-block flex-shrink-0 cursor-pointer"
+                      @click="togglePanelSignal(sig.name)"></span>
                 <span class="w-px h-3 bg-gray-300"></span>
               </div>
             </div>
@@ -118,11 +127,13 @@
               <div v-for="sig in panelOutputSignals" :key="sig.name"
                    class="flex flex-col items-center flex-shrink-0" style="width: 16px;">
                 <span class="w-px h-3 bg-gray-300"></span>
-                <span class="w-2 h-2 rounded-full bg-green-600 inline-block flex-shrink-0"></span>
+                <span class="w-2 h-2 rounded-full bg-green-600 inline-block flex-shrink-0 cursor-pointer"
+                      @click="togglePanelSignal(sig.name)"></span>
                 <div style="position: relative; height: 18px; width: 16px; overflow: visible;">
                   <span class="text-[10px] text-gray-600 font-mono whitespace-nowrap"
+                        :title="sig.name + arraySuffix(sig)"
                         style="position: absolute; left: 50%; bottom: 50%; transform-origin: bottom left; transform: rotate(45deg);">
-                    {{ sig.name }}{{ arraySuffix(sig) }}
+                    {{ expandedPanelSignals.has(sig.name) ? sig.name + arraySuffix(sig) : textEllipsis(sig.name + arraySuffix(sig), 70) }}
                   </span>
                 </div>
               </div>
@@ -307,6 +318,27 @@ const detailPanel = reactive({
   node: null as TreeNodeData | null,
 });
 
+const signalTooltip = reactive({
+  visible: false,
+  content: '',
+  x: 0,
+  y: 0,
+});
+
+function showSignalTooltip(event: MouseEvent, signalName: string) {
+  if (!svgContainer.value) return;
+
+  const bounds = svgContainer.value.getBoundingClientRect();
+  signalTooltip.content = signalName;
+  signalTooltip.x = event.clientX - bounds.left;
+  signalTooltip.y = event.clientY - bounds.top + 14;
+  signalTooltip.visible = true;
+}
+
+function hideSignalTooltip() {
+  signalTooltip.visible = false;
+}
+
 function templateColorStyle(templateName: string) {
   const color = circuitStore.getTemplateColor(templateName);
   return {
@@ -351,6 +383,18 @@ const panelParamNames = computed(() =>
   (detailPanel.node?.parameters ?? []).map(p => p.name).join(', ')
 );
 
+const expandedPanelSignals = ref<Set<string>>(new Set());
+
+function togglePanelSignal(name: string) {
+  const newSet = new Set(expandedPanelSignals.value);
+  if (newSet.has(name)) {
+    newSet.delete(name);
+  } else {
+    newSet.add(name);
+  }
+  expandedPanelSignals.value = newSet;
+}
+
 function arraySuffix(sig: SignalInfo): string {
   if (!sig.isArray) return '';
   const sizes = sig.arraySizes.map(s => {
@@ -372,6 +416,8 @@ let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
 let resizeObserver: ResizeObserver | null = null;
 
 function renderTree() {
+  hideSignalTooltip();
+
   const svg = d3.select(svgRef.value);
   svg.selectAll('*').remove();
 
@@ -598,96 +644,28 @@ function renderTree() {
         const cx = leftStart + i * dotSpacing;
         if (cx >= -4) break;
         const sig = inputSignals[i];
-        const signalId = `in-${i}`;
-
-        const labelW = sig.name.length * 6 + 8;
-        const labelY = NODE_HEIGHT / 2 + 4;
-
-        const labelG = nodeG.append('g')
-          .attr('data-signal', signalId)
-          .attr('opacity', 0);
-
-        labelG.append('rect')
-          .attr('x', cx - labelW / 2)
-          .attr('y', labelY)
-          .attr('width', labelW)
-          .attr('height', 16)
-          .attr('rx', 3)
-          .attr('fill', '#ffffff')
-          .attr('stroke', '#2563eb')
-          .attr('stroke-width', 1);
-
-        labelG.append('text')
-          .attr('x', cx)
-          .attr('y', labelY + 8)
-          .attr('text-anchor', 'middle')
-          .attr('dominant-baseline', 'middle')
-          .attr('fill', '#475569')
-          .attr('font-size', '9px')
-          .attr('font-family', 'monospace')
-          .attr('pointer-events', 'none')
-          .text(sig.name);
-
         nodeG.append('circle')
           .attr('cx', cx)
           .attr('cy', bodyCenterY)
           .attr('r', dotR)
           .attr('fill', '#2563eb')
-          .style('cursor', 'pointer')
-          .on('click', function (event) {
-            event.stopPropagation();
-            const label = d3.select(this.parentNode as SVGGElement).select(`g[data-signal="${signalId}"]`);
-            const visible = label.attr('opacity') === '1';
-            label.attr('opacity', visible ? 0 : 1);
-          });
+          .on('mouseenter', (event) => showSignalTooltip(event as MouseEvent, sig.name))
+          .on('mousemove', (event) => showSignalTooltip(event as MouseEvent, sig.name))
+          .on('mouseleave', hideSignalTooltip);
       }
 
       for (let i = 0; i < outputSignals.length; i++) {
         const cx = rightStart - i * dotSpacing;
         if (cx <= 4) break;
         const sig = outputSignals[i];
-        const signalId = `out-${i}`;
-
-        const outLabelW = sig.name.length * 6 + 8;
-        const outLabelY = NODE_HEIGHT / 2 + 8;
-
-        const outLabelG = nodeG.append('g')
-          .attr('data-signal', signalId)
-          .attr('opacity', 0);
-
-        outLabelG.append('rect')
-          .attr('x', cx - outLabelW / 2)
-          .attr('y', outLabelY)
-          .attr('width', outLabelW)
-          .attr('height', 16)
-          .attr('rx', 3)
-          .attr('fill', '#ffffff')
-          .attr('stroke', '#16a34a')
-          .attr('stroke-width', 1);
-
-        outLabelG.append('text')
-          .attr('x', cx)
-          .attr('y', outLabelY + 8)
-          .attr('text-anchor', 'middle')
-          .attr('dominant-baseline', 'middle')
-          .attr('fill', '#475569')
-          .attr('font-size', '9px')
-          .attr('font-family', 'monospace')
-          .attr('pointer-events', 'none')
-          .text(sig.name);
-
         nodeG.append('circle')
           .attr('cx', cx)
           .attr('cy', bodyCenterY)
           .attr('r', dotR)
           .attr('fill', '#16a34a')
-          .style('cursor', 'pointer')
-          .on('click', function (event) {
-            event.stopPropagation();
-            const label = d3.select(this.parentNode as SVGGElement).select(`g[data-signal="${signalId}"]`);
-            const visible = label.attr('opacity') === '1';
-            label.attr('opacity', visible ? 0 : 1);
-          });
+          .on('mouseenter', (event) => showSignalTooltip(event as MouseEvent, sig.name))
+          .on('mousemove', (event) => showSignalTooltip(event as MouseEvent, sig.name))
+          .on('mouseleave', hideSignalTooltip);
       }
     }
 
@@ -1027,6 +1005,23 @@ onUnmounted(() => {
 .circuit-visualization {
   background: white;
   border-radius: 8px;
+}
+
+.signal-tooltip {
+  position: absolute;
+  z-index: 50;
+  transform: translateX(-50%);
+  max-width: 240px;
+  padding: 6px 10px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 4px;
+  background: var(--el-bg-color-overlay);
+  color: var(--el-text-color-primary);
+  box-shadow: var(--el-box-shadow-light);
+  font-size: 12px;
+  line-height: 1.2;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .detail-panel {

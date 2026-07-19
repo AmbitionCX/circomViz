@@ -6,8 +6,9 @@ import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { parse_circuit_request, parse_circuit_response, FileSummary, ParseMessage } from '../../types/circuitParser.js';
 
-import { writeFile, appendFile, mkdir } from 'fs/promises';
-import { join, sep, dirname } from 'path';
+import { writeFile, appendFile, mkdir, readdir } from 'fs/promises';
+import { spawn } from 'child_process';
+import { join, sep, dirname, resolve } from 'path';
 
 export async function parseCircuitHandler(
   request: FastifyRequest<{ Body: parse_circuit_request }>,
@@ -173,6 +174,12 @@ export async function parseCircuitHandler(
     logResponseToDisk(response, repo, entry).catch(err => {
       logger.error(`Background logging failed: ${err.message}`);
     });
+
+    if (repo === 'toy-demos') {
+      compileToyDemoOnParse(entry, rootComponent).catch(err => {
+        logger.error(`Toy demo compilation logging failed: ${err.message}`);
+      });
+    }
 
     logger.info(`Successfully parsed circuit: ${fileSummaries.length} files, ${totalTemplates} templates`);
     reply.send(response); // Return parsing results to Frontend
@@ -601,6 +608,98 @@ function buildTemplateTree(
   }
 
   return tree;
+}
+
+
+type CommandResult = {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  error?: string;
+};
+
+async function compileToyDemoOnParse(entry: string, rootComponent: string): Promise<void> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeEntry = entry.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_circom$/, '');
+  const safeRoot = rootComponent.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const folderName = `toy-demos_${safeRoot || safeEntry}_${timestamp}`;
+  const compilationsRoot = join(process.cwd(), 'compilations');
+  const folderPath = join(compilationsRoot, folderName);
+  const wrapperPath = join(folderPath, 'main.circom');
+  const demoPath = resolve(process.cwd(), '..', 'toy-demos', entry);
+
+  await mkdir(folderPath, { recursive: true });
+
+  const wrapperCode = `pragma circom 2.1.6;\n\ninclude "${demoPath.replace(/\\/g, '/')}";\n\ncomponent main = ${rootComponent}();\n`;
+  await writeFile(wrapperPath, wrapperCode, 'utf-8');
+
+  const args = [wrapperPath, '--sym', '--json', '--simplification_substitution', '--O2', '-o', folderPath];
+  const commandResult = await runCompileCommand('circom', args, folderPath);
+  const generatedArtifacts = await listCompilationArtifacts(folderPath);
+
+  const output = {
+    timestamp: new Date().toISOString(),
+    repo: 'toy-demos',
+    entry,
+    rootComponent,
+    folderPath,
+    wrapperPath,
+    command: 'circom',
+    args,
+    cwd: folderPath,
+    status: commandResult.exitCode === 0 ? 'success' : 'error',
+    exitCode: commandResult.exitCode,
+    stdout: commandResult.stdout,
+    stderr: commandResult.stderr,
+    error: commandResult.error,
+    generatedArtifacts,
+  };
+
+  await writeFile(join(folderPath, 'compile-output.json'), JSON.stringify(output, null, 2), 'utf-8');
+}
+
+function runCompileCommand(command: string, args: string[], cwd: string): Promise<CommandResult> {
+  return new Promise((resolveCommand) => {
+    const child = spawn(command, args, { cwd });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      resolveCommand({
+        exitCode: null,
+        stdout,
+        stderr,
+        error: error.message,
+      });
+    });
+
+    child.on('close', (code) => {
+      resolveCommand({
+        exitCode: code,
+        stdout,
+        stderr,
+        error: code === 0 ? undefined : `circom exited with code ${code}`,
+      });
+    });
+  });
+}
+
+async function listCompilationArtifacts(folderPath: string): Promise<string[]> {
+  try {
+    const files = await readdir(folderPath);
+    return files.map(file => join(folderPath, file));
+  } catch (error: any) {
+    logger.warn(`Failed to list compilation artifacts: ${error.message}`);
+    return [];
+  }
 }
 
 async function logResponseToDisk(

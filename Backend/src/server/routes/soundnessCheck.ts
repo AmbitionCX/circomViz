@@ -3,6 +3,7 @@ import { ProjectLoader } from '../../core/project/loadProject.js';
 import { VerificationEngine } from '../../core/solver/verificationEngine.js';
 import { OutputSignalIdentifier } from '../../core/soundness/outputIdentifier.js';
 import { parseSymFile, parseConstraintsFile } from '../../core/utils/symbolParser.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type {
   soundness_check_request,
@@ -34,10 +35,23 @@ export async function soundnessCheckHandler(
       });
     }
 
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        results: {},
+        error: artifactValidation.error,
+      });
+    }
+
+    const validatedSymPath = artifactValidation.symPath!;
+    const validatedConstraintsPath = artifactValidation.constraintsJsonPath!;
+
     const absoluteEntryPath = loadResult.entryFile.path;
 
-    const symbols = await parseSymFile(symPath);
-    let constraints = await parseConstraintsFile(constraintsJsonPath);
+    const symbols = await parseSymFile(validatedSymPath);
+    let constraints = await parseConstraintsFile(validatedConstraintsPath);
 
     if (constraintIndices && constraintIndices.length > 0) {
       const indexSet = new Set(constraintIndices);

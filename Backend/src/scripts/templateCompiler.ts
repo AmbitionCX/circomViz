@@ -2,13 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import * as dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const execPromise = promisify(exec);
 
 const __rootname = path.dirname(path.dirname(__dirname));
 dotenv.config({ path: __rootname + '/.env' });
@@ -114,7 +112,8 @@ async function compileCircomCode(folderPath: string, filePath: string): Promise<
   const libraryPath = path.join(__dirname, '..', '..');
 
   try {
-    const { stdout, stderr } = await execPromise(`circom -l ${libraryPath} -o ${folderPath} ${filePath} --sym --json --simplification_substitution --O2`);
+    const args = ['-l', libraryPath, '-o', folderPath, filePath, '--sym', '--json', '--simplification_substitution', '--O2'];
+    const { stdout, stderr } = await runCommand('circom', args, folderPath);
     const stdoutLines = stdout.split('\n');
 
     let symbolFilePath = '';
@@ -141,6 +140,34 @@ async function compileCircomCode(folderPath: string, filePath: string): Promise<
   } catch (error: any) {
     throw new Error(`Failed to compile Circom code: ${error.message}`);
   }
+}
+
+function runCommand(command: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(stderr || `circom exited with code ${code}`));
+      }
+    });
+  });
 }
 
 function formatConstraint(constraint: ConstraintObject): string {

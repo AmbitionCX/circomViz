@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
 import { ConeOfInfluenceSlicer, sliceWithConstraints } from '../../core/slicer/coneOfInfluence.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type { SliceRequest, SliceResponse } from '../../types/slicerTypes.js';
 
@@ -14,13 +15,31 @@ export async function coneSliceHandler(
     if (!symPath || !constraintsJsonPath) {
       return reply.code(400).send({
         success: false,
+        totalConstraintCount: 0,
+        totalSignalCount: 0,
+        reductionPercent: 0,
         error: 'symPath and constraintsJsonPath are required',
+      } as SliceResponse);
+    }
+
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        totalConstraintCount: 0,
+        totalSignalCount: 0,
+        reductionPercent: 0,
+        error: artifactValidation.error,
       } as SliceResponse);
     }
 
     if (!targetSignals || targetSignals.length === 0) {
       return reply.code(400).send({
         success: false,
+        totalConstraintCount: 0,
+        totalSignalCount: 0,
+        reductionPercent: 0,
         error: 'targetSignals must be non-empty',
       } as SliceResponse);
     }
@@ -28,7 +47,10 @@ export async function coneSliceHandler(
     logger.info(`Cone slice: direction=${direction}, targets=${targetSignals.join(',')}, maxDepth=${maxDepth || 'unlimited'}`);
 
     const indexer = new ConstraintIndexer();
-    const { index, symEntries, constraints } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index, symEntries, constraints } = await indexer.loadOrBuild(
+      artifactValidation.symPath!,
+      artifactValidation.constraintsJsonPath!
+    );
 
     const sliceResult = await sliceWithConstraints(
       index,
@@ -43,6 +65,9 @@ export async function coneSliceHandler(
     if (sliceResult.signalCount === 0) {
       return reply.code(400).send({
         success: false,
+        totalConstraintCount: 0,
+        totalSignalCount: 0,
+        reductionPercent: 0,
         error: `No matching signals found for: ${targetSignals.join(', ')}`,
       } as SliceResponse);
     }
@@ -66,6 +91,9 @@ export async function coneSliceHandler(
     logger.error(`Error in cone slice: ${error.message}`);
     reply.code(500).send({
       success: false,
+      totalConstraintCount: 0,
+      totalSignalCount: 0,
+      reductionPercent: 0,
       error: error.message,
     } as SliceResponse);
   }

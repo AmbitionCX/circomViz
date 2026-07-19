@@ -1,10 +1,11 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse, BuildIndexResponse, SliceResponse, SliceDirection, BipartiteGraphResponse, SliceCandidatesResponse, ConstraintTreesResponse } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse, BuildIndexResponse, SliceResponse, SliceDirection, BipartiteGraphResponse, SliceCandidatesResponse, ConstraintTreesResponse, TemplateContract, ContractVerifyResult } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
   submodules = '/submodules',
+  examples = '/examples',
   compile_template = '/compile_template',
   find_template_params = '/find_template_params',
   generate_wrapper = '/generate_wrapper',
@@ -31,6 +32,14 @@ export interface getSubmodules_response {
 
 export interface getSubmoduleById_response {
   submodule: SubmoduleInfo;
+}
+
+export interface getExamples_response {
+  examples: SubmoduleInfo[];
+}
+
+export interface getExampleById_response {
+  example: SubmoduleInfo;
 }
 
 export interface parse_circuit_request {
@@ -65,6 +74,12 @@ export const getSubmodules = () =>
 
 export const getSubmoduleById = (id: string) =>
   request.get<getSubmoduleById_response>(`${API.submodules}/${id}`);
+
+export const getExamples = () =>
+  request.get<getExamples_response>(API.examples);
+
+export const getExampleById = (id: string) =>
+  request.get<getExampleById_response>(`${API.examples}/${id}`);
 
 export const parseCircuitRequest = (data: parse_circuit_request) =>
   request.post<any, ParseCircuitResponse>(API.parse_circuit, data, {
@@ -248,14 +263,48 @@ export const coneSlice = (data: {
 export const bipartiteGraph = (data: { symPath: string; constraintsJsonPath: string }) =>
   request.post<any, BipartiteGraphResponse>(API.bipartite_graph, data)
 
-export const generateContract = (data: any) =>
-  request.post<any, any>(API.generate_contract, data)
+export interface GenerateContractRequest {
+  symPath: string;
+  constraintsJsonPath: string;
+  templateName: string;
+  instancePath: string;
+  constraintIndices?: number[];
+  soundnessResult?: unknown;
+  intentResult?: unknown;
+  formalResult?: unknown;
+}
 
-export const contractVerify = (data: any) =>
-  request.post<any, any>(API.contract_verify, data)
+export interface GenerateContractResponse {
+  success: boolean;
+  contract: TemplateContract | null;
+  error?: string;
+}
 
-export const refinementExpand = (data: any) =>
-  request.post<any, any>(API.refinement_expand, data)
+export interface ContractVerifyRequest {
+  symPath: string;
+  constraintsJsonPath: string;
+  templateName: string;
+  childContracts: TemplateContract[];
+  constraintIndices?: number[];
+  queries?: {
+    checkSatisfiability?: boolean;
+    checkDeterminism?: boolean;
+    checkCoverage?: boolean;
+  };
+}
+
+export interface RefinementExpandRequest extends ContractVerifyRequest {
+  expandedChildren: string[];
+}
+
+export const generateContract = (data: GenerateContractRequest) =>
+  request.post<any, GenerateContractResponse>(API.generate_contract, data)
+
+export const contractVerify = (data: ContractVerifyRequest) =>
+  request.post<any, ContractVerifyResult>(API.contract_verify, data)
+
+export const refinementExpand = (data: RefinementExpandRequest) =>
+  request.post<any, ContractVerifyResult>(API.refinement_expand, data)
 
 export const sliceCandidates = (data: { symPath: string; constraintsJsonPath: string }) =>
   request.post<any, SliceCandidatesResponse>(API.slice_candidates, data)

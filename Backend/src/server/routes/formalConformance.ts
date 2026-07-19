@@ -4,6 +4,7 @@ import { SpecTranslator } from '../../core/solver/specTranslator.js';
 import { OutputSignalIdentifier } from '../../core/soundness/outputIdentifier.js';
 import { ProjectLoader } from '../../core/project/loadProject.js';
 import { parseSymFile, parseConstraintsFile } from '../../core/utils/symbolParser.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type {
   formal_conformance_request,
@@ -430,8 +431,20 @@ export async function formalConformanceHandler(
       } as formal_conformance_response);
     }
 
-    const symbols = await parseSymFile(symPath);
-    let constraints = await parseConstraintsFile(constraintsJsonPath);
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        error: artifactValidation.error,
+      } as formal_conformance_response);
+    }
+
+    const validatedSymPath = artifactValidation.symPath!;
+    const validatedConstraintsPath = artifactValidation.constraintsJsonPath!;
+
+    const symbols = await parseSymFile(validatedSymPath);
+    let constraints = await parseConstraintsFile(validatedConstraintsPath);
 
     if (constraintIndices && constraintIndices.length > 0) {
       const indexSet = new Set(constraintIndices);

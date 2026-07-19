@@ -1,13 +1,8 @@
 import axios from 'axios'
 
 const request = axios.create({
-  baseURL: import.meta.env.VITE_BASE_URL,
+  baseURL: import.meta.env.VITE_BASE_URL || undefined,
   timeout: 1200000,
-  headers: {
-    post: {
-      'Access-Control-Allow-Origin': '*',
-    },
-  },
 })
 
 request.interceptors.request.use(

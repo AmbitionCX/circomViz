@@ -327,6 +327,11 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
 .signal-selection-container {
   background: white;
   border-radius: 8px;
+  min-height: 0;
+}
+
+.signal-tree {
+  min-height: max-content;
 }
 
 .signal-tree :deep(.el-tree-node__content) {

@@ -1,5 +1,5 @@
 <template>
-   <el-container class="h-screen">
+   <el-container class="h-screen overflow-hidden">
      <el-header class="bg-indigo-900 shadow-md">
        <div class="flex items-center justify-between h-full px-4">
          <div class="flex items-center gap-3">
@@ -14,14 +14,18 @@
        </div>
      </el-header>
      
-     <el-main class="bg-gray-100 pt-2 px-2 h-full">
-       <el-row class="h-full" :gutter="8">
-          <el-col :span="6" class="h-full flex flex-col gap-2 overflow-hidden">
+     <el-main class="bg-gray-100 pt-2 px-2 flex-1 min-h-0 overflow-hidden">
+       <el-row class="h-full min-h-0" :gutter="8">
+          <el-col :span="6" class="h-full min-h-0 flex flex-col gap-2 overflow-hidden left-panel-column">
                <div
                  :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', submoduleHeightClass]"
                  @click="handleSubmoduleClick"
                >
-                <SubmoduleSelector @parse-complete="handleParseComplete" />
+                <SubmoduleSelector
+                  :compact="isCircuitSelectionCompact"
+                  @circuit-selected="handleCircuitSelected"
+                  @parse-complete="handleParseComplete"
+                />
               </div>
              
                <div
@@ -32,7 +36,7 @@
               </div>
            </el-col>
           
-          <el-col :span="18" class="h-full pl-2 flex flex-col overflow-hidden">
+          <el-col :span="18" class="h-full min-h-0 pl-2 flex flex-col overflow-hidden">
               <div 
                 :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', circuitViewHeightClass]"
                 @click="handleCircuitViewClick"
@@ -67,7 +71,10 @@ import { generateWrapper } from '@/apis';
 const circuitStore = useCircuitStore();
 
 type PanelState = 'circuit' | 'interaction';
+type LeftPanelMode = 'initial' | 'selection' | 'signal';
+
 const activePanel = ref<PanelState>('circuit');
+const leftPanelMode = ref<LeftPanelMode>('initial');
 
 const circuitViewHeightClass = computed(() => {
   return activePanel.value === 'circuit' ? 'h-4/5' : 'h-1/5';
@@ -77,12 +84,22 @@ const interactionPanelHeightClass = computed(() => {
   return activePanel.value === 'interaction' ? 'h-4/5' : 'h-1/5';
 });
 
+const isCircuitSelectionCompact = computed(() => leftPanelMode.value === 'signal');
+
 const submoduleHeightClass = computed(() => {
-  return circuitStore.activeLeftPanel === 'submodule' ? 'h-2/3' : 'h-1/3';
+  if (leftPanelMode.value === 'selection') {
+    return 'selection-panel-fit min-h-0';
+  }
+
+  return isCircuitSelectionCompact.value ? 'h-1/5 min-h-0' : 'h-2/7 min-h-0';
 });
 
 const signalViewHeightClass = computed(() => {
-  return circuitStore.activeLeftPanel === 'signal' ? 'h-2/3' : 'h-1/3';
+  if (leftPanelMode.value === 'selection') {
+    return 'signal-panel-fill min-h-0';
+  }
+
+  return isCircuitSelectionCompact.value ? 'h-4/5 min-h-0' : 'h-5/7 min-h-0';
 });
 
 const handleCircuitViewClick = () => {
@@ -95,10 +112,24 @@ const handleInteractionPanelClick = () => {
 
 const handleSubmoduleClick = () => {
   circuitStore.activeLeftPanel = 'submodule';
+  if (leftPanelMode.value !== 'selection') {
+    leftPanelMode.value = 'initial';
+  }
+};
+
+const handleCircuitSelected = () => {
+  circuitStore.activeLeftPanel = 'submodule';
+  leftPanelMode.value = 'selection';
 };
 
 const handleSignalViewClick = () => {
   circuitStore.activeLeftPanel = 'signal';
+  leftPanelMode.value = 'signal';
+};
+
+const compileStatus = (success: boolean | undefined): 'success' | 'failure' | null => {
+  if (success === undefined) return null;
+  return success ? 'success' : 'failure';
 };
 
 const handleParseComplete = (data: any) => {
@@ -122,6 +153,7 @@ const handleParseComplete = (data: any) => {
   circuitStore.resetCompilationData();
   circuitStore.autoConfirmNodeModulesTemplates();
   circuitStore.activeLeftPanel = 'signal';
+  leftPanelMode.value = 'signal';
 };
 
 const handleWrapTemplate = async (data: any) => {
@@ -151,9 +183,9 @@ const handleWrapTemplate = async (data: any) => {
     circuitStore.setDebugOutput('debugOutput' in result ? (result.debugOutput ?? null) : null);
     circuitStore.setOptimizedOutput('optimizedOutput' in result ? (result.optimizedOutput ?? null) : null);
     circuitStore.setWitnessOutput('witnessOutput' in result ? (result.witnessOutput ?? null) : null);
-    circuitStore.setDebugStatus(result.debugSuccess ? 'success' : 'failure');
-    circuitStore.setOptimizedStatus(result.optimizedSuccess ? 'success' : 'failure');
-    circuitStore.setWitnessStatus(result.witnessSuccess ? 'success' : 'failure');
+    circuitStore.setDebugStatus(compileStatus(result.debugSuccess));
+    circuitStore.setOptimizedStatus(compileStatus(result.optimizedSuccess));
+    circuitStore.setWitnessStatus(compileStatus(result.witnessSuccess));
     circuitStore.setSymPath('symPath' in result ? (result.symPath ?? null) : null);
     circuitStore.setConstraintsJsonPath('constraintsJsonPath' in result ? (result.constraintsJsonPath ?? null) : null);
     circuitStore.setAbstractCompileMeta({
@@ -196,6 +228,15 @@ const handleWrapTemplate = async (data: any) => {
 .shadow-custom {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
   border: 1px solid #e5e7eb;
+}
+
+.selection-panel-fit {
+  flex: 0 0 auto;
+  max-height: 52%;
+}
+
+.signal-panel-fill {
+  flex: 1 1 0;
 }
 
 :deep(.el-row) {

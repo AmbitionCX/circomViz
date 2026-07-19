@@ -21,6 +21,7 @@ import {
 } from '../../core/utils/constraintNormalizer.js';
 import { callLLMStructured } from '../../core/llm/llmClient.js';
 import { logger } from '../../utils/logger.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import type {
   AssignmentNode,
   ExpressionNode,
@@ -431,6 +432,27 @@ export async function intentAlignmentHandler(
     logger.info(`Running intent alignment: repo=${repo}, entry=${entry}, template=${templateName}`);
     console.log(`[IntentAlign] Starting: repo=${repo}, entry=${entry}, template=${templateName}`);
 
+    if (!symPath || !constraintsJsonPath) {
+      return reply.code(400).send({
+        success: false,
+        groups: [],
+        error: 'symPath and constraintsJsonPath are required',
+      } as intent_alignment_response);
+    }
+
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        groups: [],
+        error: artifactValidation.error,
+      } as intent_alignment_response);
+    }
+
+    const validatedSymPath = artifactValidation.symPath!;
+    const validatedConstraintsPath = artifactValidation.constraintsJsonPath!;
+
     const errorCollector = new ErrorCollector();
     const projectLoader = new ProjectLoader();
     const includeResolver = new IncludeResolver(errorCollector);
@@ -500,12 +522,12 @@ export async function intentAlignmentHandler(
 
     console.log(`[IntentAlign] Parsed ${processedPaths.size} files, ${templateContexts.length} templates`);
 
-    console.log(`[IntentAlign] Reading .sym: ${symPath}`);
-    const symEntries = await parseSymFile(symPath);
+    console.log(`[IntentAlign] Reading .sym: ${validatedSymPath}`);
+    const symEntries = await parseSymFile(validatedSymPath);
     console.log(`[IntentAlign] ${symEntries.length} symbol entries`);
 
-    console.log(`[IntentAlign] Reading constraints: ${constraintsJsonPath}`);
-    let constraints = await parseConstraintsFile(constraintsJsonPath);
+    console.log(`[IntentAlign] Reading constraints: ${validatedConstraintsPath}`);
+    let constraints = await parseConstraintsFile(validatedConstraintsPath);
 
     if (constraintIndices && constraintIndices.length > 0) {
       const indexSet = new Set(constraintIndices);

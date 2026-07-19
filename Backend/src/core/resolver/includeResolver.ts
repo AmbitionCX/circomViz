@@ -6,6 +6,7 @@ import { PathGuard } from '../project/pathGuard.js';
 import { FsUtils } from '../../utils/fs.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import * as fs from 'fs';
 
 export interface IncludePath {
   original: string;
@@ -36,14 +37,15 @@ export class IncludeResolver {
 
   async resolveInclude(includeNode: IncludeNode): Promise<string | null> {
     const originalPath = includeNode.path;
+    const cacheKey = this.getCacheKey(originalPath);
 
-    if (this.resolvedIncludes.has(originalPath)) {
-      const cached = this.resolvedIncludes.get(originalPath)!;
+    if (this.resolvedIncludes.has(cacheKey)) {
+      const cached = this.resolvedIncludes.get(cacheKey)!;
       return cached.exists ? cached.resolved : null;
     }
 
     const result = await this.resolvePath(originalPath);
-    this.resolvedIncludes.set(originalPath, result);
+    this.resolvedIncludes.set(cacheKey, result);
 
     if (!result.exists) {
       this.errorCollector.error(
@@ -54,6 +56,12 @@ export class IncludeResolver {
     }
 
     return result.exists ? result.resolved : null;
+  }
+
+  private getCacheKey(originalPath: string): string {
+    const repoKey = this.currentRepoPath ? path.normalize(this.currentRepoPath) : '';
+    const fileDir = this.currentFile ? path.dirname(path.normalize(this.currentFile)) : '';
+    return [repoKey, fileDir, originalPath].join('::');
   }
 
   private async resolvePath(originalPath: string): Promise<IncludePath> {
@@ -79,15 +87,16 @@ export class IncludeResolver {
       }
     } else if (originalPath.startsWith('./') || originalPath.startsWith('../') || path.isAbsolute(originalPath)) {
       // Explicit relative or absolute path
-      if (originalPath.startsWith('./') || originalPath.startsWith('../')) {
-        type = 'relative';
-        const result = this.resolveRelativePath(originalPath);
-        resolved = result;
-        exists = await FsUtils.fileExists(result);
-      } else {
+      if (path.isAbsolute(originalPath)) {
         type = 'absolute';
-        resolved = originalPath;
-        exists = await FsUtils.fileExists(originalPath);
+        resolved = this.resolveAbsolutePath(originalPath);
+      } else {
+        type = 'relative';
+        resolved = this.resolveRelativePath(originalPath);
+      }
+
+      if (resolved) {
+        exists = await FsUtils.fileExists(resolved);
       }
     } else {
       // Try relative path first (for circomlib internal includes)
@@ -131,7 +140,7 @@ export class IncludeResolver {
       }
 
       const submodulePath = path.join(
-        this.pathGuard['submodulesRoot'],
+        this.pathGuard.getSubmodulesRoot(),
         'node_modules',
         pkgName,
         subPath
@@ -168,7 +177,7 @@ export class IncludeResolver {
 
       // Also check in submodules node_modules
       const submodulePath = path.join(
-        this.pathGuard['submodulesRoot'],
+        this.pathGuard.getSubmodulesRoot(),
         'node_modules',
         potentialPkgName
       );
@@ -189,7 +198,7 @@ export class IncludeResolver {
       }
 
       const submodulePath = path.join(
-        this.pathGuard['submodulesRoot'],
+        this.pathGuard.getSubmodulesRoot(),
         'node_modules',
         foundPkgName,
         foundSubPath
@@ -215,9 +224,67 @@ export class IncludeResolver {
 
   private resolveRelativePath(relPath: string): string {
     const currentDir = path.dirname(this.currentFile);
-    const result = path.resolve(currentDir, relPath);
+    const candidate = path.resolve(currentDir, relPath);
+    const repoPath = path.resolve(this.currentRepoPath || '');
+    const normalized = path.normalize(candidate);
+
+    if (!this.currentRepoPath) {
+      logger.warn(`Current repo path not set while resolving include path: ${relPath}`);
+      return normalized;
+    }
+
+    const normalizedRepo = path.normalize(repoPath);
+    if (!this.isWithinRepo(normalized, normalizedRepo)) {
+      return '';
+    }
+
+    let canonical = '';
+    try {
+      canonical = fs.realpathSync(candidate);
+    } catch {
+      canonical = normalized;
+    }
+
+    if (!this.isWithinRepo(canonical, normalizedRepo)) {
+      return '';
+    }
+
+    const result = canonical;
+
     logger.debug(`Resolved relative path: ${relPath} -> ${result}`);
     return result;
+  }
+
+  private resolveAbsolutePath(absPath: string): string {
+    const normalizedRepo = path.resolve(this.currentRepoPath || '');
+    const normalized = path.normalize(absPath);
+
+    if (!this.currentRepoPath) {
+      logger.warn(`Current repo path not set while resolving include path: ${absPath}`);
+      return normalized;
+    }
+
+    if (!this.isWithinRepo(normalized, normalizedRepo)) {
+      return '';
+    }
+
+    let canonical = '';
+    try {
+      canonical = fs.realpathSync(absPath);
+    } catch {
+      canonical = normalized;
+    }
+
+    if (!this.isWithinRepo(canonical, normalizedRepo)) {
+      return '';
+    }
+
+    return canonical;
+  }
+
+  private isWithinRepo(candidate: string, repoPath: string): boolean {
+    const rel = path.relative(repoPath, candidate);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
   }
 
   getResolvedIncludes(): Map<string, IncludePath> {

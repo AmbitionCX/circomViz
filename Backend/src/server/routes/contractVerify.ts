@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
 import { ContractBasedVerifier } from '../../core/contract/contractBasedVerifier.js';
 import { logger } from '../../utils/logger.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import type { ContractVerifyRequest, ContractVerifyResponse, TemplateContract } from '../../types/contractTypes.js';
 
 export async function contractVerifyHandler(
@@ -29,15 +30,29 @@ export async function contractVerifyHandler(
       } as ContractVerifyResponse);
     }
 
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        suspectChildren: [],
+        refinementNeeded: false,
+        error: artifactValidation.error,
+      } as ContractVerifyResponse);
+    }
+
+    const validatedSymPath = artifactValidation.symPath!;
+    const validatedConstraintsPath = artifactValidation.constraintsJsonPath!;
+
     logger.info(`Contract-based verification: template=${templateName}, children=${childContracts.map((c: TemplateContract) => c.instancePath).join(',')}`);
 
     const indexer = new ConstraintIndexer();
-    const { index } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index } = await indexer.loadOrBuild(validatedSymPath, validatedConstraintsPath);
 
     const verifier = new ContractBasedVerifier(index);
     const { results, suspectChildren, refinementNeeded } = await verifier.verify(
-      symPath,
-      constraintsJsonPath,
+      validatedSymPath,
+      validatedConstraintsPath,
       templateName,
       childContracts,
       queries || { checkSatisfiability: true, checkDeterminism: true },

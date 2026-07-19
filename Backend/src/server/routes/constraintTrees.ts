@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
 import { parseConstraintsFile, parseSymFile, resolveConstraintTrees } from '../../core/utils/symbolParser.js';
 import { normalizeConstraints } from '../../core/utils/constraintNormalizer.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type { ConstraintTreesRequest, ConstraintTreesResponse, ConstraintTree } from '../../types/slicerTypes.js';
 
@@ -22,6 +23,19 @@ export async function constraintTreesHandler(
       } as ConstraintTreesResponse);
     }
 
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        trees: [],
+        error: artifactValidation.error,
+      } as ConstraintTreesResponse);
+    }
+
+    const validatedSymPath = artifactValidation.symPath!;
+    const validatedConstraintsPath = artifactValidation.constraintsJsonPath!;
+
     if (constraintIndices.length > MAX_CONSTRAINT_INDICES) {
       return reply.code(400).send({
         success: false,
@@ -30,11 +44,11 @@ export async function constraintTreesHandler(
       } as ConstraintTreesResponse);
     }
 
-    logger.info(`Resolving constraint trees: sym=${symPath}, indices=${constraintIndices.length}`);
+    logger.info(`Resolving constraint trees: sym=${validatedSymPath}, indices=${constraintIndices.length}`);
 
     const [symEntries, allConstraints] = await Promise.all([
-      parseSymFile(symPath),
-      parseConstraintsFile(constraintsJsonPath),
+      parseSymFile(validatedSymPath),
+      parseConstraintsFile(validatedConstraintsPath),
     ]);
 
     const indexSet = new Set(constraintIndices);

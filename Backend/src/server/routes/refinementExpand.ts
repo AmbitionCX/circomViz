@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
 import { RefinementExpander } from '../../core/contract/refinementExpander.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type { RefinementExpandRequest, RefinementExpandResponse, TemplateContract } from '../../types/contractTypes.js';
 
@@ -29,15 +30,32 @@ export async function refinementExpandHandler(
       } as RefinementExpandResponse);
     }
 
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        suspectChildren: [],
+        refinementNeeded: false,
+        error: artifactValidation.error,
+      } as RefinementExpandResponse);
+    }
+
     logger.info(`Refinement expansion: template=${templateName}, expanding=${expandedChildren.join(',')}`);
 
     const indexer = new ConstraintIndexer();
-    const { index } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index } = await indexer.loadOrBuild(
+      artifactValidation.symPath!,
+      artifactValidation.constraintsJsonPath!
+    );
+
+    const validatedSymPath = artifactValidation.symPath!;
+    const validatedConstraintsPath = artifactValidation.constraintsJsonPath!;
 
     const expander = new RefinementExpander(index);
     const { results, suspectChildren, refinementNeeded } = await expander.refine(
-      symPath,
-      constraintsJsonPath,
+      validatedSymPath,
+      validatedConstraintsPath,
       templateName,
       childContracts,
       expandedChildren,

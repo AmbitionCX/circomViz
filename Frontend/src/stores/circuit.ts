@@ -169,7 +169,7 @@ export const useCircuitStore = defineStore('circuit', {
       verifying: false
     },
     fileHighlight: null,
-    activeLeftPanel: 'submodule' as 'signal' | 'submodule',
+    activeLeftPanel: 'signal' as 'signal' | 'submodule',
   }),
   
   getters: {

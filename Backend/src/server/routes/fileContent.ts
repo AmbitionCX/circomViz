@@ -20,22 +20,16 @@ export async function fileContentHandler(
     }
 
     const pathGuard = new PathGuard();
-    const submodulesRoot = path.resolve(pathGuard.getSubmodulePath('', '')).replace(/\\/g, '/');
-
-    const normalized = path.resolve(filePath).replace(/\\/g, '/');
-
-    if (!normalized.includes('/submodules/')) {
-      return reply.code(403).send({ success: false, error: 'Access denied: path outside submodules directory' });
+    const validated = pathGuard.validateSubmoduleFilePath(filePath);
+    if (!validated.valid) {
+      return reply.code(400).send({ success: false, error: validated.error });
     }
 
-    if (!normalized.endsWith('.circom')) {
-      return reply.code(400).send({ success: false, error: 'Only .circom files can be viewed' });
-    }
+    const resolvedPath = validated.path!;
+    const content = await fs.readFile(resolvedPath, 'utf-8');
+    const baseName = path.basename(resolvedPath);
 
-    const content = await fs.readFile(normalized, 'utf-8');
-    const baseName = path.basename(normalized);
-
-    reply.send({ success: true, content, fileName: baseName, filePath: normalized });
+    reply.send({ success: true, content, fileName: baseName, filePath: resolvedPath });
   } catch (error: any) {
     logger.error(`Failed to read file: ${error.message}`);
     reply.code(500).send({ success: false, error: error.message });

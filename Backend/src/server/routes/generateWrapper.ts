@@ -6,7 +6,10 @@ import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { generate_wrapper_request, generate_wrapper_response } from '../../types/circuitParser.js';
 import { compileDebug } from '../compilations/compileDebug.js';
+import { compileOptimized } from '../compilations/compileOptimized.js';
+import { compileWitness } from '../compilations/compileWitness.js';
 import { AbstractWrapperGenerator } from '../../core/abstractCompile/index.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 
@@ -18,6 +21,12 @@ export async function generateWrapperHandler(
     const { templateName, params, publicParams, publicSignals, repo, entry, templatePath } = request.body;
     const confirmedTemplateNames = request.body.confirmedTemplateNames ?? [];
     const mode = request.body.mode ?? 'interface-mock';
+
+    const pathGuard = new PathGuard();
+    const safeTemplateName = templateName
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/[_]+/g, '_')
+      || 'template';
 
     logger.info(`Generating wrapper for template: ${templateName}`);
     logger.info(`Parameters: ${JSON.stringify(params)}`);
@@ -116,8 +125,6 @@ export async function generateWrapperHandler(
     if (templateDir && !includePaths.includes(templateDir)) {
       includePaths.push(templateDir);
     }
-
-    const includeFlags = includePaths.map(path => `-l "${path}"`).join(' ');
     logger.info(`Include paths: ${includePaths.join(', ')}`);
 
     // --- Generate wrapper code ---
@@ -160,7 +167,7 @@ export async function generateWrapperHandler(
     // --- Write files ---
 
     const timestamp = Date.now();
-    const wrapperDir = join(process.cwd(), 'wrappers', `wrapper_${templateName}_${timestamp}`);
+    const wrapperDir = join(pathGuard.getWrappersRoot(), `wrapper_${safeTemplateName}_${timestamp}`);
     await fs.mkdir(wrapperDir, { recursive: true });
 
     const originWrapperPath = join(wrapperDir, 'wrapper_origin.circom');
@@ -184,24 +191,39 @@ export async function generateWrapperHandler(
     // --- Compile origin wrapper → R1CS ---
 
     const originDir = join(wrapperDir, 'origin');
-    const originResult = await compileDebug(originWrapperPath, includeFlags, originDir);
+    const originResult = await compileDebug(originWrapperPath, includePaths, originDir);
     const originSymPath = join(originDir, 'wrapper.sym');
     const originConstraintsJsonPath = join(originDir, 'wrapper_constraints.json');
-    logger.info(`Origin compilation ${originResult.success ? 'succeeded' : 'failed'}`);
+    logger.info(`Origin debug compilation ${originResult.success ? 'succeeded' : 'failed'}`);
 
     // --- Compile mocked wrapper → R1CS (if exists) ---
 
     let mockedResult: Awaited<ReturnType<typeof compileDebug>> | null = null;
     let mockedSymPath: string | null = null;
     let mockedConstraintsJsonPath: string | null = null;
+    let mockedDir: string | null = null;
 
     if (mockedWrapperPath) {
-      const mockedDir = join(wrapperDir, 'mocked');
-      mockedResult = await compileDebug(mockedWrapperPath, includeFlags, mockedDir);
+      mockedDir = join(wrapperDir, 'mocked');
+      mockedResult = await compileDebug(mockedWrapperPath, includePaths, mockedDir);
       mockedSymPath = join(mockedDir, 'wrapper.sym');
       mockedConstraintsJsonPath = join(mockedDir, 'wrapper_constraints.json');
-      logger.info(`Mocked compilation ${mockedResult.success ? 'succeeded' : 'failed'}`);
+      logger.info(`Mocked debug compilation ${mockedResult.success ? 'succeeded' : 'failed'}`);
     }
+
+    const primaryWrapperPath = mockedWrapperPath ?? originWrapperPath;
+    const primaryDir = mockedDir ?? originDir;
+    const primaryDebugResult = mockedResult ?? originResult;
+    const primarySymPath = mockedSymPath ?? originSymPath;
+    const primaryConstraintsJsonPath = mockedConstraintsJsonPath ?? originConstraintsJsonPath;
+
+    const optimizedDir = join(primaryDir, 'optimized');
+    const optimizedResult = await compileOptimized(primaryWrapperPath, includePaths, optimizedDir);
+    logger.info(`Primary optimized compilation ${optimizedResult.success ? 'succeeded' : 'failed'}`);
+
+    const witnessDir = join(primaryDir, 'witness');
+    const witnessResult = await compileWitness(primaryWrapperPath, includePaths, witnessDir);
+    logger.info(`Primary witness compilation ${witnessResult.success ? 'succeeded' : 'failed'}`);
 
     // --- Build response ---
 
@@ -210,10 +232,14 @@ export async function generateWrapperHandler(
       wrapperCode: mockedWrapperCode || originWrapperCode,
       ...abstractMeta,
       // Primary compilation = mocked (when available), else origin
-      debugOutput: (mockedResult ?? originResult).stdout + (mockedResult ?? originResult).stderr,
-      debugSuccess: (mockedResult ?? originResult).success,
-      symPath: mockedSymPath ?? originSymPath,
-      constraintsJsonPath: mockedConstraintsJsonPath ?? originConstraintsJsonPath,
+      debugOutput: primaryDebugResult.stdout + primaryDebugResult.stderr,
+      debugSuccess: primaryDebugResult.success,
+      optimizedOutput: optimizedResult.stdout + optimizedResult.stderr,
+      optimizedSuccess: optimizedResult.success,
+      witnessOutput: witnessResult.stdout + witnessResult.stderr,
+      witnessSuccess: witnessResult.success,
+      symPath: primarySymPath,
+      constraintsJsonPath: primaryConstraintsJsonPath,
       // Origin compilation (always available)
       originSymPath,
       originConstraintsJsonPath,

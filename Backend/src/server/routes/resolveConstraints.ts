@@ -5,6 +5,7 @@ import {
   resolveConstraintsWithNames,
   type ResolvedConstraint,
 } from '../../core/utils/symbolParser.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 
 interface resolve_constraints_request {
@@ -37,10 +38,22 @@ export async function resolveConstraintsHandler(
       });
     }
 
-    logger.info(`Resolving constraints: sym=${symPath}, constraints=${constraintsJsonPath}`);
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        constraints: [],
+        signalCount: 0,
+        constraintCount: 0,
+        error: artifactValidation.error,
+      });
+    }
 
-    const symEntries = await parseSymFile(symPath);
-    const constraints = await parseConstraintsFile(constraintsJsonPath);
+    logger.info(`Resolving constraints: sym=${artifactValidation.symPath}, constraints=${artifactValidation.constraintsJsonPath}`);
+
+    const symEntries = await parseSymFile(artifactValidation.symPath!);
+    const constraints = await parseConstraintsFile(artifactValidation.constraintsJsonPath!);
 
     const resolved = resolveConstraintsWithNames(constraints, symEntries);
 

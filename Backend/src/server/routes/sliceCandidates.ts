@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
 import { generateSliceCandidates } from '../../core/slicer/coneOfInfluence.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type { SliceCandidatesRequest, SliceCandidatesResponse } from '../../types/slicerTypes.js';
 
@@ -19,10 +20,23 @@ export async function sliceCandidatesHandler(
       } as SliceCandidatesResponse);
     }
 
-    logger.info(`Generating slice candidates: sym=${symPath}, constraints=${constraintsJsonPath}`);
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        candidates: [],
+        error: artifactValidation.error,
+      } as SliceCandidatesResponse);
+    }
+
+    logger.info(`Generating slice candidates: sym=${artifactValidation.symPath}, constraints=${artifactValidation.constraintsJsonPath}`);
 
     const indexer = new ConstraintIndexer();
-    const { index } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index } = await indexer.loadOrBuild(
+      artifactValidation.symPath!,
+      artifactValidation.constraintsJsonPath!
+    );
 
     const candidates = generateSliceCandidates(index);
 

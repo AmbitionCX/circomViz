@@ -4,6 +4,7 @@ import { IncludeResolver } from '../../core/resolver/includeResolver.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { runStaticAnalysisOnFiles } from '../../core/staticAnalyzer/analyzer.js';
 import { logger } from '../../utils/logger.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import type { static_analysis_request, static_analysis_response } from '../../types/circuitParser.js';
 import * as fs from 'fs/promises';
 
@@ -15,6 +16,24 @@ export async function staticAnalysisHandler(
     const { repo, entry, symPath, constraintsJsonPath } = request.body;
 
     logger.info(`Running static analysis on project: ${repo}, entry: ${entry}`);
+
+    if (!symPath || !constraintsJsonPath) {
+      return reply.code(400).send({
+        success: false,
+        findings: [],
+        error: 'symPath and constraintsJsonPath are required',
+      });
+    }
+
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        findings: [],
+        error: artifactValidation.error,
+      });
+    }
 
     const errorCollector = new ErrorCollector();
     const projectLoader = new ProjectLoader();
@@ -90,7 +109,11 @@ export async function staticAnalysisHandler(
 
     logger.info(`Parsed ${filesToAnalyze.length} files for static analysis`);
 
-    const findings = runStaticAnalysisOnFiles(filesToAnalyze, symPath, constraintsJsonPath);
+    const findings = runStaticAnalysisOnFiles(
+      filesToAnalyze,
+      artifactValidation.symPath!,
+      artifactValidation.constraintsJsonPath!
+    );
 
     const response: static_analysis_response = {
       success: true,

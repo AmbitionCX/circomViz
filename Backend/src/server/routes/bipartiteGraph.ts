@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ConstraintIndexer } from '../../core/indexer/constraintIndex.js';
 import { normalizeConstraints } from '../../core/utils/constraintNormalizer.js';
+import { PathGuard } from '../../core/project/pathGuard.js';
 import { logger } from '../../utils/logger.js';
 import type { ConstraintIndexData } from '../../types/slicerTypes.js';
 import type { ConstraintObject } from '../../types/constraint.js';
@@ -40,10 +41,26 @@ export async function bipartiteGraphHandler(
       } as BipartiteGraphResponse);
     }
 
-    logger.info(`Building bipartite graph: sym=${symPath}, constraints=${constraintsJsonPath}`);
+    const pathGuard = new PathGuard();
+    const artifactValidation = pathGuard.validateGeneratedArtifactPaths(symPath, constraintsJsonPath);
+    if (!artifactValidation.valid) {
+      return reply.code(400).send({
+        success: false,
+        components: [],
+        topLevelSignals: [],
+        edges: [],
+        metadata: EMPTY_METADATA,
+        error: artifactValidation.error,
+      } as BipartiteGraphResponse);
+    }
+
+    logger.info(`Building bipartite graph: sym=${artifactValidation.symPath}, constraints=${artifactValidation.constraintsJsonPath}`);
 
     const indexer = new ConstraintIndexer();
-    const { index, symEntries, constraints } = await indexer.loadOrBuild(symPath, constraintsJsonPath);
+    const { index, symEntries, constraints } = await indexer.loadOrBuild(
+      artifactValidation.symPath!,
+      artifactValidation.constraintsJsonPath!
+    );
 
     const { invariants } = normalizeConstraints(constraints, symEntries);
 
