@@ -266,6 +266,8 @@ import { Close } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { buildD3Hierarchy, isNodeSelectable, isNodeConfirmable } from '@/utils/templateTree';
 import type { TreeNodeData } from '@/utils/templateTree';
+import { buildSignalRelationGraph, makeSignalKey } from '@/utils/signalRelations';
+import type { SignalRelationGraph } from '@/utils/signalRelations';
 import { hexToRgba } from '@/composables/colors';
 import { findTemplateParams } from '@/apis';
 import { ElMessage } from 'element-plus';
@@ -294,6 +296,8 @@ const NODE_GAP_X = 400;
 const CONFIRMED_GREEN = '#16a34a';
 const RECURSIVE_BORDER = '#d97706';
 const RECURSIVE_ENCLOSURE_PAD = 8;
+const SELECTED_SIGNAL_COLOR = '#f59e0b';
+const RELATED_SIGNAL_COLOR = '#fbbf24';
 
 const isSelecting = ref(false);
 const paramResponse = ref<FindTemplateParamsResponse | null>(null);
@@ -316,6 +320,10 @@ const signalTooltip = reactive({
   y: 0,
 });
 
+const selectedSignalKeys = ref<Set<string>>(new Set());
+let signalRelationGraph: SignalRelationGraph = new Map();
+let renderedTreeData: TreeNodeData | null = null;
+
 function showSignalTooltip(event: MouseEvent, signalName: string) {
   if (!svgContainer.value) return;
 
@@ -328,6 +336,82 @@ function showSignalTooltip(event: MouseEvent, signalName: string) {
 
 function hideSignalTooltip() {
   signalTooltip.visible = false;
+}
+
+function updateSignalHighlights() {
+  const selectedKeys = selectedSignalKeys.value;
+  const relatedKeys = new Set<string>();
+
+  for (const selectedKey of selectedKeys) {
+    for (const relatedKey of signalRelationGraph.get(selectedKey) ?? []) {
+      if (!selectedKeys.has(relatedKey)) {
+        relatedKeys.add(relatedKey);
+      }
+    }
+  }
+
+  d3.select(svgRef.value)
+    .selectAll<SVGCircleElement, unknown>('circle.signal-dot')
+    .each(function () {
+      const dot = d3.select(this);
+      const key = dot.attr('data-signal-key');
+      const isSelected = selectedKeys.has(key);
+      const isRelated = !isSelected && relatedKeys.has(key);
+
+      dot
+        .attr('r', isSelected ? 7 : (isRelated ? 6.5 : 5))
+        .attr('stroke', isSelected ? SELECTED_SIGNAL_COLOR : (isRelated ? RELATED_SIGNAL_COLOR : 'none'))
+        .attr('stroke-width', isSelected ? 3 : (isRelated ? 2.5 : 0))
+        .attr('filter', isSelected ? 'url(#selected-signal-shadow)' : null);
+    });
+}
+
+function applySharedSignalHighlight(treeData: TreeNodeData | null = renderedTreeData) {
+  const highlight = circuitStore.signalHighlight;
+  const matchingKeys = new Set<string>();
+
+  if (highlight && treeData) {
+    const visit = (node: TreeNodeData) => {
+      const sourceFile = node.sourceFile ?? node.templateInfo?.sourceFile;
+      const hasSignal = node.templateInfo?.signals.some(signal => signal.name === highlight.signalName);
+
+      if (
+        sourceFile === highlight.sourceFile
+        && node.templateName === highlight.templateName
+        && hasSignal
+      ) {
+        matchingKeys.add(makeSignalKey(node.id, highlight.signalName));
+      }
+
+      node.children.forEach(visit);
+    };
+
+    visit(treeData);
+  }
+
+  selectedSignalKeys.value = matchingKeys;
+  updateSignalHighlights();
+}
+
+function clearSignalHighlight() {
+  selectedSignalKeys.value = new Set();
+  circuitStore.clearSignalHighlight();
+  updateSignalHighlights();
+}
+
+function handleSignalClick(event: MouseEvent, node: TreeNodeData, signalName: string) {
+  event.stopPropagation();
+  hideSignalTooltip();
+
+  const key = makeSignalKey(node.id, signalName);
+  if (selectedSignalKeys.value.has(key)) {
+    clearSignalHighlight();
+    return;
+  }
+
+  selectedSignalKeys.value = new Set([key]);
+  circuitStore.highlightSignal(node.sourceFile, node.templateName, signalName);
+  updateSignalHighlights();
 }
 
 function templateColorStyle(templateName: string) {
@@ -415,10 +499,18 @@ function renderTree() {
 
   const svg = d3.select(svgRef.value);
   svg.selectAll('*').remove();
+  svg.on('click.signal-highlight', (event: MouseEvent) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest('g.node')) return;
+    clearSignalHighlight();
+  });
 
   if (!circuitStore.parseData.tree || !svgContainer.value) return;
 
   const treeData = buildD3Hierarchy(circuitStore.parseData.tree);
+  renderedTreeData = treeData;
+  signalRelationGraph = buildSignalRelationGraph(treeData);
+  applySharedSignalHighlight(treeData);
 
   const containerWidth = svgContainer.value.clientWidth;
   const containerHeight = svgContainer.value.clientHeight;
@@ -454,6 +546,20 @@ function renderTree() {
     .attr('stdDeviation', 4)
     .attr('flood-color', '#1a73e8')
     .attr('flood-opacity', 0.4);
+
+  const selectedSignalShadow = defs.append('filter')
+    .attr('id', 'selected-signal-shadow')
+    .attr('x', '-100%')
+    .attr('y', '-100%')
+    .attr('width', '300%')
+    .attr('height', '300%');
+
+  selectedSignalShadow.append('feDropShadow')
+    .attr('dx', 0)
+    .attr('dy', 0)
+    .attr('stdDeviation', 2.5)
+    .attr('flood-color', SELECTED_SIGNAL_COLOR)
+    .attr('flood-opacity', 0.8);
 
   const arrowMarker = defs.append('marker')
     .attr('id', 'arrowhead')
@@ -665,10 +771,14 @@ function renderTree() {
         if (cx >= -4) break;
         const sig = inputSignals[i];
         nodeG.append('circle')
+          .attr('class', 'signal-dot')
+          .attr('data-signal-key', makeSignalKey(d.data.id, sig.name))
           .attr('cx', cx)
           .attr('cy', bodyCenterY)
           .attr('r', dotR)
           .attr('fill', '#2563eb')
+          .style('cursor', 'pointer')
+          .on('click', (event) => handleSignalClick(event as MouseEvent, d.data, sig.name))
           .on('mouseenter', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mousemove', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mouseleave', hideSignalTooltip);
@@ -679,10 +789,14 @@ function renderTree() {
         if (cx <= 4) break;
         const sig = outputSignals[i];
         nodeG.append('circle')
+          .attr('class', 'signal-dot')
+          .attr('data-signal-key', makeSignalKey(d.data.id, sig.name))
           .attr('cx', cx)
           .attr('cy', bodyCenterY)
           .attr('r', dotR)
           .attr('fill', '#16a34a')
+          .style('cursor', 'pointer')
+          .on('click', (event) => handleSignalClick(event as MouseEvent, d.data, sig.name))
           .on('mouseenter', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mousemove', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mouseleave', hideSignalTooltip);
@@ -823,6 +937,7 @@ function renderTree() {
   });
 
   updateSelection();
+  updateSignalHighlights();
 }
 
 function resetWrapperConfig() {
@@ -1000,13 +1115,25 @@ watch(selectedCandidateIndex, (newIndex) => {
 });
 
 watch(
-  () => circuitStore.isParsed,
-  (parsed) => {
-    if (parsed) {
+  () => circuitStore.parseData.tree,
+  (tree) => {
+    selectedSignalKeys.value = new Set();
+    signalRelationGraph = new Map();
+    renderedTreeData = null;
+    if (tree) {
       nextTick(() => renderTree());
+    } else {
+      d3.select(svgRef.value).selectAll('*').remove();
     }
   },
   { immediate: true }
+);
+
+watch(
+  () => circuitStore.signalHighlight?.version,
+  () => {
+    applySharedSignalHighlight();
+  }
 );
 
 watch(

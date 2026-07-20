@@ -106,6 +106,13 @@ interface CircuitState {
     version: number;
   } | null;
 
+  signalHighlight: {
+    sourceFile: string;
+    templateName: string;
+    signalName: string;
+    version: number;
+  } | null;
+
   activeLeftPanel: 'signal' | 'submodule';
 }
 
@@ -182,6 +189,7 @@ export const useCircuitStore = defineStore('circuit', {
     },
     fileHighlight: null,
     templateHighlight: null,
+    signalHighlight: null,
     activeLeftPanel: 'signal' as 'signal' | 'submodule',
   }),
   
@@ -240,6 +248,7 @@ export const useCircuitStore = defineStore('circuit', {
     setParseData(data: CircuitState['parseData']) {
       this.parseData = data;
       this.templateColorMap = {};
+      this.signalHighlight = null;
       if (data.tree) {
         this.rebuildTemplateColorMap(data.tree);
       }
@@ -263,6 +272,7 @@ export const useCircuitStore = defineStore('circuit', {
       this.selectedTemplatePath = [];
       this.templateColorMap = {};
       this.templateHighlight = null;
+      this.signalHighlight = null;
     },
     
     setSelectedTemplate(template: TemplateInfo, path: string[]) {
@@ -534,6 +544,21 @@ export const useCircuitStore = defineStore('circuit', {
 
     clearTemplateHighlight() {
       this.templateHighlight = null;
+    },
+
+    highlightSignal(sourceFile: string | undefined, templateName: string, signalName: string) {
+      if (!sourceFile) return;
+      this.signalHighlight = {
+        sourceFile,
+        templateName,
+        signalName,
+        version: Date.now()
+      };
+      this.activeLeftPanel = 'signal';
+    },
+
+    clearSignalHighlight() {
+      this.signalHighlight = null;
     }
   }
 });

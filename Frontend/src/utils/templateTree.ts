@@ -9,6 +9,7 @@ export interface TreeNodeData {
   id: string;
   templateName: string;
   instanceName?: string;
+  instanceNames: string[];
   depth: number;
   path: string[];
   pathInfo: PathEntry[];
@@ -40,22 +41,24 @@ function buildTemplateNode(
 ): TreeNodeData {
   const hasComponents = template.components && template.components.length > 0;
 
-  let componentGroups: { comp: ComponentInstance; count: number }[] = [];
+  let componentGroups: { comp: ComponentInstance; instances: ComponentInstance[] }[] = [];
   if (hasComponents) {
-    const groupMap = new Map<string, { comp: ComponentInstance; count: number }>();
+    const groupMap = new Map<string, { comp: ComponentInstance; instances: ComponentInstance[] }>();
     for (const comp of template.components) {
       const existing = groupMap.get(comp.templateName);
       if (existing) {
-        existing.count++;
+        existing.instances.push(comp);
       } else {
-        groupMap.set(comp.templateName, { comp, count: 1 });
+        groupMap.set(comp.templateName, { comp, instances: [comp] });
       }
     }
     componentGroups = Array.from(groupMap.values());
   }
 
   const children: TreeNodeData[] = hasComponents
-    ? componentGroups.map(({ comp, count }) => {
+    ? componentGroups.map(({ comp, instances }) => {
+        const instanceNames = instances.map(instance => instance.name);
+        const count = instances.length;
         const childPath = [...currentPath, comp.name];
         const childPathInfo = [...currentPathInfo, { instanceName: comp.name, templateName: comp.templateName }];
 
@@ -64,6 +67,7 @@ function buildTemplateNode(
             id: childPath.join('.'),
             templateName: comp.templateName,
             instanceName: comp.name,
+            instanceNames,
             depth: depth + 1,
             path: childPath,
             pathInfo: childPathInfo,
@@ -83,6 +87,7 @@ function buildTemplateNode(
 
         if (comp.template) {
           const node = buildTemplateNode(comp.template, childPath, childPathInfo, depth + 1, comp.name);
+          node.instanceNames = instanceNames;
           node.instanceCount = count;
           return node;
         }
@@ -91,6 +96,7 @@ function buildTemplateNode(
           id: childPath.join('.'),
           templateName: comp.templateName,
           instanceName: comp.name,
+          instanceNames,
           depth: depth + 1,
           path: childPath,
           pathInfo: childPathInfo,
@@ -113,6 +119,7 @@ function buildTemplateNode(
     id: currentPath.join('.') || template.templateName,
     templateName: template.templateName,
     instanceName,
+    instanceNames: instanceName ? [instanceName] : [],
     depth,
     path: [...currentPath],
     pathInfo: [...currentPathInfo],

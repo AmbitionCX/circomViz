@@ -64,7 +64,12 @@
             <el-tag size="small" type="info" class="ml-2">{{ data.signalCount }}</el-tag>
           </div>
           <!-- Signal node -->
-          <div v-else class="tree-node-content" @dblclick.stop="handleNodeDblClick(data)">
+          <div
+            v-else
+            :data-signal-id="data.id"
+            :class="['tree-node-content signal-node', { 'signal-node-highlighted': isSignalHighlighted(data.id) }]"
+            @dblclick.stop="handleNodeDblClick(data)"
+          >
             <span
               :class="[
                 'w-2.5 h-2.5 rounded-full inline-block flex-shrink-0 mr-1',
@@ -155,6 +160,11 @@ const signalFileTree = computed(() => {
 
 
 async function handleNodeDblClick(data: any) {
+  if (data.type === 'signal') {
+    circuitStore.highlightSignal(data.sourceFile, data.templateName, data.name);
+    return;
+  }
+
   let sourceFile = '';
   if (data.type === 'file') {
     sourceFile = data.sourceFile;
@@ -162,9 +172,6 @@ async function handleNodeDblClick(data: any) {
   } else if (data.type === 'template') {
     sourceFile = data.sourceFile;
     highlightKeyword.value = data.templateName;
-  } else {
-    sourceFile = data.sourceFile;
-    highlightKeyword.value = '';
   }
 
   if (!sourceFile) return;
@@ -198,6 +205,7 @@ function scrollToHighlight() {
 
 const highlightedFilePaths = ref<Set<string>>(new Set());
 const highlightedTemplateId = ref<string>('');
+const highlightedSignalId = ref<string>('');
 
 function isFileHighlighted(sourceFile: string | undefined): boolean {
   if (!sourceFile) return false;
@@ -207,6 +215,11 @@ function isFileHighlighted(sourceFile: string | undefined): boolean {
 function isTemplateHighlighted(templateId: string | undefined): boolean {
   if (!templateId) return false;
   return highlightedTemplateId.value === templateId;
+}
+
+function isSignalHighlighted(signalId: string | undefined): boolean {
+  if (!signalId) return false;
+  return highlightedSignalId.value === signalId;
 }
 
 watch(
@@ -233,6 +246,26 @@ watch(
     nextTick(() => {
       const escapedId = CSS.escape(hl.templateId);
       const el = document.querySelector(`[data-template-id="${escapedId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }
+);
+
+watch(
+  () => circuitStore.signalHighlight?.version,
+  () => {
+    const hl = circuitStore.signalHighlight;
+    if (!hl) {
+      highlightedSignalId.value = '';
+      return;
+    }
+
+    highlightedSignalId.value = `${hl.sourceFile}::${hl.templateName}::${hl.signalName}`;
+    nextTick(() => {
+      const escapedId = CSS.escape(highlightedSignalId.value);
+      const el = document.querySelector(`[data-signal-id="${escapedId}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -307,7 +340,9 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
       stats,
       children: tplSignals.map(s => ({
         id: `${srcFile}::${template.templateName}::${s.name}`,
+        type: 'signal',
         name: s.name,
+        templateName: template.templateName,
         kind: s.kind,
         isArray: s.isArray,
         signal: s,
@@ -404,6 +439,30 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
   border: 1px solid rgba(99, 102, 241, 0.45);
   border-radius: 4px;
   animation: template-highlight-pulse 2s ease-in-out 1;
+}
+
+.signal-node-highlighted {
+  background-color: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.7);
+  border-radius: 4px;
+  box-shadow: 0 0 7px rgba(245, 158, 11, 0.45);
+  animation: signal-highlight-pulse 2s ease-in-out 1;
+}
+
+.signal-node-highlighted .signal-name {
+  color: #b45309;
+  font-weight: 700;
+}
+
+@keyframes signal-highlight-pulse {
+  0% {
+    background-color: rgba(245, 158, 11, 0.35);
+    box-shadow: 0 0 11px rgba(245, 158, 11, 0.65);
+  }
+  100% {
+    background-color: rgba(245, 158, 11, 0.16);
+    box-shadow: 0 0 7px rgba(245, 158, 11, 0.45);
+  }
 }
 
 @keyframes template-highlight-pulse {
