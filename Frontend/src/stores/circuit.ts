@@ -7,12 +7,6 @@ import type {
   ParseError,
   CircuitStatistics,
   CompilationConstraints,
-  ConstraintVerification,
-  IndexMetadata,
-  SliceResult,
-  BipartiteGraphResponse,
-  TemplateContract,
-  ContractVerifyResult,
   HumanReadableConstraint
 } from '@/types/circuitTypes';
 import { extractNodeModulesLibrary } from '@/utils/templateTree';
@@ -47,20 +41,7 @@ interface CircuitState {
     constraints: CompilationConstraints | null;
     r1csConstraints: HumanReadableConstraint[];
     r1csEquationText: string;
-    verifications: ConstraintVerification[];
-    staticAnalysisFindings: Array<{
-      severity: 'high' | 'medium' | 'low';
-      type: string;
-      message: string;
-      file?: string;
-      line?: number;
-    }>;
     error: string | null;
-    abstractCompile: boolean;
-    mockedChildren: string[];
-    unmockedChildren: string[];
-    validatorWarnings: Array<{ templateName: string; instance: string; reason: string }>;
-    boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }>;
   };
   
   signalFilter: {
@@ -68,32 +49,6 @@ interface CircuitState {
     filterByType: 'input' | 'output' | 'intermediate' | 'all';
     searchTerm: string;
   };
-
-  constraintIndex: {
-    metadata: IndexMetadata | null;
-    loading: boolean;
-  };
-
-  sliceData: {
-    currentSlice: SliceResult | null;
-    loading: boolean;
-  };
-
-  bipartiteData: {
-    graph: BipartiteGraphResponse | null;
-    loading: boolean;
-    expandedComponent: string | null;
-    highlightedSignals: Set<number>;
-    highlightedConstraints: Set<number>;
-  };
-
-  contracts: {
-    cache: Record<string, TemplateContract>;
-    verificationResults: Record<string, ContractVerifyResult>;
-    generating: boolean;
-    verifying: boolean;
-  };
-
   fileHighlight: {
     filePaths: string[];
     version: number;
@@ -151,41 +106,13 @@ export const useCircuitStore = defineStore('circuit', {
       constraints: null,
       r1csConstraints: [],
       r1csEquationText: '',
-      verifications: [],
-      staticAnalysisFindings: [],
-      error: null,
-      abstractCompile: false,
-      mockedChildren: [],
-      unmockedChildren: [],
-      validatorWarnings: [],
-      boundaryInputs: []
+      error: null
     },
     
     signalFilter: {
       selectedSignals: new Set<string>(),
       filterByType: 'all',
       searchTerm: ''
-    },
-    constraintIndex: {
-      metadata: null,
-      loading: false
-    },
-    sliceData: {
-      currentSlice: null,
-      loading: false
-    },
-    bipartiteData: {
-      graph: null,
-      loading: false,
-      expandedComponent: null,
-      highlightedSignals: new Set<number>(),
-      highlightedConstraints: new Set<number>()
-    },
-    contracts: {
-      cache: {},
-      verificationResults: {},
-      generating: false,
-      verifying: false
     },
     fileHighlight: null,
     templateHighlight: null,
@@ -308,11 +235,6 @@ export const useCircuitStore = defineStore('circuit', {
     setCompilationResult(constraints: CompilationConstraints) {
       this.compilationData.constraints = constraints;
     },
-    
-    setVerification(verifications: ConstraintVerification[]) {
-      this.compilationData.verifications = verifications;
-    },
-    
     setCompilationError(error: string | null) {
       this.compilationData.error = error;
     },
@@ -358,30 +280,6 @@ export const useCircuitStore = defineStore('circuit', {
       this.compilationData.r1csEquationText = data.equationText ?? '';
     },
     
-    setStaticAnalysisFindings(findings: Array<{
-      severity: 'high' | 'medium' | 'low';
-      type: string;
-      message: string;
-      file?: string;
-      line?: number;
-    }>) {
-      this.compilationData.staticAnalysisFindings = findings;
-    },
-
-    setAbstractCompileMeta(meta: {
-      abstractCompile: boolean;
-      mockedChildren?: string[];
-      unmockedChildren?: string[];
-      validatorWarnings?: Array<{ templateName: string; instance: string; reason: string }>;
-      boundaryInputs?: Array<{ instance: string; signal: string; isArray: boolean }>;
-    }) {
-      this.compilationData.abstractCompile = meta.abstractCompile;
-      this.compilationData.mockedChildren = meta.mockedChildren ?? [];
-      this.compilationData.unmockedChildren = meta.unmockedChildren ?? [];
-      this.compilationData.validatorWarnings = meta.validatorWarnings ?? [];
-      this.compilationData.boundaryInputs = meta.boundaryInputs ?? [];
-    },
-    
     resetCompilationData() {
       this.compilationVersion++;
       this.confirmedTemplateNames = [];
@@ -398,14 +296,7 @@ export const useCircuitStore = defineStore('circuit', {
         constraints: null,
         r1csConstraints: [],
         r1csEquationText: '',
-        verifications: [],
-        staticAnalysisFindings: [],
-        error: null,
-        abstractCompile: false,
-        mockedChildren: [],
-        unmockedChildren: [],
-        validatorWarnings: [],
-        boundaryInputs: []
+        error: null
       };
     },
 

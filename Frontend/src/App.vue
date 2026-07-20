@@ -198,13 +198,6 @@ const handleWrapTemplate = async (data: any) => {
       constraints: 'r1csConstraints' in result ? (result.r1csConstraints ?? []) : [],
       equationText: 'r1csEquationText' in result ? (result.r1csEquationText ?? '') : '',
     });
-    circuitStore.setAbstractCompileMeta({
-      abstractCompile: !!result.abstractCompile,
-      mockedChildren: result.mockedChildren,
-      unmockedChildren: result.unmockedChildren,
-      validatorWarnings: result.validatorWarnings,
-      boundaryInputs: result.boundaryInputs,
-    });
     if (typeof circuitStore.bumpCompilationVersion === 'function') {
       circuitStore.bumpCompilationVersion();
     } else {

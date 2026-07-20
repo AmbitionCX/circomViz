@@ -1,6 +1,6 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse, BuildIndexResponse, SliceResponse, SliceDirection, BipartiteGraphResponse, SliceCandidatesResponse, ConstraintTreesResponse, TemplateContract, ContractVerifyResult, HumanReadableConstraint, ResolveConstraintsResponse } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, FindTemplateParamsResponse, HumanReadableConstraint } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
@@ -9,21 +9,7 @@ const enum API {
   compile_template = '/compile_template',
   find_template_params = '/find_template_params',
   generate_wrapper = '/generate_wrapper',
-  static_analysis = '/static_analysis',
-  soundness_check = '/soundness_check',
   file_content = '/file_content',
-  resolve_constraints = '/resolve_constraints',
-  intent_alignment = '/intent_alignment',
-  formal_conformance = '/formal_conformance',
-  build_constraint_index = '/build_constraint_index',
-  cone_slice = '/cone_slice',
-  bipartite_graph = '/bipartite_graph',
-  generate_contract = '/generate_contract',
-  contract_verify = '/contract_verify',
-  refinement_expand = '/refinement_expand',
-  slice_candidates = '/slice_candidates',
-  constraint_trees = '/constraint_trees',
-  ai_advice = '/ai_advice',
 }
 
 export interface getSubmodules_response {
@@ -154,55 +140,6 @@ export const generateWrapper = (data: generate_wrapper_request) =>
     },
   })
 
-export interface static_analysis_request {
-  repo: string;
-  entry: string;
-  symPath: string;
-  constraintsJsonPath: string;
-}
-
-export interface static_analysis_response {
-  success: boolean;
-  findings: Array<{
-    severity: 'high' | 'medium' | 'low';
-    type: string;
-    message: string;
-    file?: string;
-    line?: number;
-  }>;
-  error?: string;
-}
-
-export const staticAnalysis = (data: static_analysis_request) =>
-  request.post<any, static_analysis_response>(API.static_analysis, data, {
-    headers: {
-      'Access-Control-Allow-Origin': '*'
-    },
-  })
-
-export interface soundness_check_request {
-  repo: string;
-  entry: string;
-  symPath: string;
-  constraintsJsonPath: string;
-  constraintIndices?: number[];
-  queries: {
-    satisfiability?: boolean;
-    determinism?: boolean;
-    coverage?: {
-      signalNames: string[];
-      fixedInputs?: Record<string, string | number>;
-    };
-  };
-}
-
-export const soundnessCheck = (data: soundness_check_request) =>
-  request.post<any, SoundnessCheckResponse>(API.soundness_check, data, {
-    headers: {
-      'Access-Control-Allow-Origin': '*'
-    },
-  })
-
 export interface FileContentResponse {
   success: boolean;
   content?: string;
@@ -213,132 +150,3 @@ export interface FileContentResponse {
 
 export const getFileContent = (data: { filePath: string }) =>
   request.post<any, FileContentResponse>(API.file_content, data)
-
-export const resolveConstraints = (data: { symPath: string; constraintsJsonPath: string }) =>
-  request.post<any, ResolveConstraintsResponse>(API.resolve_constraints, data)
-
-export const intentAlignment = (data: {
-  repo: string;
-  entry: string;
-  symPath: string;
-  constraintsJsonPath: string;
-  constraintIndices?: number[];
-  templatePath: string[];
-  templateName: string;
-  groupingStrategy: 'by-template' | 'by-file' | 'by-statement';
-}) =>
-  request.post<any, IntentAlignmentResponse>(API.intent_alignment, data)
-
-export interface formal_conformance_request {
-  repo: string;
-  entry: string;
-  symPath: string;
-  constraintsJsonPath: string;
-  constraintIndices?: number[];
-  candidateSpecDSL: string;
-  templateName: string;
-  templatePath: string[];
-  queries: {
-    soundness?: boolean;
-    completeness?: boolean;
-    determinism?: boolean;
-    totality?: boolean;
-  };
-}
-
-export const formalConformance = (data: formal_conformance_request) =>
-  request.post<any, FormalConformanceResponse>(API.formal_conformance, data)
-
-export const buildConstraintIndex = (data: { symPath: string; constraintsJsonPath: string }) =>
-  request.post<any, BuildIndexResponse>(API.build_constraint_index, data)
-
-export const coneSlice = (data: {
-  symPath: string;
-  constraintsJsonPath: string;
-  direction: SliceDirection;
-  targetSignals: string[];
-  sourceSignals?: string[];
-  maxDepth?: number;
-}) =>
-  request.post<any, SliceResponse>(API.cone_slice, data)
-
-export const bipartiteGraph = (data: { symPath: string; constraintsJsonPath: string }) =>
-  request.post<any, BipartiteGraphResponse>(API.bipartite_graph, data)
-
-export interface GenerateContractRequest {
-  symPath: string;
-  constraintsJsonPath: string;
-  templateName: string;
-  instancePath: string;
-  constraintIndices?: number[];
-  soundnessResult?: unknown;
-  intentResult?: unknown;
-  formalResult?: unknown;
-}
-
-export interface GenerateContractResponse {
-  success: boolean;
-  contract: TemplateContract | null;
-  error?: string;
-}
-
-export interface ContractVerifyRequest {
-  symPath: string;
-  constraintsJsonPath: string;
-  templateName: string;
-  childContracts: TemplateContract[];
-  constraintIndices?: number[];
-  queries?: {
-    checkSatisfiability?: boolean;
-    checkDeterminism?: boolean;
-    checkCoverage?: boolean;
-  };
-}
-
-export interface RefinementExpandRequest extends ContractVerifyRequest {
-  expandedChildren: string[];
-}
-
-export const generateContract = (data: GenerateContractRequest) =>
-  request.post<any, GenerateContractResponse>(API.generate_contract, data)
-
-export const contractVerify = (data: ContractVerifyRequest) =>
-  request.post<any, ContractVerifyResult>(API.contract_verify, data)
-
-export const refinementExpand = (data: RefinementExpandRequest) =>
-  request.post<any, ContractVerifyResult>(API.refinement_expand, data)
-
-export const sliceCandidates = (data: { symPath: string; constraintsJsonPath: string }) =>
-  request.post<any, SliceCandidatesResponse>(API.slice_candidates, data)
-
-export const constraintTrees = (data: { symPath: string; constraintsJsonPath: string; constraintIndices: number[] }) =>
-  request.post<any, ConstraintTreesResponse>(API.constraint_trees, data)
-
-export interface AiAdviceRequest {
-  repo: string;
-  entry: string;
-  templateName: string;
-  sourceCode: string;
-  sourceFile: string;
-  lineRange: [number, number];
-  violation: {
-    violatedSpec: string;
-    inputValues: Record<string, string>;
-    outputValues: Record<string, string>;
-    solverOutput: string;
-  };
-  specDSL: string;
-}
-
-export interface AiAdviceResponse {
-  success: boolean;
-  explanation: string;
-  fix: {
-    description: string;
-    modifiedCode: string;
-    changedLines: number[];
-  };
-}
-
-export const aiAdvice = (data: AiAdviceRequest) =>
-  request.post<any, AiAdviceResponse>(API.ai_advice, data)

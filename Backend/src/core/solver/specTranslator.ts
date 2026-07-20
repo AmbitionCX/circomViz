@@ -1,7 +1,40 @@
 import type { SymbolObject } from '../../types/constraint.js';
 import type { ConstraintObject, ConstraintComponent } from '../../types/constraint.js';
-import type { SpecTranslation } from '../../types/formalConformanceTypes.js';
 import { simplifyFieldElement } from '../utils/fieldConstants.js';
+
+export interface SpecTranslationAssumption {
+  raw: string;
+  signal?: string;
+  kind: 'boolean' | 'range' | 'constant';
+  params: { low?: string; high?: string; visibility?: string };
+  smt2Lines: string[];
+}
+
+export interface SpecTranslationPost {
+  raw: string;
+  signal?: string;
+  kind: 'equality' | 'hash' | 'selector' | 'boolean_gating' | 'custom';
+  lhsSignals: string[];
+  rhsSignals: string[];
+  smt2Lines: string[];
+  parseable: boolean;
+}
+
+export interface SpecTranslationInvariant {
+  raw: string;
+  signal?: string;
+  kind: 'boolean' | 'equality' | 'range_check' | 'unknown';
+  smt2Lines: string[];
+  parseable: boolean;
+}
+
+export interface SpecTranslation {
+  assumptions: SpecTranslationAssumption[];
+  posts: SpecTranslationPost[];
+  invariants: SpecTranslationInvariant[];
+  parseErrors: string[];
+}
+
 
 export class SpecTranslator {
   private primeField: bigint;
@@ -546,15 +579,15 @@ export class SpecTranslator {
   }
 
   getTranslateableAssumptionCount(translation: SpecTranslation): number {
-    return translation.assumptions.filter(a => a.kind !== 'constant').length;
+    return translation.assumptions.filter((a: SpecTranslation['assumptions'][0]) => a.kind !== 'constant').length;
   }
 
   getTranslateablePostCount(translation: SpecTranslation): number {
-    return translation.posts.filter(p => p.parseable).length;
+    return translation.posts.filter((p: SpecTranslation['posts'][0]) => p.parseable).length;
   }
 
   getTranslateableInvariantCount(translation: SpecTranslation): number {
-    return translation.invariants.filter(inv => inv.parseable).length;
+    return translation.invariants.filter((inv: SpecTranslation['invariants'][0]) => inv.parseable).length;
   }
 
   generateBaseSMT2(constraints: ConstraintObject[], allSignalIndices: number[]): string[] {
