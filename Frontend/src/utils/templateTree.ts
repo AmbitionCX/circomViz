@@ -18,6 +18,7 @@ export interface TreeNodeData {
   sourceFile?: string;
   isTerminal: boolean;
   isExternal: boolean;
+  isRecursiveReference: boolean;
   isLeaf: boolean;
   nodeModulesLibrary?: string;
   children: TreeNodeData[];
@@ -58,6 +59,28 @@ function buildTemplateNode(
         const childPath = [...currentPath, comp.name];
         const childPathInfo = [...currentPathInfo, { instanceName: comp.name, templateName: comp.templateName }];
 
+        if (comp.isRecursiveReference) {
+          return {
+            id: childPath.join('.'),
+            templateName: comp.templateName,
+            instanceName: comp.name,
+            depth: depth + 1,
+            path: childPath,
+            pathInfo: childPathInfo,
+            templateInfo: null,
+            componentCount: 0,
+            parameters: [],
+            sourceFile: comp.sourceFile,
+            isTerminal: true,
+            isExternal: false,
+            isRecursiveReference: true,
+            isLeaf: true,
+            nodeModulesLibrary: extractNodeModulesLibrary(comp.sourceFile),
+            children: [],
+            instanceCount: count,
+          };
+        }
+
         if (comp.template) {
           const node = buildTemplateNode(comp.template, childPath, childPathInfo, depth + 1, comp.name);
           node.instanceCount = count;
@@ -77,6 +100,7 @@ function buildTemplateNode(
           sourceFile: undefined,
           isTerminal: true,
           isExternal: true,
+          isRecursiveReference: false,
           isLeaf: true,
           nodeModulesLibrary: undefined,
           children: [],
@@ -98,6 +122,7 @@ function buildTemplateNode(
     sourceFile: template.sourceFile,
     isTerminal: !hasComponents,
     isExternal: false,
+    isRecursiveReference: false,
     isLeaf: !hasComponents,
     nodeModulesLibrary: extractNodeModulesLibrary(template.sourceFile),
     children,
@@ -111,17 +136,17 @@ export function buildD3Hierarchy(tree: TemplateInfo): TreeNodeData {
 export function isAllChildrenConfirmed(node: TreeNodeData, confirmedNames: Set<string>): boolean {
   if (node.children.length === 0) return true;
   return node.children.every(child => {
-    if (child.isExternal) return true;
+    if (child.isExternal || child.isRecursiveReference) return true;
     return confirmedNames.has(child.templateName) && isAllChildrenConfirmed(child, confirmedNames);
   });
 }
 
 export function isNodeSelectable(node: TreeNodeData, confirmedNames: Set<string>): boolean {
-  if (node.isExternal) return false;
+  if (node.isExternal || node.isRecursiveReference) return false;
   if (node.isLeaf && node.templateInfo) return true;
   return confirmedNames.has(node.templateName) ? false : isAllChildrenConfirmed(node, confirmedNames);
 }
 
 export function isNodeConfirmable(node: TreeNodeData): boolean {
-  return !!node.templateInfo;
+  return !!node.templateInfo && !node.isRecursiveReference;
 }

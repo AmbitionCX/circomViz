@@ -1,7 +1,21 @@
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { basename, extname, join } from 'path';
 import { logger } from '../../utils/logger.js';
+
+export interface CircomArtifactPaths {
+  symPath: string;
+  constraintsJsonPath: string;
+}
+
+export function getCircomArtifactPaths(wrapperFilePath: string, outputDir: string): CircomArtifactPaths {
+  const wrapperBaseName = basename(wrapperFilePath, extname(wrapperFilePath));
+
+  return {
+    symPath: join(outputDir, `${wrapperBaseName}.sym`),
+    constraintsJsonPath: join(outputDir, `${wrapperBaseName}_constraints.json`),
+  };
+}
 
 export interface CompileDebugResult {
   success: boolean;
@@ -36,6 +50,7 @@ export async function compileDebug(
 
     logger.debug(`Executing: circom ${args.join(' ')}`);
 
+    const artifactPaths = getCircomArtifactPaths(wrapperFilePath, outputDir);
     const stdoutPath = join(outputDir, 'inspect.stdout');
     const stderrPath = join(outputDir, 'inspect.stderr');
 
@@ -47,8 +62,7 @@ export async function compileDebug(
     logger.info(`Debug compilation completed`);
 
     try {
-      const jsonPath = join(outputDir, 'wrapper_constraints.json');
-      const json = JSON.parse(await fs.readFile(jsonPath, 'utf-8'));
+      const json = JSON.parse(await fs.readFile(artifactPaths.constraintsJsonPath, 'utf-8'));
 
       logger.info(`Debug output: ${JSON.stringify({
         constraints: json.constraints?.length || 0,

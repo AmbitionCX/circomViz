@@ -2,7 +2,7 @@
   <div class="signal-selection-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-2">
-        <h2 class="view-title text-base font-bold text-gray-800">Signal View</h2>
+        <h2 class="view-title text-base font-bold text-gray-800">File Structure</h2>
         <el-tooltip content="View all signals organized by source file and template" placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
@@ -11,24 +11,24 @@
 
       </div>
       <div class="flex items-center justify-end text-xs text-gray-500">
-        <div class="flex items-center mr-2">
-          <el-icon class="text-blue-500"><CircleCheckFilled /></el-icon>
+        <div class="flex items-center gap-1 mr-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block flex-shrink-0"></span>
           <span>Input</span>
         </div>
-        <div class="flex items-center mr-2">
-          <el-icon class="text-green-500"><CircleCheckFilled /></el-icon>
+        <div class="flex items-center gap-1 mr-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-green-600 inline-block flex-shrink-0"></span>
           <span>Output</span>
         </div>
-        <div class="flex items-center mr-2">
-          <el-icon class="text-gray-500"><RemoveFilled /></el-icon>
+        <div class="flex items-center gap-1 mr-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-gray-500 inline-block flex-shrink-0"></span>
           <span>Intermediate</span>
         </div>
       </div>
     </div>
-    
+
     <div class="flex-1 overflow-auto min-h-0 mt-2">
       <el-empty v-if="!isParsed" description="No circuit loaded" :image-size="80" />
-      
+
       <el-tree
         v-else-if="signalFileTree.length > 0"
         :data="signalFileTree"
@@ -53,28 +53,30 @@
             </el-tag>
           </div>
           <!-- Template node -->
-          <div v-else-if="data.type === 'template'" class="tree-node-content template-node" @dblclick.stop="handleNodeDblClick(data)">
+          <div
+            v-else-if="data.type === 'template'"
+            :data-template-id="data.id"
+            :class="['tree-node-content template-node', { 'template-node-highlighted': isTemplateHighlighted(data.id) }]"
+            @dblclick.stop="handleNodeDblClick(data)"
+          >
             <el-icon class="mr-1 text-indigo-500"><Box /></el-icon>
             <span class="signal-name" :style="templateColorStyle(data.templateName)">{{ data.templateName }}</span>
             <el-tag size="small" type="info" class="ml-2">{{ data.signalCount }}</el-tag>
           </div>
           <!-- Signal node -->
           <div v-else class="tree-node-content" @dblclick.stop="handleNodeDblClick(data)">
-            <el-icon v-if="data.kind === 'input'" class="mr-1 text-blue-500">
-              <CircleCheckFilled />
-            </el-icon>
-            <el-icon v-else-if="data.kind === 'output'" class="mr-1 text-green-500">
-              <CircleCheckFilled />
-            </el-icon>
-            <el-icon v-else class="mr-1 text-gray-500">
-              <RemoveFilled />
-            </el-icon>
+            <span
+              :class="[
+                'w-2.5 h-2.5 rounded-full inline-block flex-shrink-0 mr-1',
+                data.kind === 'input' ? 'bg-blue-600' : data.kind === 'output' ? 'bg-green-600' : 'bg-gray-500'
+              ]"
+            ></span>
             <span class="signal-name">{{ data.name }}</span>
             <el-tag v-if="data.isArray" size="small" type="info" class="ml-2">Array</el-tag>
           </div>
         </template>
       </el-tree>
-      
+
       <el-empty v-else description="No signals found" :image-size="80" />
     </div>
 
@@ -93,7 +95,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue';
-import { CircleCheckFilled, RemoveFilled, QuestionFilled, Document, Box } from '@element-plus/icons-vue';
+import { QuestionFilled, Document, Box } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { getFileContent } from '@/apis';
 import { ElMessage } from 'element-plus';
@@ -162,7 +164,7 @@ async function handleNodeDblClick(data: any) {
     highlightKeyword.value = data.templateName;
   } else {
     sourceFile = data.sourceFile;
-    highlightKeyword.value = data.name;
+    highlightKeyword.value = '';
   }
 
   if (!sourceFile) return;
@@ -195,10 +197,16 @@ function scrollToHighlight() {
 }
 
 const highlightedFilePaths = ref<Set<string>>(new Set());
+const highlightedTemplateId = ref<string>('');
 
 function isFileHighlighted(sourceFile: string | undefined): boolean {
   if (!sourceFile) return false;
   return highlightedFilePaths.value.has(sourceFile);
+}
+
+function isTemplateHighlighted(templateId: string | undefined): boolean {
+  if (!templateId) return false;
+  return highlightedTemplateId.value === templateId;
 }
 
 watch(
@@ -209,6 +217,22 @@ watch(
     highlightedFilePaths.value = new Set(hl.filePaths);
     nextTick(() => {
       const el = document.querySelector('.file-node-highlighted');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }
+);
+
+watch(
+  () => circuitStore.templateHighlight?.version,
+  () => {
+    const hl = circuitStore.templateHighlight;
+    if (!hl) return;
+    highlightedTemplateId.value = hl.templateId;
+    nextTick(() => {
+      const escapedId = CSS.escape(hl.templateId);
+      const el = document.querySelector(`[data-template-id="${escapedId}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -373,6 +397,18 @@ function buildSignalFileTree(rootTemplate: TemplateInfo, signals: SignalInfo[]):
 @keyframes highlight-pulse {
   0% { background-color: rgba(59, 130, 246, 0.3); }
   100% { background-color: rgba(59, 130, 246, 0.12); }
+}
+
+.template-node-highlighted {
+  background-color: rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  border-radius: 4px;
+  animation: template-highlight-pulse 2s ease-in-out 1;
+}
+
+@keyframes template-highlight-pulse {
+  0% { background-color: rgba(99, 102, 241, 0.32); }
+  100% { background-color: rgba(99, 102, 241, 0.14); }
 }
 
 .file-node-highlighted .file-name {

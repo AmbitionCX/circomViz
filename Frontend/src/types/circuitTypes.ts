@@ -32,6 +32,8 @@ export interface ComponentInstance {
   templateName: string;
   arguments: Expression[];
   template: TemplateInfo | null;
+  sourceFile?: string;
+  isRecursiveReference?: boolean;
 }
 
 export interface Statement {
@@ -81,6 +83,25 @@ export interface ParseCircuitResponse {
   statistics: CircuitStatistics;
 }
 
+export interface HumanReadableLinearExpression {
+  text: string;
+  terms: Array<{
+    signalIndex: number;
+    signal: string;
+    coefficient: string;
+  }>;
+  constant: string;
+}
+
+export interface HumanReadableConstraint {
+  index: number;
+  formula: string;
+  a: HumanReadableLinearExpression;
+  b: HumanReadableLinearExpression;
+  c: HumanReadableLinearExpression;
+  signalsUsed: string[];
+}
+
 export interface CompilationConstraints {
   constraints: string[];
   signals: Record<string, number>;
@@ -89,6 +110,8 @@ export interface CompilationConstraints {
   wrapperCode?: string;
   symPath?: string;
   constraintsJsonPath?: string;
+  r1csConstraints?: HumanReadableConstraint[];
+  r1csEquationText?: string;
 }
 
 export interface ConstraintVerification {
@@ -433,6 +456,7 @@ export interface ResolveConstraintsResponse {
   constraints: ResolvedConstraint[];
   signalCount: number;
   constraintCount: number;
+  humanReadableSystem?: string;
   error?: string;
 }
 

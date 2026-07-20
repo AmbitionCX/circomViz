@@ -11,7 +11,7 @@ import * as fs from 'fs';
 export interface IncludePath {
   original: string;
   resolved: string;
-  type: 'relative' | 'circomlib' | 'npm' | 'absolute';
+  type: 'relative' | 'circomlib' | 'npm' | 'absolute' | 'circomkit';
   exists: boolean;
 }
 
@@ -78,7 +78,7 @@ export class IncludeResolver {
       }
     } else if (originalPath.startsWith('circomlib')) {
       type = 'circomlib';
-      const result = this.resolveCircomlibPath(originalPath);
+      const result = await this.resolveCircomlibPath(originalPath);
       if (result) {
         resolved = result;
         exists = await FsUtils.fileExists(result);
@@ -107,12 +107,27 @@ export class IncludeResolver {
         exists = true;
         logger.debug(`Resolved as relative path: ${originalPath} -> ${resolved}`);
       } else {
-        // Try npm package path
-        type = 'npm';
-        const result = await this.resolveNpmPath(originalPath);
-        if (result) {
-          resolved = result;
-          exists = await FsUtils.fileExists(result);
+        const circomkitResult = await this.resolveCircomkitIncludePath(originalPath);
+        if (circomkitResult) {
+          type = 'circomkit';
+          resolved = circomkitResult;
+          exists = true;
+          logger.debug(`Resolved from CircomKit include path: ${originalPath} -> ${resolved}`);
+        } else {
+          // Includes written as node_modules/<pkg>/... are common in Circom
+          // projects. After the literal relative lookup fails, resolve them as
+          // package paths so package lookup starts at the package name.
+          const packagePath = originalPath.startsWith('node_modules/')
+            ? originalPath.slice('node_modules/'.length)
+            : originalPath;
+
+          // Try npm package path
+          type = 'npm';
+          const result = await this.resolveNpmPath(packagePath);
+          if (result) {
+            resolved = result;
+            exists = await FsUtils.fileExists(result);
+          }
         }
       }
     }
@@ -125,6 +140,130 @@ export class IncludeResolver {
     };
   }
 
+
+  private async resolveCircomkitIncludePath(includePath: string): Promise<string | null> {
+    if (!this.currentFile || !this.currentRepoPath || includePath.includes('/')) {
+      return null;
+    }
+
+    const circomkitConfigs = this.getCircomkitConfigs();
+    if (circomkitConfigs.length === 0) {
+      return null;
+    }
+
+    for (const { configPath, includeDirs } of circomkitConfigs) {
+      const configDir = path.dirname(configPath);
+
+      for (const includeDir of includeDirs) {
+        const candidate = path.resolve(configDir, includeDir, includePath);
+        const normalized = path.normalize(candidate);
+        if (!this.isWithinRepo(normalized, path.normalize(this.currentRepoPath))) {
+          continue;
+        }
+
+        if (await FsUtils.fileExists(normalized)) {
+          return normalized;
+        }
+      }
+    }
+
+    return null;
+  }
+
+
+  private getCircomkitConfigs(): Array<{ configPath: string; includeDirs: string[] }> {
+    const nearest = this.findNearestCircomkitConfig();
+    if (nearest) {
+      return [nearest];
+    }
+
+    return this.findRepoCircomkitConfigs();
+  }
+
+  private findRepoCircomkitConfigs(): Array<{ configPath: string; includeDirs: string[] }> {
+    if (!this.currentRepoPath) {
+      return [];
+    }
+
+    const configs: Array<{ configPath: string; includeDirs: string[] }> = [];
+    const repoPath = path.normalize(path.resolve(this.currentRepoPath));
+    const pending = [repoPath];
+
+    while (pending.length > 0) {
+      const currentDir = pending.pop()!;
+      let entries: fs.Dirent[] = [];
+      try {
+        entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        pending.push(path.join(currentDir, entry.name));
+      }
+
+      const configPath = path.join(currentDir, 'circomkit.json');
+      if (!fs.existsSync(configPath)) continue;
+
+      const config = this.readCircomkitConfig(configPath);
+      if (config) {
+        configs.push(config);
+      }
+    }
+
+    return configs;
+  }
+
+  private readCircomkitConfig(configPath: string): { configPath: string; includeDirs: string[] } | null {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const includeDirs = Array.isArray(config.include)
+        ? config.include.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : [];
+      if (includeDirs.length > 0) {
+        return { configPath, includeDirs };
+      }
+    } catch {
+      // Ignore invalid CircomKit config files while resolving includes.
+    }
+
+    return null;
+  }
+
+  private findNearestCircomkitConfig(): { configPath: string; includeDirs: string[] } | null {
+    if (!this.currentFile || !this.currentRepoPath) {
+      return null;
+    }
+
+    const repoPath = path.resolve(this.currentRepoPath);
+    const normalizedRepo = path.normalize(repoPath);
+    let currentDir = path.dirname(path.normalize(this.currentFile));
+
+    while (this.isWithinRepo(currentDir, normalizedRepo)) {
+      const configPath = path.join(currentDir, 'circomkit.json');
+      if (fs.existsSync(configPath)) {
+        const config = this.readCircomkitConfig(configPath);
+        if (config) {
+          return config;
+        }
+      }
+
+      if (currentDir === normalizedRepo) {
+        break;
+      }
+
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) {
+        break;
+      }
+      currentDir = parentDir;
+    }
+
+    return null;
+  }
+
   private async resolveNpmPath(pkgPath: string): Promise<string | null> {
     const parts = pkgPath.split('/');
 
@@ -132,6 +271,12 @@ export class IncludeResolver {
       // Non-scoped package
       const pkgName = parts[0];
       const subPath = parts.slice(1).join('/');
+
+      const localPath = await this.resolveLocalNodeModulePath(pkgName, subPath);
+      if (localPath) {
+        logger.debug(`Resolved local npm package: ${pkgPath} -> ${localPath}`);
+        return localPath;
+      }
 
       const npmPath = this.pathGuard.getNpmPackagePath(pkgName, subPath);
       if (npmPath && await FsUtils.fileExists(npmPath)) {
@@ -151,6 +296,7 @@ export class IncludeResolver {
         return submodulePath;
       }
 
+      this.logDeclaredButMissingPackage(pkgName, pkgPath);
       return null;
     }
 
@@ -165,6 +311,14 @@ export class IncludeResolver {
     for (let i = 2; i <= parts.length; i++) {
       const potentialPkgName = parts.slice(0, i).join('/');
       const potentialSubPath = parts.slice(i).join('/');
+
+      const localPath = await this.resolveLocalNodeModulePath(potentialPkgName, potentialSubPath);
+      if (localPath) {
+        foundPkgName = potentialPkgName;
+        foundSubPath = potentialSubPath;
+        logger.debug(`Found local package: ${potentialPkgName}, subPath: ${potentialSubPath}`);
+        break;
+      }
 
       // Check if this package exists in node_modules
       const npmPath = this.pathGuard.getNpmPackagePath(potentialPkgName, '');
@@ -191,6 +345,12 @@ export class IncludeResolver {
     }
 
     if (foundPkgName) {
+      const localPath = await this.resolveLocalNodeModulePath(foundPkgName, foundSubPath);
+      if (localPath) {
+        logger.debug(`Resolved local npm package: ${pkgPath} -> ${localPath}`);
+        return localPath;
+      }
+
       const npmPath = this.pathGuard.getNpmPackagePath(foundPkgName, foundSubPath);
       if (npmPath && await FsUtils.fileExists(npmPath)) {
         logger.debug(`Resolved npm package: ${pkgPath} -> ${npmPath}`);
@@ -210,16 +370,108 @@ export class IncludeResolver {
       }
     }
 
+    if (parts.length >= 2) {
+      this.logDeclaredButMissingPackage(parts.slice(0, 2).join('/'), pkgPath);
+    }
     return null;
   }
 
-  private resolveCircomlibPath(libPath: string): string | null {
+  private async resolveCircomlibPath(libPath: string): Promise<string | null> {
+    const subPath = libPath.replace('circomlib/', '');
+    const localPath = await this.resolveLocalNodeModulePath('circomlib', subPath);
+    if (localPath) {
+      logger.debug(`Resolved local circomlib: ${libPath} -> ${localPath}`);
+      return localPath;
+    }
+
     const result = this.pathGuard.getCircomlibPath(
       this.currentRepoPath,
-      libPath.replace('circomlib/', '')
+      subPath
     );
     logger.debug(`Resolved circomlib: ${libPath} -> ${result}`);
+    if (!result) {
+      this.logDeclaredButMissingPackage('circomlib', libPath);
+    }
     return result;
+  }
+
+  private async resolveLocalNodeModulePath(pkgName: string, subPath: string): Promise<string | null> {
+    if (!this.currentFile || !this.currentRepoPath) {
+      return null;
+    }
+
+    const repoPath = path.resolve(this.currentRepoPath);
+    const normalizedRepo = path.normalize(repoPath);
+    let currentDir = path.dirname(path.normalize(this.currentFile));
+
+    while (this.isWithinRepo(currentDir, normalizedRepo)) {
+      const candidate = path.join(currentDir, 'node_modules', pkgName, subPath);
+      if (await FsUtils.fileExists(candidate)) {
+        return candidate;
+      }
+
+      if (currentDir === normalizedRepo) {
+        break;
+      }
+
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) {
+        break;
+      }
+      currentDir = parentDir;
+    }
+
+    return null;
+  }
+
+  private logDeclaredButMissingPackage(pkgName: string, includePath: string): void {
+    const packageJsonPath = this.findNearestPackageJsonDeclaring(pkgName);
+    if (packageJsonPath) {
+      logger.warn(
+        `Cannot resolve include ${includePath}: package ${pkgName} is declared in ${packageJsonPath}, but no matching node_modules entry was found`
+      );
+    }
+  }
+
+  private findNearestPackageJsonDeclaring(pkgName: string): string | null {
+    if (!this.currentFile || !this.currentRepoPath) {
+      return null;
+    }
+
+    const repoPath = path.resolve(this.currentRepoPath);
+    const normalizedRepo = path.normalize(repoPath);
+    let currentDir = path.dirname(path.normalize(this.currentFile));
+
+    while (this.isWithinRepo(currentDir, normalizedRepo)) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
+      if (fs.existsSync(packageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          if (
+            packageJson.dependencies?.[pkgName] ||
+            packageJson.devDependencies?.[pkgName] ||
+            packageJson.peerDependencies?.[pkgName] ||
+            packageJson.optionalDependencies?.[pkgName]
+          ) {
+            return packageJsonPath;
+          }
+        } catch {
+          // Ignore invalid package.json files while resolving includes.
+        }
+      }
+
+      if (currentDir === normalizedRepo) {
+        break;
+      }
+
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) {
+        break;
+      }
+      currentDir = parentDir;
+    }
+
+    return null;
   }
 
   private resolveRelativePath(relPath: string): string {
@@ -234,9 +486,18 @@ export class IncludeResolver {
     }
 
     const normalizedRepo = path.normalize(repoPath);
-    if (!this.isWithinRepo(normalized, normalizedRepo)) {
+    const allowedRoots = this.getRelativeIncludeRoots(normalizedRepo);
+    if (!this.isWithinAnyRoot(normalized, allowedRoots)) {
       return '';
     }
+
+    const canonicalRoots = allowedRoots.map((root) => {
+      try {
+        return fs.realpathSync(root);
+      } catch {
+        return root;
+      }
+    });
 
     let canonical = '';
     try {
@@ -245,7 +506,7 @@ export class IncludeResolver {
       canonical = normalized;
     }
 
-    if (!this.isWithinRepo(canonical, normalizedRepo)) {
+    if (!this.isWithinAnyRoot(canonical, canonicalRoots)) {
       return '';
     }
 
@@ -280,6 +541,34 @@ export class IncludeResolver {
     }
 
     return canonical;
+  }
+
+  private getRelativeIncludeRoots(normalizedRepo: string): string[] {
+    const roots = [normalizedRepo];
+    const packageRoot = this.getNodeModulePackageRoot(path.normalize(this.currentFile));
+    if (packageRoot && !roots.includes(packageRoot)) {
+      roots.push(packageRoot);
+    }
+    return roots;
+  }
+
+  private getNodeModulePackageRoot(filePath: string): string | null {
+    const parts = filePath.split(path.sep);
+    const nodeModulesIndex = parts.lastIndexOf('node_modules');
+    if (nodeModulesIndex === -1 || nodeModulesIndex + 1 >= parts.length) {
+      return null;
+    }
+
+    let packageEndIndex = nodeModulesIndex + 2;
+    if (parts[nodeModulesIndex + 1].startsWith('@') && nodeModulesIndex + 2 < parts.length) {
+      packageEndIndex = nodeModulesIndex + 3;
+    }
+
+    return parts.slice(0, packageEndIndex).join(path.sep) || path.sep;
+  }
+
+  private isWithinAnyRoot(candidate: string, roots: string[]): boolean {
+    return roots.some((root) => this.isWithinRepo(candidate, root));
   }
 
   private isWithinRepo(candidate: string, repoPath: string): boolean {

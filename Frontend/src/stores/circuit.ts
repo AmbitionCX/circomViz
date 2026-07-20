@@ -12,7 +12,8 @@ import type {
   SliceResult,
   BipartiteGraphResponse,
   TemplateContract,
-  ContractVerifyResult
+  ContractVerifyResult,
+  HumanReadableConstraint
 } from '@/types/circuitTypes';
 import { extractNodeModulesLibrary } from '@/utils/templateTree';
 
@@ -44,6 +45,8 @@ interface CircuitState {
     symPath: string | null;
     constraintsJsonPath: string | null;
     constraints: CompilationConstraints | null;
+    r1csConstraints: HumanReadableConstraint[];
+    r1csEquationText: string;
     verifications: ConstraintVerification[];
     staticAnalysisFindings: Array<{
       severity: 'high' | 'medium' | 'low';
@@ -96,6 +99,13 @@ interface CircuitState {
     version: number;
   } | null;
 
+  templateHighlight: {
+    templateId: string;
+    sourceFile: string;
+    templateName: string;
+    version: number;
+  } | null;
+
   activeLeftPanel: 'signal' | 'submodule';
 }
 
@@ -132,6 +142,8 @@ export const useCircuitStore = defineStore('circuit', {
       symPath: null,
       constraintsJsonPath: null,
       constraints: null,
+      r1csConstraints: [],
+      r1csEquationText: '',
       verifications: [],
       staticAnalysisFindings: [],
       error: null,
@@ -169,6 +181,7 @@ export const useCircuitStore = defineStore('circuit', {
       verifying: false
     },
     fileHighlight: null,
+    templateHighlight: null,
     activeLeftPanel: 'signal' as 'signal' | 'submodule',
   }),
   
@@ -249,6 +262,7 @@ export const useCircuitStore = defineStore('circuit', {
       this.selectedTemplate = null;
       this.selectedTemplatePath = [];
       this.templateColorMap = {};
+      this.templateHighlight = null;
     },
     
     setSelectedTemplate(template: TemplateInfo, path: string[]) {
@@ -328,6 +342,11 @@ export const useCircuitStore = defineStore('circuit', {
     setConstraintsJsonPath(path: string | null) {
       this.compilationData.constraintsJsonPath = path;
     },
+
+    setR1csDiagramData(data: { constraints?: HumanReadableConstraint[]; equationText?: string }) {
+      this.compilationData.r1csConstraints = data.constraints ?? [];
+      this.compilationData.r1csEquationText = data.equationText ?? '';
+    },
     
     setStaticAnalysisFindings(findings: Array<{
       severity: 'high' | 'medium' | 'low';
@@ -367,6 +386,8 @@ export const useCircuitStore = defineStore('circuit', {
         symPath: null,
         constraintsJsonPath: null,
         constraints: null,
+        r1csConstraints: [],
+        r1csEquationText: '',
         verifications: [],
         staticAnalysisFindings: [],
         error: null,
@@ -498,6 +519,21 @@ export const useCircuitStore = defineStore('circuit', {
 
     clearFileHighlight() {
       this.fileHighlight = null;
+    },
+
+    highlightTemplate(sourceFile: string | undefined, templateName: string) {
+      if (!sourceFile) return;
+      this.templateHighlight = {
+        templateId: `${sourceFile}::${templateName}`,
+        sourceFile,
+        templateName,
+        version: Date.now()
+      };
+      this.activeLeftPanel = 'signal';
+    },
+
+    clearTemplateHighlight() {
+      this.templateHighlight = null;
     }
   }
 });

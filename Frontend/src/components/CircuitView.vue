@@ -2,7 +2,7 @@
   <div class="circuit-view-container h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between mb-3 flex-shrink-0">
       <div class="flex items-center gap-2">
-        <h2 class="view-title text-base font-bold text-gray-800">Circuit View</h2>
+        <h2 class="view-title text-base font-bold text-gray-800">Template Tree</h2>
         <el-tooltip content="Explore the hierarchical structure of templates and components in the circuit" placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />

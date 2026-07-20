@@ -2,7 +2,7 @@
   <div class="submodule-selector-container p-4" :class="{ compact }">
     <div class="flex flex-row flex-nowrap justify-between mb-2">
       <div class="flex items-center gap-2">
-        <h2 class="view-title text-base font-bold">Circuit Selection</h2>
+        <h2 class="view-title text-base font-bold">Load Circuit</h2>
         <el-tooltip content="Select and parse a circuit from toy examples or available submodules to begin debugging" placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
@@ -59,7 +59,7 @@
         <div class="mb-1"><span class="font-semibold">Type:</span> {{ selectionModeLabel }}</div>
         <div class="mb-1"><span class="font-semibold">Entry:</span> {{ selectedCircuitConfig.entry }}</div>
         <div class="mb-1"><span class="font-semibold">Root Component:</span> {{ selectedCircuitConfig.rootComponent }}</div>
-        <div class="mb-1"><span class="font-semibold">Bug family:</span> {{ selectedCircuitConfig.description }}</div>
+        <div v-if="selectionMode === 'example'" class="mb-1"><span class="font-semibold">Bug family:</span> {{ selectedCircuitConfig.description }}</div>
       </div>
     </div>
     

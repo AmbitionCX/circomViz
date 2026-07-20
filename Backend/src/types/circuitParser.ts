@@ -1,3 +1,5 @@
+import type { HumanReadableConstraint } from '../core/utils/symbolParser.js';
+
 export interface parse_circuit_request {
   repo: string;
   entry: string;
@@ -86,6 +88,8 @@ export interface generate_wrapper_response {
   witnessSuccess?: boolean;
   symPath?: string;
   constraintsJsonPath?: string;
+  r1csConstraints?: HumanReadableConstraint[];
+  r1csEquationText?: string;
   error?: string;
   abstractCompile?: boolean;
   mockedChildren?: string[];

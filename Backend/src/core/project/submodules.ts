@@ -35,13 +35,13 @@ const SUBMODULES: SubmodulesMap = {
     id: 'zk-franchise-proof-circuit',
     name: 'ZK Franchise Proof',
     entry: 'circuit/census.circom',
-    rootComponent: 'main',
+    rootComponent: 'ZkFranchiseProofCircuit',
     description: 'Anonymous voting circuit'
   },
   'semaphore': {
     id: 'semaphore',
     name: 'Semaphore',
-    entry: 'circuits/semaphore.circom',
+    entry: 'packages/circuits/src/semaphore.circom',
     rootComponent: 'Semaphore',
     description: 'Anonymous group membership circuit'
   }

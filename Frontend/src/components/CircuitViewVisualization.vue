@@ -36,7 +36,7 @@
           <span class="text-gray-600 text-xs">Output signal</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="w-4 h-3 border-2 border-dashed border-blue-600 rounded inline-block flex-shrink-0"></span>
+          <span class="w-4 h-3 border border-dashed border-blue-600 rounded inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Selectable template</span>
         </div>
         <div class="flex items-center gap-2">
@@ -46,6 +46,10 @@
         <div class="flex items-center gap-2">
           <span class="w-4 h-3 border border-dashed border-gray-500 rounded inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Duplicate pattern</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-3 border border-dashed border-amber-600 rounded inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Recursive reference</span>
         </div>
       </div>
     </div>
@@ -57,21 +61,18 @@
         :style="{ width: '300px' }"
       >
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-          <span class="text-sm font-semibold text-gray-700">Template Details</span>
+          <span class="text-sm font-semibold text-gray-700">
+            Template: <span v-if="detailPanel.node" :style="templateColorStyle(detailPanel.node.templateName)">{{ detailPanel.node.templateName }}</span>
+          </span>
           <el-icon class="cursor-pointer text-gray-400 hover:text-gray-600" @click="detailPanel.visible = false">
             <Close />
           </el-icon>
         </div>
         <div class="flex-1 overflow-auto px-4 py-3">
-          <div class="mb-3">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-bold" :style="templateColorStyle(detailPanel.node?.templateName ?? '')">
-                {{ detailPanel.node?.templateName }}
-              </span>
-              <el-tag v-if="detailPanel.node?.nodeModulesLibrary" size="small" type="info">
-                {{ detailPanel.node.nodeModulesLibrary }}
-              </el-tag>
-            </div>
+          <div v-if="detailPanel.node?.nodeModulesLibrary" class="mb-3">
+            <el-tag size="small" type="info">
+              {{ detailPanel.node.nodeModulesLibrary }}
+            </el-tag>
           </div>
 
           <div v-if="detailPanel.node?.pathInfo && detailPanel.node.pathInfo.length > 0" class="mb-4 flex flex-col items-center">
@@ -92,7 +93,7 @@
             <span class="text-gray-300 leading-none my-0.5">▼</span>
           </div>
 
-          <div v-if="detailPanel.node?.templateInfo" class="mb-4">
+          <div v-if="detailPanel.node?.templateInfo" class="mt-4 mb-4">
             <div class="flex justify-center mb-0">
               <div v-for="sig in panelInputSignals" :key="sig.name"
                    class="flex flex-col items-center flex-shrink-0" style="width: 16px;">
@@ -152,6 +153,93 @@
           <div v-else-if="!isNodeConfirmableForPanel" class="mt-2 p-2 bg-blue-50 rounded border border-blue-200 text-xs text-blue-700">
             User Code
           </div>
+
+          <div v-if="showParamDialog && paramResponse" class="wrapper-config mt-4 pt-4">
+            <div v-if="paramResponse.hasCandidates" class="mb-4">
+              <p class="text-xs text-gray-600 mb-2">
+                Found {{ paramResponse.candidates.length }} parameter candidates for <strong>{{ paramResponse.templateName }}</strong>:
+              </p>
+              <el-radio-group v-model="selectedCandidateIndex" class="w-full">
+                <div
+                  v-for="(candidate, idx) in paramResponse.candidates"
+                  :key="idx"
+                  class="mb-2 p-3 border rounded hover:bg-gray-50 cursor-pointer"
+                >
+                  <el-radio :value="idx" class="w-full">
+                    <div class="text-xs leading-relaxed">
+                      <div class="font-semibold mb-1">
+                        Parameters: {{ candidate.params.map(p => `${p.name}=${p.value}`).join(', ') }}
+                      </div>
+                      <div v-if="candidate.publicSignals && candidate.publicSignals.length > 0" class="text-gray-600 mb-1">
+                        Public signals: {{ candidate.publicSignals.join(', ') }}
+                      </div>
+                      <div class="text-gray-500">
+                        Location: {{ candidate.location.component }} at {{ candidate.location.file.split('/').pop() }}:{{ candidate.location.line }}
+                      </div>
+                    </div>
+                  </el-radio>
+                </div>
+              </el-radio-group>
+            </div>
+
+            <div v-if="paramResponse.templateParams.length > 0" class="mt-4 pt-4 border-t">
+              <p class="text-xs font-semibold text-gray-700 mb-2">Compile Constants:</p>
+              <el-table :data="paramResponse.templateParams" size="small" max-height="180">
+                <el-table-column label="Constant" width="120">
+                  <template #default="scope">
+                    <span class="font-mono text-xs">{{ scope.row }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="Value">
+                  <template #default="scope">
+                    <el-input
+                      v-model="paramInputs[scope.row]"
+                      size="small"
+                      placeholder="Enter value"
+                      class="w-full"
+                    />
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+
+            <div v-if="isRootDetailNode() && paramResponse.signals.length > 0" class="mt-4 pt-4 border-t">
+              <el-collapse v-model="signalVisibilitySections" class="signal-visibility-collapse">
+                <el-collapse-item name="signals">
+                  <template #title>
+                    <span class="text-xs font-semibold text-gray-700">Signals Visibility</span>
+                  </template>
+
+                  <el-table
+                    :data="paramResponse.signals.filter(s => s.kind === 'input' || s.kind === 'output')"
+                    size="small"
+                    max-height="220"
+                  >
+                    <el-table-column label="Signal" width="110">
+                      <template #default="scope">
+                        <div class="flex items-center gap-1.5">
+                          <span
+                            class="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"
+                            :class="scope.row.kind === 'output' ? 'bg-green-600' : 'bg-blue-600'"
+                          ></span>
+                          <span class="font-mono text-xs">{{ scope.row.name }}</span>
+                        </div>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="Visibility">
+                      <template #default="scope">
+                        <el-tag v-if="scope.row.kind === 'output'" size="small" type="success" effect="plain">Public</el-tag>
+                        <el-radio-group v-else v-model="signalVisibility[scope.row.name]" size="small">
+                          <el-radio-button value="public">Public</el-radio-button>
+                          <el-radio-button value="private">Private</el-radio-button>
+                        </el-radio-group>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+          </div>
         </div>
 
         <div class="border-t border-gray-100 px-4 py-3 flex gap-2 flex-shrink-0">
@@ -159,115 +247,15 @@
             type="primary"
             size="small"
             class="flex-1"
-            :disabled="!isNodeSelectableForPanel || !detailPanel.node?.templateInfo"
+            :disabled="!canPartialCompile"
             :loading="isSelecting"
-            @click="handlePanelSelect"
+            @click="handlePartialCompile"
           >
-            Select
-          </el-button>
-          <el-button
-            type="success"
-            size="small"
-            class="flex-1"
-            :disabled="!isNodeConfirmableForPanel"
-            @click="handlePanelConfirm"
-          >
-            Confirm
+            Partial Compile
           </el-button>
         </div>
       </div>
     </transition>
-
-    <el-dialog
-      v-model="showParamDialog"
-      title="Create a wrapper to compile this template"
-      width="600px"
-      @click.stop
-    >
-      <div v-if="paramResponse">
-        <div v-if="paramResponse.hasCandidates">
-          <div class="mb-4">
-            <p class="text-sm text-gray-600 mb-2">
-              Found {{ paramResponse.candidates.length }} parameter candidates for template <strong>{{ paramResponse.templateName }}</strong>:
-            </p>
-            <el-radio-group v-model="selectedCandidateIndex" class="w-full">
-              <div
-                v-for="(candidate, idx) in paramResponse.candidates"
-                :key="idx"
-                class="mb-2 p-6 border rounded hover:bg-gray-50 cursor-pointer"
-              >
-                <el-radio :value="idx" class="w-full">
-                  <div class="text-xs">
-                    <div class="font-semibold mb-2">
-                      Parameters: {{ candidate.params.map(p => `${p.name}=${p.value}`).join(', ') }}
-                    </div>
-                    <div v-if="candidate.publicSignals && candidate.publicSignals.length > 0" class="text-gray-600 mb-1">
-                      Public signals: {{ candidate.publicSignals.join(', ') }}
-                    </div>
-                    <div class="text-gray-500">
-                      Location: {{ candidate.location.component }} at {{ candidate.location.file.split('/').pop() }}:{{ candidate.location.line }}
-                    </div>
-                  </div>
-                </el-radio>
-              </div>
-            </el-radio-group>
-          </div>
-        </div>
-        <div v-else>
-          <p class="text-sm text-gray-600 mb-4">
-            No existing parameter candidates found for template <strong>{{ paramResponse.templateName }}</strong>. Please enter parameters manually:
-          </p>
-        </div>
-
-        <div v-if="paramResponse.templateParams.length > 0" class="mt-4 pt-4 border-t">
-          <p class="text-sm font-semibold text-gray-700 mb-2">Compile Constants:</p>
-          <el-table :data="paramResponse.templateParams" size="small" max-height="300">
-            <el-table-column label="Constant Name" width="150">
-              <template #default="scope">
-                <span class="font-mono">{{ scope.row }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="Value">
-              <template #default="scope">
-                <el-input
-                  v-model="paramInputs[scope.row]"
-                  size="small"
-                  placeholder="Enter value"
-                  class="w-full"
-                />
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-
-        <div v-if="paramResponse.signals.length > 0" class="mt-4 pt-4 border-t">
-          <p class="text-sm font-semibold text-gray-700 mb-2">Input Signals:</p>
-          <el-table :data="paramResponse.signals.filter(s => s.kind === 'input')" size="small" max-height="300">
-            <el-table-column label="Signal Name" width="150">
-              <template #default="scope">
-                <span class="font-mono">{{ scope.row.name }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="Visibility">
-              <template #default="scope">
-                <el-radio-group v-model="signalVisibility[scope.row.name]" size="small">
-                  <el-radio-button value="public">Public</el-radio-button>
-                  <el-radio-button value="private">Private</el-radio-button>
-                </el-radio-group>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showParamDialog = false">Cancel</el-button>
-          <el-button type="primary" @click="confirmParamSelection" :disabled="!isParamSelectionValid">
-            Wrap
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -304,12 +292,15 @@ const NODE_GAP_Y = 16;
 const NODE_GAP_X = 400;
 
 const CONFIRMED_GREEN = '#16a34a';
+const RECURSIVE_BORDER = '#d97706';
+const RECURSIVE_ENCLOSURE_PAD = 8;
 
 const isSelecting = ref(false);
 const paramResponse = ref<FindTemplateParamsResponse | null>(null);
 const paramInputs = reactive<Record<string, string>>({});
 const paramVisibility = reactive<Record<string, 'public' | 'private'>>({});
 const signalVisibility = reactive<Record<string, 'public' | 'private'>>({});
+const signalVisibilitySections = ref<string[]>([]);
 const selectedCandidateIndex = ref<number>(-1);
 const showParamDialog = ref(false);
 
@@ -393,6 +384,10 @@ function togglePanelSignal(name: string) {
     newSet.add(name);
   }
   expandedPanelSignals.value = newSet;
+}
+
+function isRootDetailNode(): boolean {
+  return detailPanel.node?.depth === 0 || (detailPanel.node?.path?.length ?? 0) === 0;
 }
 
 function arraySuffix(sig: SignalInfo): string {
@@ -519,6 +514,7 @@ function renderTree() {
     const nodeG = d3.select(this);
     const color = circuitStore.getTemplateColor(d.data.templateName);
     const isExternal = d.data.isExternal;
+    const isRecursiveReference = d.data.isRecursiveReference;
     const isConfirmed = confirmed.has(d.data.templateName);
     const isNmLib = !!d.data.nodeModulesLibrary;
     const hw = NODE_WIDTH / 2;
@@ -620,7 +616,31 @@ function renderTree() {
 
     const bodyCenterY = bodyTop + BODY_HEIGHT / 2 - 2;
 
-    if (isExternal) {
+    if (isRecursiveReference) {
+      nodeG.append('rect')
+        .attr('class', 'recursive-enclosure')
+        .attr('x', -hw - RECURSIVE_ENCLOSURE_PAD)
+        .attr('y', -NODE_HEIGHT / 2 - RECURSIVE_ENCLOSURE_PAD)
+        .attr('width', NODE_WIDTH + RECURSIVE_ENCLOSURE_PAD * 2)
+        .attr('height', NODE_HEIGHT + RECURSIVE_ENCLOSURE_PAD * 2)
+        .attr('rx', 10)
+        .attr('fill', 'none')
+        .attr('stroke', RECURSIVE_BORDER)
+        .attr('stroke-width', 2.5)
+        .attr('stroke-dasharray', '6 3')
+        .attr('pointer-events', 'none');
+
+      nodeG.append('text')
+        .attr('x', hw + RECURSIVE_ENCLOSURE_PAD + 8)
+        .attr('y', 0)
+        .attr('text-anchor', 'start')
+        .attr('dominant-baseline', 'middle')
+        .attr('fill', RECURSIVE_BORDER)
+        .attr('font-size', '24px')
+        .attr('font-weight', '700')
+        .attr('pointer-events', 'none')
+        .text('...');
+    } else if (isExternal) {
       nodeG.append('text')
         .attr('x', 0)
         .attr('y', bodyCenterY)
@@ -698,17 +718,20 @@ function renderTree() {
         .attr('stroke-width', sw);
     })
     .on('click', (_event, d) => {
-      if (d.data.templateInfo) {
+      if (d.data.templateInfo && !d.data.isRecursiveReference) {
         circuitStore.setSelectedTemplate(d.data.templateInfo, d.data.path);
       }
     })
     .on('dblclick', (event: MouseEvent, d) => {
       event.preventDefault();
       event.stopPropagation();
-      if (!d.data.templateInfo || d.data.isExternal) return;
+      if (!d.data.templateInfo || d.data.isExternal || d.data.isRecursiveReference) return;
       if (!isNodeSelectable(d.data, confirmedNamesSet())) return;
       detailPanel.node = d.data;
       detailPanel.visible = true;
+      circuitStore.highlightTemplate(d.data.sourceFile, d.data.templateName);
+      resetWrapperConfig();
+      void handlePanelSelect();
     });
 
   const bordersGroup = g.append('g').attr('class', 'subtree-borders');
@@ -752,7 +775,7 @@ function renderTree() {
       .attr('points', points.join(' '))
       .attr('fill', 'none')
       .attr('stroke', '#64748b')
-      .attr('stroke-width', 1.5)
+      .attr('stroke-width', 2.5)
       .attr('stroke-dasharray', '6 3')
       .attr('pointer-events', 'none');
 
@@ -802,6 +825,16 @@ function renderTree() {
   updateSelection();
 }
 
+function resetWrapperConfig() {
+  paramResponse.value = null;
+  showParamDialog.value = false;
+  selectedCandidateIndex.value = -1;
+  Object.keys(paramInputs).forEach(key => delete paramInputs[key]);
+  Object.keys(paramVisibility).forEach(key => delete paramVisibility[key]);
+  Object.keys(signalVisibility).forEach(key => delete signalVisibility[key]);
+  signalVisibilitySections.value = [];
+}
+
 async function handlePanelSelect() {
   if (!detailPanel.node?.templateInfo) return;
 
@@ -845,19 +878,12 @@ async function handlePanelSelect() {
       signalVisibility[signal.name] = 'private';
     });
 
+    signalVisibilitySections.value = isRootDetailNode() ? ['signals'] : [];
     showParamDialog.value = true;
   } catch (error: any) {
     ElMessage.error(`Failed to search for template parameters: ${error.message}`);
   } finally {
     isSelecting.value = false;
-  }
-}
-
-function handlePanelConfirm() {
-  if (detailPanel.node) {
-    circuitStore.confirmTemplateName(detailPanel.node.templateName);
-    detailPanel.visible = false;
-    renderTree();
   }
 }
 
@@ -867,6 +893,21 @@ const isParamSelectionValid = computed(() => {
     paramName => paramInputs[paramName] && paramInputs[paramName].trim() !== ''
   );
 });
+
+const canPartialCompile = computed(() => {
+  if (!isNodeSelectableForPanel.value || !detailPanel.node?.templateInfo) return false;
+  if (!paramResponse.value || !showParamDialog.value) return true;
+  return isParamSelectionValid.value;
+});
+
+async function handlePartialCompile() {
+  if (!paramResponse.value || !showParamDialog.value) {
+    await handlePanelSelect();
+    return;
+  }
+
+  confirmParamSelection();
+}
 
 const confirmParamSelection = () => {
   if (!paramResponse.value || !detailPanel.node) return;
@@ -933,6 +974,7 @@ function updateSelection() {
         .attr('filter', 'url(#node-shadow)')
         .attr('stroke', '#e2e8f0')
         .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', 'none')
         .attr('fill', '#ffffff');
     }
   });

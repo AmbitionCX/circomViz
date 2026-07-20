@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ProjectLoader } from '../../core/project/loadProject.js';
 import { IncludeResolver } from '../../core/resolver/includeResolver.js';
 import { DependencyGraph } from '../../core/resolver/dependencyGraph.js';
+import { collectDirectComponents } from '../../core/parser/componentCollector.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { parse_circuit_request, parse_circuit_response, FileSummary, ParseMessage } from '../../types/circuitParser.js';
@@ -133,8 +134,17 @@ export async function parseCircuitHandler(
         }
       }
       logger.info(`All templates and components found: ${JSON.stringify(allTemplates, null, 2)}`);
+      const rootError = `Requested root component '${rootComponent}' was not found. Available templates/components: ${allTemplates.join('; ') || '(none)'}`;
+      return reply.code(400).send({
+        error: rootError,
+        errors: [{ level: 'error', message: rootError }],
+        repo,
+        entry,
+        files: fileSummaries,
+        tree: null,
+      });
     }
-    const tree = rootTemplate ? buildTemplateTree(rootTemplate, parsedFiles, dependencyGraph) : null;
+    const tree = buildTemplateTree(rootTemplate, parsedFiles, dependencyGraph);
     
     const errors: ParseMessage[] = errorCollector.getAll()
       .filter(err => err.level === 'error' || err.level === 'warning')
@@ -195,8 +205,8 @@ export async function parseCircuitHandler(
 
 function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
   // CRITICAL: Log the actual name being searched for (including undefined)
-  logger.info(`findTemplate searching for: ${name} (type: ${typeof name})`);
-  logger.info(`Parsed files count: ${parsedFiles.size}`);
+  logger.debug(`findTemplate searching for: ${name} (type: ${typeof name})`);
+  logger.debug(`Parsed files count: ${parsedFiles.size}`);
   
   if (!name || name === undefined || name === null) {
     logger.error(`[findTemplate ERROR] Attempting to find template with undefined/null name`);
@@ -209,14 +219,14 @@ function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
     // First try to find a template with this name
     const template = file.templates.find((t: any) => t.name === name);
     if (template) {
-      logger.info(`Found template: ${name} in ${filePath}`);
+      logger.debug(`Found template: ${name} in ${filePath}`);
       return template;
     }
 
     // If not found as template, try to find a component instantiation
     const component = file.components.find((c: any) => c.name === name);
     if (component) {
-      logger.info(`Found component: ${name} (templateName: ${component.templateName}) in ${filePath}`);
+      logger.debug(`Found component: ${name} (templateName: ${component.templateName}) in ${filePath}`);
       return component;
     }
   }
@@ -264,153 +274,15 @@ function generateDisplayId(filePath: string, repo: string): string {
   return normalizedPath.split('/').pop() || normalizedPath;
 }
 
-function extractComponentCallsFromStatements(statements: any[]): any[] {
-  const componentCalls: any[] = [];
-  let anonymousComponentIndex = 0;
-
-  // logger.info(`[extractComponentCallsFromStatements] Called with ${statements.length} statements: ${statements.map((s: any) => s.type).join(', ')}`);
-
-  function visitNode(node: any): void {
-    if (!node) return;
-
-    if (node.type === 'ComponentCall') {
-      if (!node.template) {
-        logger.error(`ComponentCall node has undefined template at line ${node.line}`);
-        logger.error(`Node structure: ${JSON.stringify(node, null, 2)}`);
-      }
-      
-      const templateName = node.template;
-      componentCalls.push({
-        type: 'ComponentInstantiationNode',
-        name: `Anonymous_${anonymousComponentIndex++}`,
-        templateName: templateName,
-        templateArgs: node.templateArgs || [],
-        callArgs: node.callArgs || [],
-        arguments: node.callArgs || [],
-        isAnonymous: true
-      });
-      logger.debug(`Found anonymous component call: ${templateName} (line ${node.line})`);
-    }
-
-    if (node.left) visitNode(node.left);
-    if (node.right) visitNode(node.right);
-    if (node.condition) visitNode(node.condition);
-    if (node.thenExpr) visitNode(node.thenExpr);
-    if (node.elseExpr) visitNode(node.elseExpr);
-    if (node.operand) visitNode(node.operand);
-
-    // Handle ComponentArrayInit - visit its init statements
-    if (node.type === 'ComponentArrayInit' && node.initStatements) {
-      node.initStatements.forEach((stmt: any) => visitNode(stmt));
-    }
-    if (node.elements) {
-      node.elements.forEach((el: any) => visitNode(el));
-    }
-    if (node.array) visitNode(node.array);
-    if (node.index) visitNode(node.index);
-    if (node.object) visitNode(node.object);
-    if (node.value) visitNode(node.value);
-    if (node.message) visitNode(node.message);
-
-    if (node.type === 'Assignment') {
-      visitNode(node.left);
-      visitNode(node.right);
-    }
-
-    if (node.type === 'IfStatement') {
-      node.thenBranch?.forEach((stmt: any) => visitNode(stmt));
-      node.elseBranch?.forEach((stmt: any) => visitNode(stmt));
-    }
-
-    if (node.type === 'ForLoop' || node.type === 'WhileLoop') {
-      node.body?.forEach((stmt: any, idx: number) => {
-        visitNode(stmt);
-      });
-      if (node.type === 'ForLoop') {
-        visitNode(node.start);
-        visitNode(node.end);
-        visitNode(node.step);
-      } else {
-        visitNode(node.condition);
-      }
-    }
-
-    if (node.type === 'Return') {
-      visitNode(node.value);
-    }
-
-    if (node.type === 'Assert') {
-      visitNode(node.condition);
-      visitNode(node.message);
-    }
-
-    if (node.type === 'ExpressionStatement') {
-      visitNode(node.expression);
-    }
-
-    if (node.type === 'BlockStatement') {
-      node.body?.forEach((stmt: any) => visitNode(stmt));
-    }
-  }
-
-  statements.forEach(stmt => visitNode(stmt));
-  return componentCalls;
+function templateIdentity(template: any): string {
+  return `${template.sourceFile || 'unknown'}::${template.name || template.templateName}`;
 }
 
-/**
- * Detect component array element instantiations: arr[i] = Template(args)
- *
- * These appear as Assignment nodes where:
- *   - left is an ArrayAccess on a known component array
- *   - right is a FunctionCall (the template name + constructor args)
- *
- * Unlike anonymous component calls (ComponentCall nodes), these are plain
- * FunctionCalls and are missed by extractComponentCallsFromStatements.
- *
- * Returns one entry per array name (first template found wins), deduplicated.
- */
-function extractComponentArrayInstantiations(
-  statements: any[],
-  componentArrayNames: Set<string>,
-): Array<{ name: string; templateName: string; arguments?: any[] }> {
-  const found = new Map<string, { name: string; templateName: string; arguments?: any[] }>();
-
-  function visit(node: any): void {
-    if (!node) return;
-
-    if (node.type === 'Assignment' &&
-        node.left?.type === 'ArrayAccess' &&
-        node.left.array?.type === 'Identifier' &&
-        componentArrayNames.has(node.left.array.name) &&
-        node.right?.type === 'FunctionCall' &&
-        node.right.function) {
-      const arrayName = node.left.array.name;
-      if (!found.has(arrayName)) {
-        found.set(arrayName, {
-          name: arrayName,
-          templateName: node.right.function,
-          arguments: node.right.arguments || [],
-        });
-      }
-    }
-
-    if (node.body && Array.isArray(node.body)) node.body.forEach((s: any) => visit(s));
-    if (node.thenBranch && Array.isArray(node.thenBranch)) node.thenBranch.forEach((s: any) => visit(s));
-    if (node.elseBranch && Array.isArray(node.elseBranch)) node.elseBranch.forEach((s: any) => visit(s));
-    if (node.initStatements && Array.isArray(node.initStatements)) node.initStatements.forEach((s: any) => visit(s));
-    if (node.initBlock && Array.isArray(node.initBlock)) node.initBlock.forEach((s: any) => visit(s));
-  }
-
-  for (const stmt of statements) {
-    visit(stmt);
-  }
-  return [...found.values()];
-}
-
-function buildTemplateTree(
+export function buildTemplateTree(
   templateOrComponent: any,
   parsedFiles: Map<string, any>,
-  dependencyGraph: DependencyGraph
+  dependencyGraph: DependencyGraph,
+  ancestorTemplateKeys: ReadonlySet<string> = new Set()
 ): any {
   const isComponent = templateOrComponent.type === 'ComponentInstantiationNode';
 
@@ -421,6 +293,9 @@ function buildTemplateTree(
   if (!template) {
     return null;
   }
+
+  const activeTemplateKeys = new Set(ancestorTemplateKeys);
+  activeTemplateKeys.add(templateIdentity(template));
 
   const tree: any = {
     name: templateOrComponent.name,
@@ -433,178 +308,27 @@ function buildTemplateTree(
     components: []
   };
 
-  for (const component of template.components) {
-    // CRITICAL: Validate component type
-    if (component.type === 'ComponentDeclaration') {
-      // Component declarations don't have templateName - skip them
-      logger.debug(`Skipping ComponentDeclaration: ${component.name} (no template)`);
-      continue;
-    }
-    
-    if (component.type === 'ComponentArrayInit') {
-      // Component array initialization also doesn't have templateName
-      // It's just a declaration with initialization statements
-      logger.debug(`Skipping ComponentArrayInit: ${component.name} (no template)`);
-      continue;
-    }
-    
-    if (component.type === 'ComponentInstantiationWithInitNode') {
-      // Component with init block also doesn't have templateName
-      logger.debug(`Skipping ComponentInstantiationWithInitNode: ${component.name} (has init block)`);
-      continue;
-    }
-    
-    if (!component.templateName) {
-      // logger.error(`[Component ERROR] Component has undefined templateName: ${component.name} at line ${component.line}`);
-      // logger.error(`[Component ERROR] Component type: ${component.type}`);
-      // logger.error(`[Component ERROR] Full component structure: ${JSON.stringify(component, null, 2)}`);
-      continue;
-    }
-    
-    logger.info(`[Component Processing] name=${component.name}, templateName=${component.templateName}, line=${component.line}`);
-    
+  for (const component of collectDirectComponents(template)) {
     const childTemplate = findTemplate(parsedFiles, component.templateName);
+    const isRecursiveReference = childTemplate
+      ? activeTemplateKeys.has(templateIdentity(childTemplate))
+      : false;
     const componentTree: any = {
       name: component.name,
-      templateName: component.templateName || 'unknown',
+      templateName: component.templateName,
       arguments: component.arguments,
+      templateArgs: component.templateArgs,
+      callArgs: component.callArgs,
+      isAnonymous: component.isAnonymous,
+      isArray: component.isArray,
+      isRecursiveReference,
+      line: component.line,
       sourceFile: childTemplate?.sourceFile,
-      template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
+      template: childTemplate && !isRecursiveReference
+        ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph, activeTemplateKeys)
+        : null
     };
     tree.components.push(componentTree);
-    logger.debug(`Added component to tree: ${component.name} -> ${component.templateName}, templateFound: ${!!childTemplate}`);
-  }
-
-  // Also extract anonymous component calls from ComponentArrayInit and ComponentInstantiationWithInit nodes
-  for (const component of template.components) {
-    if (component.type === 'ComponentArrayInit' && component.initStatements) {
-      // logger.info(`[ComponentArrayInit] Processing component ${component.name}`);
-      const arrayInitCalls = extractComponentCallsFromStatements(component.initStatements);
-      // logger.info(`[ComponentArrayInit] Found ${arrayInitCalls.length} anonymous component calls in ${component.name}`);
-      
-      for (const anonComponent of arrayInitCalls) {
-        if (!anonComponent.templateName && anonComponent.templateName === undefined) {
-          logger.error(`[ArrayInit Anonymous ERROR] Component has undefined templateName: ${anonComponent.name}`);
-          logger.error(`[ArrayInit Anonymous ERROR] Full node structure: ${JSON.stringify(anonComponent, null, 2)}`);
-          continue;
-        }
-
-        logger.info(`[ArrayInit Anonymous Processing] name=${anonComponent.name}, templateName=${anonComponent.templateName}`);
-
-        const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
-        const componentTree: any = {
-          name: anonComponent.name,
-          templateName: anonComponent.templateName || 'unknown',
-          arguments: anonComponent.callArgs || anonComponent.arguments || [],
-          templateArgs: anonComponent.templateArgs || [],
-          isAnonymous: true,
-          sourceFile: childTemplate?.sourceFile,
-          template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
-        };
-        tree.components.push(componentTree);
-        logger.debug(`Added array init anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
-      }
-    }
-    
-    if (component.type === 'ComponentInstantiationWithInitNode' && component.initBlock) {
-      logger.info(`[ComponentInstantiationWithInit] Extracting anonymous calls from ${component.name}`);
-      const initBlockCalls = extractComponentCallsFromStatements(component.initBlock);
-      logger.info(`[ComponentInstantiationWithInit] Found ${initBlockCalls.length} anonymous component calls in ${component.name}`);
-      
-      for (const anonComponent of initBlockCalls) {
-        if (!anonComponent.templateName && anonComponent.templateName === undefined) {
-          logger.error(`[InitBlock Anonymous ERROR] Component has undefined templateName: ${anonComponent.name}`);
-          logger.error(`[InitBlock Anonymous ERROR] Full node structure: ${JSON.stringify(anonComponent, null, 2)}`);
-          continue;
-        }
-
-        logger.info(`[InitBlock Anonymous Processing] name=${anonComponent.name}, templateName=${anonComponent.templateName}`);
-
-        const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
-        const componentTree: any = {
-          name: anonComponent.name,
-          templateName: anonComponent.templateName || 'unknown',
-          arguments: anonComponent.callArgs || anonComponent.arguments || [],
-          templateArgs: anonComponent.templateArgs || [],
-          isAnonymous: true,
-          sourceFile: childTemplate?.sourceFile,
-          template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
-        };
-        tree.components.push(componentTree);
-        logger.debug(`Added init block anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
-      }
-    }
-  }
-
-  const anonymousComponentCalls = extractComponentCallsFromStatements(template.statements);
-  // logger.info(`Found ${anonymousComponentCalls.length} anonymous component calls in template ${template.name}`);
-
-  for (const anonComponent of anonymousComponentCalls) {
-    // CRITICAL: Validate anonymous component has templateName
-    if (!anonComponent.templateName || anonComponent.templateName === undefined) {
-      logger.error(`[Anonymous Component ERROR] Component has undefined templateName: ${anonComponent.name}`);
-      logger.error(`[Anonymous Component ERROR] Full node structure: ${JSON.stringify(anonComponent, null, 2)}`);
-      continue;
-    }
-
-    // logger.info(`[Anonymous Component Processing] name=${anonComponent.name}, templateName=${anonComponent.templateName}`);
-
-    const childTemplate = findTemplate(parsedFiles, anonComponent.templateName);
-    const componentTree: any = {
-      name: anonComponent.name,
-      templateName: anonComponent.templateName || 'unknown',
-      arguments: anonComponent.callArgs,
-      templateArgs: anonComponent.templateArgs,
-      isAnonymous: true,
-      sourceFile: childTemplate?.sourceFile,
-      template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null
-    };
-    tree.components.push(componentTree);
-    // logger.debug(`Added anonymous component to tree: ${anonComponent.name} -> ${anonComponent.templateName}, templateFound: ${!!childTemplate}`);
-  }
-
-  // 4th pass: detect component array element instantiations (arr[i] = Template(args))
-  // These are in for-loop bodies / init statements as Assignment+FunctionCall nodes,
-  // missed by all three passes above.
-  const componentArrayNames = new Set<string>();
-  for (const component of template.components) {
-    if ((component.type === 'ComponentDeclaration' || component.type === 'ComponentArrayInit') && component.arraySizes) {
-      componentArrayNames.add(component.name);
-    }
-  }
-
-  if (componentArrayNames.size > 0) {
-    const existingNames = new Set(tree.components.map((c: any) => c.name));
-
-    // Scan template.statements (for-loop bodies, if-branches, etc.)
-    const arrayInstances = extractComponentArrayInstantiations(template.statements, componentArrayNames);
-
-    // Also scan ComponentArrayInit.initStatements
-    for (const component of template.components) {
-      if (component.type === 'ComponentArrayInit' && component.initStatements) {
-        const initInstances = extractComponentArrayInstantiations(
-          component.initStatements, new Set([component.name]),
-        );
-        arrayInstances.push(...initInstances);
-      }
-    }
-
-    for (const inst of arrayInstances) {
-      if (existingNames.has(inst.name)) continue;
-      existingNames.add(inst.name);
-
-      const childTemplate = findTemplate(parsedFiles, inst.templateName);
-      const componentTree: any = {
-        name: inst.name,
-        templateName: inst.templateName,
-        arguments: inst.arguments || [],
-        isArray: true,
-        sourceFile: childTemplate?.sourceFile,
-        template: childTemplate ? buildTemplateTree(childTemplate, parsedFiles, dependencyGraph) : null,
-      };
-      tree.components.push(componentTree);
-      logger.info(`Added component array to tree: ${inst.name} -> ${inst.templateName} (array element instantiation)`);
-    }
   }
 
   return tree;

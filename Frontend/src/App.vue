@@ -134,6 +134,12 @@ const compileStatus = (success: boolean | undefined): 'success' | 'failure' | nu
 
 const handleParseComplete = (data: any) => {
   console.log('Parse complete:', data);
+
+  if (!data.tree) {
+    const message = data.error || 'Parse completed without a renderable root template';
+    ElMessage.error(message);
+    return;
+  }
   
   circuitStore.setParseData({
     repo: data.repo || '',
@@ -188,6 +194,10 @@ const handleWrapTemplate = async (data: any) => {
     circuitStore.setWitnessStatus(compileStatus(result.witnessSuccess));
     circuitStore.setSymPath('symPath' in result ? (result.symPath ?? null) : null);
     circuitStore.setConstraintsJsonPath('constraintsJsonPath' in result ? (result.constraintsJsonPath ?? null) : null);
+    circuitStore.setR1csDiagramData({
+      constraints: 'r1csConstraints' in result ? (result.r1csConstraints ?? []) : [],
+      equationText: 'r1csEquationText' in result ? (result.r1csEquationText ?? '') : '',
+    });
     circuitStore.setAbstractCompileMeta({
       abstractCompile: !!result.abstractCompile,
       mockedChildren: result.mockedChildren,

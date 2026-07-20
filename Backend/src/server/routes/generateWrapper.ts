@@ -5,13 +5,33 @@ import { DependencyGraph } from '../../core/resolver/dependencyGraph.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { generate_wrapper_request, generate_wrapper_response } from '../../types/circuitParser.js';
-import { compileDebug } from '../compilations/compileDebug.js';
+import { compileDebug, getCircomArtifactPaths } from '../compilations/compileDebug.js';
 import { compileOptimized } from '../compilations/compileOptimized.js';
 import { compileWitness } from '../compilations/compileWitness.js';
 import { AbstractWrapperGenerator } from '../../core/abstractCompile/index.js';
 import { PathGuard } from '../../core/project/pathGuard.js';
 import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
+import {
+  parseSymFile,
+  parseConstraintsFile,
+  humanizeConstraintSystem,
+  formatConstraintSystemWithNames,
+  type HumanReadableConstraint,
+} from '../../core/utils/symbolParser.js';
+
+export async function resolveR1csDiagramPayload(
+  symPath: string,
+  constraintsJsonPath: string
+): Promise<Pick<generate_wrapper_response, 'r1csConstraints' | 'r1csEquationText'>> {
+  const symEntries = await parseSymFile(symPath);
+  const constraints = await parseConstraintsFile(constraintsJsonPath);
+
+  return {
+    r1csConstraints: humanizeConstraintSystem(constraints, symEntries),
+    r1csEquationText: formatConstraintSystemWithNames(constraints, symEntries),
+  };
+}
 
 export async function generateWrapperHandler(
   request: FastifyRequest<{ Body: generate_wrapper_request }>,
@@ -192,8 +212,9 @@ export async function generateWrapperHandler(
 
     const originDir = join(wrapperDir, 'origin');
     const originResult = await compileDebug(originWrapperPath, includePaths, originDir);
-    const originSymPath = join(originDir, 'wrapper.sym');
-    const originConstraintsJsonPath = join(originDir, 'wrapper_constraints.json');
+    const originArtifacts = getCircomArtifactPaths(originWrapperPath, originDir);
+    const originSymPath = originArtifacts.symPath;
+    const originConstraintsJsonPath = originArtifacts.constraintsJsonPath;
     logger.info(`Origin debug compilation ${originResult.success ? 'succeeded' : 'failed'}`);
 
     // --- Compile mocked wrapper → R1CS (if exists) ---
@@ -206,8 +227,9 @@ export async function generateWrapperHandler(
     if (mockedWrapperPath) {
       mockedDir = join(wrapperDir, 'mocked');
       mockedResult = await compileDebug(mockedWrapperPath, includePaths, mockedDir);
-      mockedSymPath = join(mockedDir, 'wrapper.sym');
-      mockedConstraintsJsonPath = join(mockedDir, 'wrapper_constraints.json');
+      const mockedArtifacts = getCircomArtifactPaths(mockedWrapperPath, mockedDir);
+      mockedSymPath = mockedArtifacts.symPath;
+      mockedConstraintsJsonPath = mockedArtifacts.constraintsJsonPath;
       logger.info(`Mocked debug compilation ${mockedResult.success ? 'succeeded' : 'failed'}`);
     }
 
@@ -225,6 +247,22 @@ export async function generateWrapperHandler(
     const witnessResult = await compileWitness(primaryWrapperPath, includePaths, witnessDir);
     logger.info(`Primary witness compilation ${witnessResult.success ? 'succeeded' : 'failed'}`);
 
+    // --- Resolve primary R1CS for diagram ---
+
+    let r1csConstraints: HumanReadableConstraint[] = [];
+    let r1csEquationText = '';
+
+    if (primaryDebugResult.success) {
+      try {
+        const payload = await resolveR1csDiagramPayload(primarySymPath, primaryConstraintsJsonPath);
+        r1csConstraints = payload.r1csConstraints ?? [];
+        r1csEquationText = payload.r1csEquationText ?? '';
+        logger.info(`Resolved primary R1CS for diagram: ${r1csConstraints.length} constraints`);
+      } catch (error: any) {
+        logger.warn(`Failed to resolve primary R1CS for diagram: ${error.message}`);
+      }
+    }
+
     // --- Build response ---
 
     const results: generate_wrapper_response = {
@@ -240,6 +278,8 @@ export async function generateWrapperHandler(
       witnessSuccess: witnessResult.success,
       symPath: primarySymPath,
       constraintsJsonPath: primaryConstraintsJsonPath,
+      r1csConstraints,
+      r1csEquationText,
       // Origin compilation (always available)
       originSymPath,
       originConstraintsJsonPath,

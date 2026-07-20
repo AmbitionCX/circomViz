@@ -157,15 +157,17 @@ export class CircomParser {
       
       if (this.matchKeyword('signal')) {
         // console.log(`[Parser DEBUG]   -> parsing signal`);
-        const sig = this.parseSignal();
-        if (sig.type === 'Signal') {
-          signals.push(sig);
-        } else {
-          statements.push(sig);
+        const signalDeclarations = this.parseSignalDeclarations();
+        for (const sig of signalDeclarations) {
+          if (sig.type === 'Signal') {
+            signals.push(sig);
+          } else {
+            statements.push(sig);
+          }
         }
       } else if (this.matchKeyword('var')) {
         // console.log(`[Parser DEBUG]   -> parsing variable`);
-        variables.push(this.parseVariable());
+        variables.push(...this.parseVariableDeclarations());
       } else if (this.matchKeyword('component')) {
         // console.log(`[Parser DEBUG]   -> parsing component`);
         components.push(this.parseComponentInstantiation());
@@ -220,6 +222,10 @@ export class CircomParser {
   }
 
   private parseSignal(): SignalNode | TupleSignalDeclarationNode {
+    return this.parseSignalDeclarations()[0];
+  }
+
+  private parseSignalDeclarations(): (SignalNode | TupleSignalDeclarationNode)[] {
     const line = this.previous().line;
     let kind: 'input' | 'output' | 'intermediate' = 'intermediate';
 
@@ -231,45 +237,34 @@ export class CircomParser {
 
     // Check for tuple signal declaration: signal (a, b[n]) <== expr;
     if (this.checkPunctuation('(')) {
-      return this.parseTupleSignalDeclaration(line, kind);
+      return [this.parseTupleSignalDeclaration(line, kind)];
     }
 
-    const name = this.consumeIdentifier();
-    let isArray = false;
-    let arraySizes: (number | ExpressionNode)[] | undefined;
+    const declarations: SignalNode[] = [];
 
-    if (this.matchPunctuation('[')) {
-      isArray = true;
-      arraySizes = [];
-      
-      // Parse the first dimension
-      arraySizes.push(this.parseExpression());
-      this.consumePunctuation(']');
-      
-      // Check for additional dimensions (e.g., a[2][3])
-      while (this.matchPunctuation('[')) {
-        arraySizes.push(this.parseExpression());
-        this.consumePunctuation(']');
+    do {
+      const name = this.consumeIdentifier();
+      const arraySizes = this.parseArraySizes();
+
+      let initialValue: ExpressionNode | undefined;
+      if (this.matchOperator('<==')) {
+        initialValue = this.parseExpression();
       }
-    }
 
-    // Check for initial value assignment (e.g., signal x[5] <== y;)
-    let initialValue: ExpressionNode | undefined;
-    if (this.matchOperator('<==')) {
-      initialValue = this.parseExpression();
-    }
-    
+      declarations.push({
+        type: 'Signal',
+        name,
+        kind,
+        isArray: !!arraySizes,
+        arraySizes,
+        initialValue,
+        line
+      });
+    } while (!declarations[declarations.length - 1].initialValue && this.matchPunctuation(','));
+
     this.consumePunctuation(';');
 
-    return {
-      type: 'Signal',
-      name,
-      kind,
-      isArray,
-      arraySizes,
-      initialValue,
-      line
-    };
+    return declarations;
   }
 
   private parseTupleSignalDeclaration(line: number, kind: 'input' | 'output' | 'intermediate'): TupleSignalDeclarationNode {
@@ -314,41 +309,52 @@ export class CircomParser {
   }
 
   private parseVariable(): VariableNode {
+    return this.parseVariableDeclarations()[0];
+  }
+
+  private parseVariableDeclarations(): VariableNode[] {
     const line = this.previous().line;
-    const name = this.consumeIdentifier();
-    let isArray = false;
-    let arraySizes: (number | ExpressionNode)[] | undefined;
-    let initialValue: ExpressionNode | undefined;
+    const declarations: VariableNode[] = [];
 
-    if (this.matchPunctuation('[')) {
-      isArray = true;
-      arraySizes = [];
-      
-      // Parse the first dimension
-      arraySizes.push(this.parseExpression());
-      this.consumePunctuation(']');
-      
-      // Check for additional dimensions (e.g., a[2][3])
-      while (this.matchPunctuation('[')) {
-        arraySizes.push(this.parseExpression());
-        this.consumePunctuation(']');
+    do {
+      const name = this.consumeIdentifier();
+      const arraySizes = this.parseArraySizes();
+      let initialValue: ExpressionNode | undefined;
+
+      if (this.matchOperator('=')) {
+        initialValue = this.parseExpression();
       }
-    }
 
-    if (this.matchOperator('=')) {
-      initialValue = this.parseExpression();
-    }
+      declarations.push({
+        type: 'Variable',
+        name,
+        isArray: !!arraySizes,
+        arraySizes,
+        initialValue,
+        line
+      });
+    } while (this.matchPunctuation(','));
 
     this.consumePunctuation(';');
 
-    return {
-      type: 'Variable',
-      name,
-      isArray,
-      arraySizes,
-      initialValue,
-      line
-    };
+    return declarations;
+  }
+
+  private parseArraySizes(): (number | ExpressionNode)[] | undefined {
+    if (!this.matchPunctuation('[')) {
+      return undefined;
+    }
+
+    const arraySizes: (number | ExpressionNode)[] = [];
+    arraySizes.push(this.parseExpression());
+    this.consumePunctuation(']');
+
+    while (this.matchPunctuation('[')) {
+      arraySizes.push(this.parseExpression());
+      this.consumePunctuation(']');
+    }
+
+    return arraySizes;
   }
 
   private parseComponentInstantiation(): ComponentInstantiationNode | ComponentDeclarationNode | ComponentInstantiationWithInitNode | ComponentArrayInitNode {
@@ -601,10 +607,22 @@ export class CircomParser {
     }
     if (this.matchKeyword('var')) {
       // console.log(`[Parser DEBUG] -> parsing variable`);
-      return this.parseVariable();
+      const variables = this.parseVariableDeclarations();
+      if (variables.length === 1) return variables[0];
+      return {
+        type: 'BlockStatement',
+        body: variables,
+        line: variables[0]?.line ?? this.previous().line
+      };
     }
     if (this.matchKeyword('signal')) {
-      return this.parseSignal();
+      const signals = this.parseSignalDeclarations();
+      if (signals.length === 1) return signals[0];
+      return {
+        type: 'BlockStatement',
+        body: signals,
+        line: signals[0]?.line ?? this.previous().line
+      };
     }
     if (this.matchKeyword('component')) {
       return this.parseComponentInstantiation();

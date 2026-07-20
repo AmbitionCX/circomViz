@@ -4,7 +4,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex items-center gap-2">
-            <h2 class="view-title text-base font-bold text-gray-800">Debugging Panel</h2>
+            <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
             <el-tooltip content="Debug constraints, verification, and signals for selected template" placement="top">
               <el-icon class="text-gray-400 cursor-help">
                 <QuestionFilled />
@@ -16,28 +16,15 @@
             <span :style="templateColorStyle(selectedTemplate?.templateName ?? '')">{{ selectedTemplate?.templateName }}</span>
           </div>
         </div>
-        <div v-if="hasSelectedTemplate" class="flex gap-3">
-          <el-tooltip content="Debug compilation output (O0)" placement="top">
-            <div class="flex items-center gap-1" :class="compileStatusClass(debugStatus)">
-              <el-icon v-if="debugStatus === 'success'"><CircleCheckFilled /></el-icon>
-              <el-icon v-else-if="debugStatus === 'failure'"><CircleCloseFilled /></el-icon>
-              <span class="text-xs">Debug</span>
-            </div>
-          </el-tooltip>
-          <el-tooltip content="Optimized compilation output (O2)" placement="top">
-            <div class="flex items-center gap-1" :class="compileStatusClass(optimizedStatus)">
-              <el-icon v-if="optimizedStatus === 'success'"><CircleCheckFilled /></el-icon>
-              <el-icon v-else-if="optimizedStatus === 'failure'"><CircleCloseFilled /></el-icon>
-              <span class="text-xs">Optimized</span>
-            </div>
-          </el-tooltip>
-          <el-tooltip content="Witness computation output" placement="top">
-            <div class="flex items-center gap-1" :class="compileStatusClass(witnessStatus)">
-              <el-icon v-if="witnessStatus === 'success'"><CircleCheckFilled /></el-icon>
-              <el-icon v-else-if="witnessStatus === 'failure'"><CircleCloseFilled /></el-icon>
-              <span class="text-xs">Witness</span>
-            </div>
-          </el-tooltip>
+        <div v-if="hasSelectedTemplate" class="flex items-center">
+          <el-button
+            type="success"
+            size="small"
+            :disabled="isSelectedTemplateConfirmed"
+            @click.stop="handleConfirmTemplate"
+          >
+            {{ isSelectedTemplateConfirmed ? 'Confirmed' : 'Confirm' }}
+          </el-button>
         </div>
       </div>
     </div>
@@ -49,17 +36,17 @@
     />
 
     <div v-else class="flex-1 min-h-0 overflow-hidden">
-      <DebuggingPanelVisualization />
+      <R1CSDiagram />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { QuestionFilled, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue';
+import { QuestionFilled } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
 import { hexToRgba } from '@/composables/colors';
-import DebuggingPanelVisualization from './DebuggingPanelVisualization.vue';
+import R1CSDiagram from './R1CSDiagram.vue';
 
 const circuitStore = useCircuitStore();
 
@@ -78,14 +65,14 @@ const hasSelectedTemplate = computed(() => circuitStore.selectedTemplate !== nul
 
 const selectedTemplate = computed(() => circuitStore.selectedTemplate);
 
-const debugStatus = computed(() => circuitStore.compilationData.debugStatus);
-const optimizedStatus = computed(() => circuitStore.compilationData.optimizedStatus);
-const witnessStatus = computed(() => circuitStore.compilationData.witnessStatus);
+const isSelectedTemplateConfirmed = computed(() => {
+  if (!selectedTemplate.value) return false;
+  return circuitStore.isTemplateConfirmed(selectedTemplate.value.templateName);
+});
 
-function compileStatusClass(status: 'success' | 'failure' | null): string {
-  if (status === 'success') return 'text-green-600';
-  if (status === 'failure') return 'text-red-500';
-  return 'text-gray-400';
+function handleConfirmTemplate() {
+  if (!selectedTemplate.value) return;
+  circuitStore.confirmTemplateName(selectedTemplate.value.templateName);
 }
 </script>
 
@@ -107,4 +94,5 @@ function compileStatusClass(status: 'success' | 'failure' | null): string {
   background: white;
   border-radius: 8px;
 }
+
 </style>

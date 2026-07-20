@@ -3,6 +3,7 @@ import {
   parseSymFile,
   parseConstraintsFile,
   resolveConstraintsWithNames,
+  formatConstraintSystemWithNames,
   type ResolvedConstraint,
 } from '../../core/utils/symbolParser.js';
 import { PathGuard } from '../../core/project/pathGuard.js';
@@ -18,6 +19,7 @@ interface resolve_constraints_response {
   constraints: ResolvedConstraint[];
   signalCount: number;
   constraintCount: number;
+  humanReadableSystem: string;
   error?: string;
 }
 
@@ -34,6 +36,7 @@ export async function resolveConstraintsHandler(
         constraints: [],
         signalCount: 0,
         constraintCount: 0,
+        humanReadableSystem: '',
         error: 'symPath and constraintsJsonPath are required',
       });
     }
@@ -46,6 +49,7 @@ export async function resolveConstraintsHandler(
         constraints: [],
         signalCount: 0,
         constraintCount: 0,
+        humanReadableSystem: '',
         error: artifactValidation.error,
       });
     }
@@ -56,12 +60,14 @@ export async function resolveConstraintsHandler(
     const constraints = await parseConstraintsFile(artifactValidation.constraintsJsonPath!);
 
     const resolved = resolveConstraintsWithNames(constraints, symEntries);
+    const humanReadableSystem = formatConstraintSystemWithNames(constraints, symEntries);
 
     const response: resolve_constraints_response = {
       success: true,
       constraints: resolved,
       signalCount: symEntries.length,
       constraintCount: constraints.length,
+      humanReadableSystem,
     };
 
     logger.info(`Resolved ${resolved.length} constraints with ${symEntries.length} signals`);
@@ -74,6 +80,7 @@ export async function resolveConstraintsHandler(
       constraints: [],
       signalCount: 0,
       constraintCount: 0,
+      humanReadableSystem: '',
       error: error.message,
     });
   }

@@ -1,6 +1,6 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse, BuildIndexResponse, SliceResponse, SliceDirection, BipartiteGraphResponse, SliceCandidatesResponse, ConstraintTreesResponse, TemplateContract, ContractVerifyResult } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, FindTemplateParamsResponse, SoundnessCheckResponse, IntentAlignmentResponse, FormalConformanceResponse, BuildIndexResponse, SliceResponse, SliceDirection, BipartiteGraphResponse, SliceCandidatesResponse, ConstraintTreesResponse, TemplateContract, ContractVerifyResult, HumanReadableConstraint, ResolveConstraintsResponse } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
@@ -137,6 +137,8 @@ export interface generate_wrapper_response {
   witnessSuccess?: boolean;
   symPath?: string;
   constraintsJsonPath?: string;
+  r1csConstraints?: HumanReadableConstraint[];
+  r1csEquationText?: string;
   error?: string;
   abstractCompile?: boolean;
   mockedChildren?: string[];
@@ -213,7 +215,7 @@ export const getFileContent = (data: { filePath: string }) =>
   request.post<any, FileContentResponse>(API.file_content, data)
 
 export const resolveConstraints = (data: { symPath: string; constraintsJsonPath: string }) =>
-  request.post<any, { success: boolean; constraints: any[]; signalCount: number; constraintCount: number; error?: string }>(API.resolve_constraints, data)
+  request.post<any, ResolveConstraintsResponse>(API.resolve_constraints, data)
 
 export const intentAlignment = (data: {
   repo: string;
