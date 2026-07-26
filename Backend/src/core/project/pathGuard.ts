@@ -36,7 +36,7 @@ export class PathGuard {
   private submodulesRoot: string;
   private toyDemosRoot: string;
   private compilationsRoot: string;
-  private wrappersRoot: string;
+  private mockedFilesRoot: string;
   private artifactRoots: string[];
 
   private repoNamePattern = /^[a-zA-Z0-9_.-]+$/;
@@ -46,8 +46,8 @@ export class PathGuard {
     this.submodulesRoot = path.resolve(this.backendRoot, '..', 'submodules');
     this.toyDemosRoot = path.resolve(this.backendRoot, '..', 'toy-demos');
     this.compilationsRoot = path.resolve(this.backendRoot, 'compilations');
-    this.wrappersRoot = path.resolve(this.backendRoot, 'wrappers');
-    this.artifactRoots = [this.compilationsRoot, this.wrappersRoot];
+    this.mockedFilesRoot = path.resolve(this.backendRoot, 'mockedFiles');
+    this.artifactRoots = [this.compilationsRoot, this.mockedFilesRoot];
 
     logger.info(`PathGuard initialized: backendRoot=${this.backendRoot}, submodulesRoot=${this.submodulesRoot}, toyDemosRoot=${this.toyDemosRoot}`);
   }
@@ -425,8 +425,8 @@ export class PathGuard {
     return this.submodulesRoot;
   }
 
-  getWrappersRoot(): string {
-    return this.wrappersRoot;
+  getMockedFilesRoot(): string {
+    return this.mockedFilesRoot;
   }
 
   getCompilationsRoot(): string {

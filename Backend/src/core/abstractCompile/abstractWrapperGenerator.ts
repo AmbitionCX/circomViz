@@ -4,6 +4,8 @@ import { ParentRewriter, type RewrittenParentResult, type ValidatorWarning as Ab
 
 export interface AbstractWrapperResult {
   wrapperCode: string;
+  templateSource: string;
+  entryTemplateName: string;
   partialTemplateName: string;
   mockedChildren: string[];
   unmockedChildren: string[];
@@ -94,6 +96,8 @@ export class AbstractWrapperGenerator {
 
     return {
       wrapperCode: sections.join('\n'),
+      templateSource: rewritten.source,
+      entryTemplateName: rewritten.templateName,
       partialTemplateName: rewritten.templateName,
       mockedChildren: [...mockedTemplateNames],
       unmockedChildren: rewritten.unmockedInstances.map((u) => u.templateName),

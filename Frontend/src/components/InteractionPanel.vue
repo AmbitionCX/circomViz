@@ -1,26 +1,40 @@
 <template>
   <div class="interaction-panel-container h-full flex flex-col overflow-hidden">
     <div class="mb-3 flex-shrink-0">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
-            <el-tooltip content="Debug constraints, verification, and signals for selected template" placement="top">
-              <el-icon class="text-gray-400 cursor-help">
-                <QuestionFilled />
-              </el-icon>
-            </el-tooltip>
-          </div>
-          <div v-if="hasSelectedTemplate" class="flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <span class="text-xs font-medium text-gray-500">Template:</span>
-            <span :style="templateColorStyle(selectedTemplate?.templateName ?? '')">{{ selectedTemplate?.templateName }}</span>
-          </div>
+      <div class="title-row">
+        <div class="flex items-center gap-2">
+          <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
+          <el-tooltip content="Compare source dataflow with compiled constraints" placement="top">
+            <el-icon class="text-gray-400 cursor-help">
+              <QuestionFilled />
+            </el-icon>
+          </el-tooltip>
+          <span class="text-sm font-semibold text-gray-700">
+            Template: <span v-if="selectedTemplate" :style="templateColorStyle(selectedTemplate.templateName)">{{ selectedTemplate.templateName }}</span>
+          </span>
         </div>
-        <div v-if="hasSelectedTemplate" class="flex items-center">
+
+        <div class="title-actions">
+          <div class="segmented-custom-style mr-4">
+            <el-segmented
+              :model-value="partialDebuggingStore.optimization"
+              :options="optimizationOptions"
+              size="small"
+              :disabled="!partialDebuggingStore.summary"
+              @change="changeOptimization"
+            >
+              <template #default="scope">
+                <div class="optimization-option">
+                  <span>{{ scope.item.label }}</span>
+                  <span class="option-detail">{{ scope.item.detail }}</span>
+                </div>
+              </template>
+            </el-segmented>
+          </div>
           <el-button
             type="success"
             size="small"
-            :disabled="isSelectedTemplateConfirmed"
+            :disabled="!selectedTemplate || isSelectedTemplateConfirmed"
             @click.stop="handleConfirmTemplate"
           >
             {{ isSelectedTemplateConfirmed ? 'Confirmed' : 'Confirm' }}
@@ -29,54 +43,55 @@
       </div>
     </div>
 
-    <el-empty
-      v-if="!hasSelectedTemplate"
-      description="Select a template in Circuit View to start debugging"
-      :image-size="80"
-    />
-
-    <div v-else class="flex-1 min-h-0 overflow-hidden">
-      <R1CSDiagram />
+    <div class="flex-1 min-h-0 overflow-hidden">
+      <PartialDebuggingWorkspace />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { QuestionFilled } from '@element-plus/icons-vue';
-import { useCircuitStore } from '@/stores/circuit';
-import { hexToRgba } from '@/composables/colors';
-import R1CSDiagram from './R1CSDiagram.vue';
+import { computed } from 'vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
+import PartialDebuggingWorkspace from './PartialDebuggingWorkspace.vue'
+import { useCircuitStore } from '@/stores/circuit'
+import { usePartialDebuggingStore } from '@/stores/partialDebugging'
+import type { OptimizationLevel } from '@/types/partialDebugging'
+import { hexToRgba } from '@/composables/colors'
 
-const circuitStore = useCircuitStore();
+const circuitStore = useCircuitStore()
+const partialDebuggingStore = usePartialDebuggingStore()
+const optimizationOptions = [
+  { label: 'O0', value: 'O0', detail: 'Raw' },
+  { label: 'O1', value: 'O1', detail: 'Basic' },
+  { label: 'O2', value: 'O2', detail: 'Simplified' },
+]
+const selectedTemplate = computed(() => circuitStore.selectedTemplate)
+const isSelectedTemplateConfirmed = computed(() => selectedTemplate.value ? circuitStore.isTemplateConfirmed(selectedTemplate.value.templateName) : false)
 
-function templateColorStyle(templateName: string) {
-  const color = circuitStore.getTemplateColor(templateName);
-  return {
-    backgroundColor: hexToRgba(color, 0.15),
-    color: color,
-    borderRadius: '4px',
-    padding: '1px 8px',
-    fontWeight: '600' as const,
-  };
+const templateColorStyle = (templateName: string) => {
+  const color = circuitStore.getTemplateColor(templateName)
+  return { backgroundColor: hexToRgba(color, 0.15), color, borderRadius: '4px', padding: '1px 8px', fontWeight: '600' }
 }
 
-const hasSelectedTemplate = computed(() => circuitStore.selectedTemplate !== null);
+const changeOptimization = (value: string | number | boolean | undefined) => {
+  partialDebuggingStore.setOptimization(value as OptimizationLevel)
+}
 
-const selectedTemplate = computed(() => circuitStore.selectedTemplate);
-
-const isSelectedTemplateConfirmed = computed(() => {
-  if (!selectedTemplate.value) return false;
-  return circuitStore.isTemplateConfirmed(selectedTemplate.value.templateName);
-});
-
-function handleConfirmTemplate() {
-  if (!selectedTemplate.value) return;
-  circuitStore.confirmTemplateName(selectedTemplate.value.templateName);
+const handleConfirmTemplate = () => {
+  if (selectedTemplate.value) circuitStore.confirmTemplateName(selectedTemplate.value.templateName)
 }
 </script>
 
 <style scoped>
+.interaction-panel-container {
+  min-height: 0;
+  border-radius: 8px;
+}
+
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.title-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.option-detail { margin-left: 2px; font-size: 9px; opacity: .68; }
+
 .view-title {
   padding: 2px 10px;
   border: 1px solid #dcdfe6;
@@ -90,9 +105,34 @@ function handleConfirmTemplate() {
   color: #409eff;
 }
 
-.interaction-panel-container {
-  background: white;
-  border-radius: 8px;
+.segmented-custom-style :deep(.el-segmented) {
+  --el-border-radius-base: 4px;
+  border-radius: 16px;
 }
 
+.segmented-custom-style :deep(.el-segmented__item) {
+  border-radius: 16px;
+}
+
+.segmented-custom-style :deep(.el-segmented__item-selected) {
+  border-radius: 16px;
+}
+
+.optimization-option {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+@media (max-width: 760px) {
+  .title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .title-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
 </style>

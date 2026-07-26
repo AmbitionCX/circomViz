@@ -98,6 +98,7 @@ export interface generate_wrapper_response {
   boundaryInputs?: Array<{ instance: string; signal: string; isArray: boolean }>;
   originSymPath?: string;
   originConstraintsJsonPath?: string;
+  partialDebugging?: import('./partialDebugging.js').PartialDebuggingBuildSummary;
 }
 
 export interface static_analysis_request {

@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger.js';
 export interface CircomArtifactPaths {
   symPath: string;
   constraintsJsonPath: string;
+  substitutionsJsonPath: string;
 }
 
 export function getCircomArtifactPaths(wrapperFilePath: string, outputDir: string): CircomArtifactPaths {
@@ -14,6 +15,7 @@ export function getCircomArtifactPaths(wrapperFilePath: string, outputDir: strin
   return {
     symPath: join(outputDir, `${wrapperBaseName}.sym`),
     constraintsJsonPath: join(outputDir, `${wrapperBaseName}_constraints.json`),
+    substitutionsJsonPath: join(outputDir, `${wrapperBaseName}_substitutions.json`),
   };
 }
 
@@ -43,6 +45,7 @@ export async function compileDebug(
       '--json',
       '--sym',
       '--inspect',
+      '--simplification_substitution',
       '--O0',
       '-o',
       outputDir,

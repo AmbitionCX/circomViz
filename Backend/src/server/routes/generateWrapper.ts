@@ -7,7 +7,10 @@ import { logger } from '../../utils/logger.js';
 import type { generate_wrapper_request, generate_wrapper_response } from '../../types/circuitParser.js';
 import { compileDebug, getCircomArtifactPaths } from '../compilations/compileDebug.js';
 import { compileOptimized } from '../compilations/compileOptimized.js';
-import { compileWitness } from '../compilations/compileWitness.js';
+import { compileBasic } from '../compilations/compileBasic.js';
+import { buildPartialDebuggingBundle } from '../../core/partialDebugging/build.js';
+import { savePartialDebuggingBuild } from '../../core/partialDebugging/store.js';
+import { assembleMockedSource, assembleOriginSource, buildStandaloneTemplateSource } from '../../core/mocking/templateSourceExtractor.js';
 import { AbstractWrapperGenerator } from '../../core/abstractCompile/index.js';
 import { PathGuard } from '../../core/project/pathGuard.js';
 import { promises as fs } from 'fs';
@@ -147,17 +150,17 @@ export async function generateWrapperHandler(
     }
     logger.info(`Include paths: ${includePaths.join(', ')}`);
 
-    // --- Generate wrapper code ---
+    // --- Generate standalone origin and effective mocked source ---
 
-    // Always generate the origin (simple, non-mocked) wrapper
-    const originWrapperCode = generateWrapperCode(templateDef, params, publicParams, publicSignals, repoPath);
+    const standaloneSource = buildStandaloneTemplateSource(parsedFiles, templateDef.template);
+    let effectiveTemplateSource = standaloneSource.selectedSource;
+    let effectiveTemplateName = templateDef.template.name;
+    let mockedChildren: string[] = [];
+    let unmockedChildren: string[] = [];
+    let validatorWarnings: generate_wrapper_response['validatorWarnings'] = [];
+    let boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }> = [];
 
-    // If confirmed templates exist, also generate the mocked wrapper
-    const hasConfirmed = confirmedTemplateNames.length > 0;
-    let mockedWrapperCode: string | null = null;
-    let abstractMeta: Partial<generate_wrapper_response> = {};
-
-    if (hasConfirmed) {
+    if (confirmedTemplateNames.length > 0) {
       const generator = new AbstractWrapperGenerator(parsedFiles);
       const abstractResult = generator.build(
         templateDef.template,
@@ -166,91 +169,69 @@ export async function generateWrapperHandler(
         publicSignals,
         { originalFilePath: templateDef.filePath || '' },
       );
-      mockedWrapperCode = abstractResult.wrapperCode;
-      abstractMeta = {
-        abstractCompile: true,
-        mockedChildren: abstractResult.mockedChildren,
-        unmockedChildren: abstractResult.unmockedChildren,
-        validatorWarnings: abstractResult.validatorWarnings,
-        boundaryInputs: abstractResult.boundaryInputs,
-      };
-      logger.info(
-        `Mocked wrapper: mocked=${abstractResult.mockedChildren.join(', ') || '(none)'}, ` +
-        `validators=${abstractResult.validatorWarnings.length}, ` +
-        `boundaryInputs=${abstractResult.boundaryInputs.length}`,
-      );
-      if (abstractResult.unmockedChildren.length > 0) {
-        logger.warn(`Unmocked (kept expanded): ${abstractResult.unmockedChildren.join(', ')}`);
+      mockedChildren = abstractResult.mockedChildren;
+      unmockedChildren = abstractResult.unmockedChildren;
+      validatorWarnings = abstractResult.validatorWarnings;
+      boundaryInputs = abstractResult.boundaryInputs;
+      if (mockedChildren.length > 0) {
+        effectiveTemplateSource = abstractResult.templateSource;
+        effectiveTemplateName = abstractResult.entryTemplateName;
       }
     }
 
-    // --- Write files ---
+    const abstractMeta: Partial<generate_wrapper_response> = {
+      abstractCompile: mockedChildren.length > 0,
+      mockedChildren,
+      unmockedChildren,
+      validatorWarnings,
+      boundaryInputs,
+    };
+    const originCode = assembleOriginSource(standaloneSource);
+    const mockedCode = assembleMockedSource({
+      bundle: standaloneSource,
+      selectedSource: effectiveTemplateSource,
+      entryTemplateName: effectiveTemplateName,
+      params,
+      publicSignals,
+      eliminatedTemplateNames: mockedChildren,
+    });
 
     const timestamp = Date.now();
-    const wrapperDir = join(pathGuard.getWrappersRoot(), `wrapper_${safeTemplateName}_${timestamp}`);
-    await fs.mkdir(wrapperDir, { recursive: true });
+    const mockedFilesDir = join(pathGuard.getMockedFilesRoot(), `mocked_${safeTemplateName}_${timestamp}`);
+    await fs.mkdir(mockedFilesDir, { recursive: true });
+    const originFilePath = join(mockedFilesDir, 'origin.circom');
+    const mockedFilePath = join(mockedFilesDir, 'mocked.circom');
+    await Promise.all([
+      fs.writeFile(originFilePath, originCode, 'utf-8'),
+      fs.writeFile(mockedFilePath, mockedCode, 'utf-8'),
+    ]);
+    logger.info(`Selected template source written to: ${originFilePath}`);
+    logger.info(`Effective mocked source written to: ${mockedFilePath}`);
 
-    const originWrapperPath = join(wrapperDir, 'wrapper_origin.circom');
-    await fs.writeFile(originWrapperPath, originWrapperCode, 'utf-8');
-    logger.info(`Origin wrapper written to: ${originWrapperPath}`);
+    const mockedParsedFile = await projectLoader.parseFile(mockedFilePath);
+    parsedFiles.set(mockedFilePath.replace(/\\/g, '/'), mockedParsedFile);
+    const effectiveRootTemplate = mockedParsedFile.templates.find((template: any) => template.name === effectiveTemplateName) ?? templateDef.template;
 
-    let mockedWrapperPath: string | null = null;
-    if (mockedWrapperCode) {
-      mockedWrapperPath = join(wrapperDir, 'wrapper.circom');
-      await fs.writeFile(mockedWrapperPath, mockedWrapperCode, 'utf-8');
-      logger.info(`Mocked wrapper written to: ${mockedWrapperPath}`);
-    }
-
-    if (templateDef.filePath) {
-      const originContent = await fs.readFile(templateDef.filePath, 'utf-8');
-      const originFilePath = join(wrapperDir, 'origin.circom');
-      await fs.writeFile(originFilePath, originContent, 'utf-8');
-      logger.info(`Original source saved to: ${originFilePath}`);
-    }
-
-    // --- Compile origin wrapper → R1CS ---
-
-    const originDir = join(wrapperDir, 'origin');
-    const originResult = await compileDebug(originWrapperPath, includePaths, originDir);
-    const originArtifacts = getCircomArtifactPaths(originWrapperPath, originDir);
-    const originSymPath = originArtifacts.symPath;
-    const originConstraintsJsonPath = originArtifacts.constraintsJsonPath;
-    logger.info(`Origin debug compilation ${originResult.success ? 'succeeded' : 'failed'}`);
-
-    // --- Compile mocked wrapper → R1CS (if exists) ---
-
-    let mockedResult: Awaited<ReturnType<typeof compileDebug>> | null = null;
-    let mockedSymPath: string | null = null;
-    let mockedConstraintsJsonPath: string | null = null;
-    let mockedDir: string | null = null;
-
-    if (mockedWrapperPath) {
-      mockedDir = join(wrapperDir, 'mocked');
-      mockedResult = await compileDebug(mockedWrapperPath, includePaths, mockedDir);
-      const mockedArtifacts = getCircomArtifactPaths(mockedWrapperPath, mockedDir);
-      mockedSymPath = mockedArtifacts.symPath;
-      mockedConstraintsJsonPath = mockedArtifacts.constraintsJsonPath;
-      logger.info(`Mocked debug compilation ${mockedResult.success ? 'succeeded' : 'failed'}`);
-    }
-
-    const primaryWrapperPath = mockedWrapperPath ?? originWrapperPath;
-    const primaryDir = mockedDir ?? originDir;
-    const primaryDebugResult = mockedResult ?? originResult;
-    const primarySymPath = mockedSymPath ?? originSymPath;
-    const primaryConstraintsJsonPath = mockedConstraintsJsonPath ?? originConstraintsJsonPath;
-
-    const optimizedDir = join(primaryDir, 'optimized');
+    const primaryWrapperPath = mockedFilePath;
+    const primaryDir = join(mockedFilesDir, 'O0');
+    const primaryDebugResult = await compileDebug(primaryWrapperPath, includePaths, primaryDir);
+    const primaryArtifacts = getCircomArtifactPaths(primaryWrapperPath, primaryDir);
+    const primarySymPath = primaryArtifacts.symPath;
+    const primaryConstraintsJsonPath = primaryArtifacts.constraintsJsonPath;
+    logger.info(`Mocked O0 compilation ${primaryDebugResult.success ? 'succeeded' : 'failed'}`);
+    const optimizedDir = join(mockedFilesDir, 'O2');
     const optimizedResult = await compileOptimized(primaryWrapperPath, includePaths, optimizedDir);
     logger.info(`Primary optimized compilation ${optimizedResult.success ? 'succeeded' : 'failed'}`);
 
-    const witnessDir = join(primaryDir, 'witness');
-    const witnessResult = await compileWitness(primaryWrapperPath, includePaths, witnessDir);
-    logger.info(`Primary witness compilation ${witnessResult.success ? 'succeeded' : 'failed'}`);
+    const basicDir = join(mockedFilesDir, 'O1');
+    const basicResult = await compileBasic(primaryWrapperPath, includePaths, basicDir);
+    logger.info(`Primary basic O1 compilation ${basicResult.success ? 'succeeded' : 'failed'}`);
 
     // --- Resolve primary R1CS for diagram ---
 
     let r1csConstraints: HumanReadableConstraint[] = [];
     let r1csEquationText = '';
+    let partialDebugging: generate_wrapper_response['partialDebugging'];
 
     if (primaryDebugResult.success) {
       try {
@@ -264,25 +245,42 @@ export async function generateWrapperHandler(
     }
 
     // --- Build response ---
+    if (primaryDebugResult.success && basicResult.success && optimizedResult.success) {
+      try {
+        const bundle = await buildPartialDebuggingBundle({
+          parsedFiles,
+          rootTemplate: effectiveRootTemplate,
+          params,
+          selectedComponentPath: templatePath.join('.') || 'main',
+          mockedTemplateNames: confirmedTemplateNames,
+          boundaryInputs,
+          artifacts: {
+            O0: getCircomArtifactPaths(primaryWrapperPath, primaryDir),
+            O1: getCircomArtifactPaths(primaryWrapperPath, basicDir),
+            O2: getCircomArtifactPaths(primaryWrapperPath, optimizedDir),
+          },
+        });
+        savePartialDebuggingBuild(bundle);
+        partialDebugging = bundle.summary;
+      } catch (error: any) {
+        logger.warn(`Failed to build Partial Debugging graphs: ${error.message}`);
+      }
+    }
 
     const results: generate_wrapper_response = {
       success: true,
-      wrapperCode: mockedWrapperCode || originWrapperCode,
+      wrapperCode: mockedCode,
       ...abstractMeta,
       // Primary compilation = mocked (when available), else origin
       debugOutput: primaryDebugResult.stdout + primaryDebugResult.stderr,
       debugSuccess: primaryDebugResult.success,
       optimizedOutput: optimizedResult.stdout + optimizedResult.stderr,
       optimizedSuccess: optimizedResult.success,
-      witnessOutput: witnessResult.stdout + witnessResult.stderr,
-      witnessSuccess: witnessResult.success,
       symPath: primarySymPath,
       constraintsJsonPath: primaryConstraintsJsonPath,
       r1csConstraints,
       r1csEquationText,
-      // Origin compilation (always available)
-      originSymPath,
-      originConstraintsJsonPath,
+      partialDebugging,
     };
 
     reply.send(results);
@@ -309,27 +307,3 @@ function findTemplateDefinition(parsedFiles: Map<string, any>, templateName: str
   return null;
 }
 
-function generateWrapperCode(
-  templateDef: any,
-  params: { name: string; value: number }[],
-  publicParams: string[],
-  publicSignals: string[],
-  repoPath: string
-): string {
-  const paramsList = params.map(p => p.value.toString()).join(', ');
-  
-  let includePath = templateDef.filePath || '';
-  
-  let publicSignalsBlock = '';
-  if (publicSignals && publicSignals.length > 0) {
-    publicSignalsBlock = ` { public [${publicSignals.join(', ')}] }`;
-  }
-  
-  const wrapperCode = `pragma circom 2.2.3;
-include "${includePath}";
-
-component main${publicSignalsBlock} = ${templateDef.template.name}(${paramsList});
-`;
-
-  return wrapperCode;
-}

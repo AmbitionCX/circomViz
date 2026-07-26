@@ -6,3 +6,4 @@ compilations
 node_modules
 circomlib
 wrappers
+mockedFiles

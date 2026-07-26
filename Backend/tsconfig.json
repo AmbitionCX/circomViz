@@ -19,6 +19,7 @@
     "dist",
     "circomlib",
     "compilations",
+    "mockedFiles",
     "wrappers"
   ]
 }

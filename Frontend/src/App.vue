@@ -65,10 +65,12 @@ import SignalSelection from './components/SignalSelection.vue';
 import CircuitView from './components/CircuitView.vue';
 import InteractionPanel from './components/InteractionPanel.vue';
 import { useCircuitStore } from '@/stores/circuit';
+import { usePartialDebuggingStore } from '@/stores/partialDebugging';
 import { ElMessage } from 'element-plus';
 import { generateWrapper } from '@/apis';
 
 const circuitStore = useCircuitStore();
+const partialDebuggingStore = usePartialDebuggingStore();
 
 type PanelState = 'circuit' | 'interaction';
 type LeftPanelMode = 'initial' | 'selection' | 'signal';
@@ -194,6 +196,7 @@ const handleWrapTemplate = async (data: any) => {
     circuitStore.setWitnessStatus(compileStatus(result.witnessSuccess));
     circuitStore.setSymPath('symPath' in result ? (result.symPath ?? null) : null);
     circuitStore.setConstraintsJsonPath('constraintsJsonPath' in result ? (result.constraintsJsonPath ?? null) : null);
+    partialDebuggingStore.setSummary((result as any).partialDebugging ?? null);
     circuitStore.setR1csDiagramData({
       constraints: 'r1csConstraints' in result ? (result.r1csConstraints ?? []) : [],
       equationText: 'r1csEquationText' in result ? (result.r1csEquationText ?? '') : '',

@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { basename, extname, join } from 'path';
 import { logger } from '../../utils/logger.js';
 
 export interface CompileOptimizedResult {
@@ -40,7 +40,8 @@ export async function compileOptimized(
     logger.info(`Optimized compilation completed`);
 
     try {
-      const jsonPath = join(outputDir, 'wrapper_constraints.json');
+      const baseName = basename(wrapperFilePath, extname(wrapperFilePath));
+      const jsonPath = join(outputDir, `${baseName}_constraints.json`);
       const json = JSON.parse(await fs.readFile(jsonPath, 'utf-8'));
 
       logger.info(`Optimized output: ${JSON.stringify({
