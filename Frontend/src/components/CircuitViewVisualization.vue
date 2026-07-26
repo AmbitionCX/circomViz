@@ -298,6 +298,7 @@ const RECURSIVE_BORDER = '#d97706';
 const RECURSIVE_ENCLOSURE_PAD = 8;
 const SELECTED_SIGNAL_COLOR = '#f59e0b';
 const RELATED_SIGNAL_COLOR = '#fbbf24';
+const COMPILATION_FAILURE_RED = '#dc2626';
 
 const isSelecting = ref(false);
 const paramResponse = ref<FindTemplateParamsResponse | null>(null);
@@ -323,6 +324,17 @@ const signalTooltip = reactive({
 const selectedSignalKeys = ref<Set<string>>(new Set());
 let signalRelationGraph: SignalRelationGraph = new Map();
 let renderedTreeData: TreeNodeData | null = null;
+
+function isCompilationFailureNode(node: TreeNodeData) {
+  const nodePath = [
+    rootTemplateName.value,
+    ...node.pathInfo.map((entry) => entry.templateName),
+  ];
+  return (circuitStore.parseCompilation?.failedComponents ?? []).some((failure) =>
+    failure.templatePath.length === nodePath.length
+    && failure.templatePath.every((name, index) => name === nodePath[index])
+  );
+}
 
 function showSignalTooltip(event: MouseEvent, signalName: string) {
   if (!svgContainer.value) return;
@@ -630,7 +642,8 @@ function renderTree() {
     const headerColor = color;
     const bodyFill = '#ffffff';
     const isSelectable = isNodeSelectable(d.data, confirmed);
-    const borderColor = isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0');
+    const isCompilationFailure = isCompilationFailureNode(d.data);
+    const borderColor = isCompilationFailure ? COMPILATION_FAILURE_RED : (isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0'));
 
     const bgRect = nodeG.append('rect')
       .attr('class', 'node-bg')
@@ -641,8 +654,8 @@ function renderTree() {
       .attr('rx', 8)
       .attr('fill', bodyFill)
       .attr('stroke', borderColor)
-      .attr('stroke-width', isConfirmed ? 2 : (isSelectable ? 2.5 : 1.5))
-      .attr('stroke-dasharray', isConfirmed ? 'none' : ((isExternal || isSelectable) ? '6 3' : 'none'));
+      .attr('stroke-width', isCompilationFailure ? 3.5 : (isConfirmed ? 2 : (isSelectable ? 2.5 : 1.5)))
+      .attr('stroke-dasharray', isCompilationFailure ? 'none' : (isConfirmed ? 'none' : ((isExternal || isSelectable) ? '6 3' : 'none')));
 
     if (!isExternal) {
       bgRect.attr('filter', 'url(#node-shadow)');
@@ -818,15 +831,16 @@ function renderTree() {
   });
 
   nodeGroups
-    .on('mouseenter', function () {
-      d3.select(this).select('.node-bg').attr('stroke-width', 2.5);
+    .on('mouseenter', function (_event, d) {
+      d3.select(this).select('.node-bg').attr('stroke-width', isCompilationFailureNode(d.data) ? 3.5 : 2.5);
     })
     .on('mouseleave', function (_event, d) {
       const isSelected = d.data.templateInfo === circuitStore.selectedTemplate;
       const isConfirmedNode = confirmed.has(d.data.templateName);
       const isSel = isNodeSelectable(d.data, confirmed);
-      const border = isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0'));
-      const sw = isConfirmedNode ? 2 : (isSelected ? 2.5 : (isSel ? 2.5 : 1.5));
+      const isCompilationFailure = isCompilationFailureNode(d.data);
+      const border = isCompilationFailure ? COMPILATION_FAILURE_RED : (isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0')));
+      const sw = isCompilationFailure ? 3.5 : (isConfirmedNode ? 2 : (isSelected ? 2.5 : (isSel ? 2.5 : 1.5)));
       d3.select(this).select('.node-bg')
         .attr('stroke', border)
         .attr('stroke-width', sw);
@@ -1060,10 +1074,18 @@ function updateSelection() {
     const data = d.data;
     const isSelected = data.templateInfo === circuitStore.selectedTemplate;
     const isConfirmedNode = confirmed.has(data.templateName);
+    const isCompilationFailure = isCompilationFailureNode(data);
 
     const isSel = isNodeSelectable(data, confirmed);
     const bgRect = nodeGroup.select('.node-bg');
-    if (isConfirmedNode && !data.isExternal) {
+    if (isCompilationFailure) {
+      bgRect
+        .attr('filter', 'url(#node-shadow)')
+        .attr('stroke', COMPILATION_FAILURE_RED)
+        .attr('stroke-width', 3.5)
+        .attr('stroke-dasharray', 'none')
+        .attr('fill', '#ffffff');
+    } else if (isConfirmedNode && !data.isExternal) {
       bgRect
         .attr('filter', 'url(#node-shadow)')
         .attr('stroke', CONFIRMED_GREEN)
@@ -1141,6 +1163,12 @@ watch(
   () => {
     updateSelection();
   }
+);
+
+watch(
+  () => circuitStore.parseCompilation,
+  () => updateSelection(),
+  { deep: true },
 );
 
 watch(

@@ -1,9 +1,10 @@
 import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
-import type { ParseCircuitResponse, FindTemplateParamsResponse, HumanReadableConstraint } from '@/types/circuitTypes.js';
+import type { ParseCircuitResponse, ParseCompilationStatus, FindTemplateParamsResponse, HumanReadableConstraint } from '@/types/circuitTypes.js';
 
 const enum API {
   parse_circuit = '/parse_circuit',
+  parse_compilation = '/parse_compilation',
   submodules = '/submodules',
   examples = '/examples',
   compile_template = '/compile_template',
@@ -32,6 +33,7 @@ export interface parse_circuit_request {
   repo: string;
   entry: string;
   rootComponent?: string;
+  rootArguments?: number[];
 }
 
 export interface compile_template_request {
@@ -73,6 +75,9 @@ export const parseCircuitRequest = (data: parse_circuit_request) =>
       'Access-Control-Allow-Origin': '*'
     },
   })
+
+export const getParseCompilationStatus = (id: string) =>
+  request.get<any, ParseCompilationStatus>(`${API.parse_compilation}/${encodeURIComponent(id)}`)
 
 export const compileTemplate = (data: compile_template_request) =>
   request.post<any, compile_template_response>(API.compile_template, data, {

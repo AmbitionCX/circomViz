@@ -25,20 +25,36 @@ template SelectLR_Bug() {
     component b = Bit();
     b.in <== dir;
 
+    signal delta;
+    signal selectedDelta;
+
+    delta <== current - sibling;
+    selectedDelta <== dir * delta;
+
     // Intended convention:
     //
     // dir = 0:
-    //   left = current
+    //   left  = current
     //   right = sibling
     //
     // dir = 1:
-    //   left = sibling
+    //   left  = sibling
     //   right = current
     //
     // BUG:
     // The two cases are reversed.
-    left <== dir * current + (1 - dir) * sibling;
-    right <== dir * sibling + (1 - dir) * current;
+    //
+    // Actual behavior:
+    //
+    // dir = 0:
+    //   left  = sibling
+    //   right = current
+    //
+    // dir = 1:
+    //   left  = current
+    //   right = sibling
+    left <== sibling + selectedDelta;
+    right <== current - selectedDelta;
 }
 
 template MerkleStep() {

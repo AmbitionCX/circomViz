@@ -61,10 +61,10 @@
           v-for="node in visibleNodes"
           :key="node.id"
           :transform="`translate(${positions.get(node.id)?.x ?? 0},${positions.get(node.id)?.y ?? 0})`"
-          :class="['graph-node', node.kind, node.status, node.role, { selected: selectedNodeId === node.id, linked: linkedNodeIds.has(node.id), warning: warningNodeIds.has(node.id) }]"
+          :class="['graph-node', node.kind, node.status, node.role, { selected: selectedNodeId === nodeReferenceId(node), linked: linkedNodeIds.has(nodeReferenceId(node)), warning: warningNodeIds.has(nodeReferenceId(node)) }]"
           tabindex="0"
           role="button"
-          @click.stop="$emit('select', node.id)"
+          @click.stop="$emit('select', nodeReferenceId(node))"
           @mouseenter="$emit('hover', node.id)"
           @focus="$emit('hover', node.id)"
         >
@@ -81,7 +81,7 @@
               fill="#2c2c2c"
             />
           </svg>
-          <circle v-else-if="isSourceCircleNode(node)" :r="nodeCircleRadius(node)" />
+          <circle v-else-if="isCircleNode(node)" :r="nodeCircleRadius(node)" />
           <rect
             v-else
             :x="-nodeWidth(node) / 2"
@@ -96,12 +96,11 @@
             dy="4"
             :class="{
               'gate-label': node.kind === 'operation',
-              'source-signal-label': graphKind === 'source' && node.kind === 'signal' && (node.role === 'input' || node.role === 'mock-input' || node.role === 'output' || node.role === 'mock-output'),
-              'constant-label': graphKind === 'source' && node.kind === 'constant',
+              'value-label': isValueNode(node),
             }"
           >{{ displayNodeLabel(node) }}</text>
-          <text v-if="node.badge || warningNodeIds.has(node.id)" text-anchor="middle" dy="37" class="node-badge">
-            {{ warningNodeIds.has(node.id) ? 'WARNING' : node.badge }}
+          <text v-if="node.badge || warningNodeIds.has(nodeReferenceId(node))" text-anchor="middle" dy="37" class="node-badge">
+            {{ warningNodeIds.has(nodeReferenceId(node)) ? 'WARNING' : node.badge }}
           </text>
         </g>
         </g>
@@ -113,7 +112,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as d3 from 'd3'
-import type { ConstraintGraphDto, ConstraintRenderMode, GraphDiagnostic, LinearCombination, SourceGraphDto } from '@/types/partialDebugging'
+import type { ConstraintExpressionDto, ConstraintGraphDto, ConstraintRenderMode, GraphDiagnostic, SourceGraphDto } from '@/types/partialDebugging'
 
 interface DisplayNode {
   id: string
@@ -123,6 +122,7 @@ interface DisplayNode {
   status?: string
   badge?: string
   constraintIndex?: number
+  referenceId?: string
 }
 interface DisplayEdge {
   id: string
@@ -182,15 +182,7 @@ function shortConstraintSignalName(name: string) {
   return name.split('.').pop() ?? name
 }
 
-function formatLc(lc: LinearCombination, names: Map<number, string>) {
-  if (!lc.terms.length) return '0'
-  return lc.terms.map((term, index) => {
-    const name = term.signalId === 0 ? '1' : names.get(term.signalId) ?? `s${term.signalId}`
-    const coefficient = term.displayCoefficient
-    const body = coefficient === '1' ? name : coefficient === '-1' ? `-${name}` : `${coefficient}*${name}`
-    return index > 0 && !body.startsWith('-') ? `+ ${body}` : body
-  }).join(' ')
-}
+const nodeReferenceId = (node: DisplayNode) => node.referenceId ?? node.id
 
 const relevantSourceIds = computed(() => {
   const graph = props.sourceGraph
@@ -227,6 +219,75 @@ function operationLabel(operation?: string, fallback = '') {
   return fallback
 }
 
+const constraintDisplay = computed(() => {
+  const graph = props.constraintGraph
+  const nodes: DisplayNode[] = []
+  const edges: DisplayEdge[] = []
+  if (!graph) return { nodes, edges }
+  const signalById = new Map(graph.signals.map(signal => [signal.signalId, signal]))
+
+  const addExpression = (
+    expression: ConstraintExpressionDto,
+    constraintId: string,
+    constraintIndex: number,
+    path: string,
+    signalRole: 'input' | 'output' = 'input',
+  ): string => {
+    const id = `${constraintId}:expression:${path}`
+    if (expression.kind === 'signal') {
+      const signal = signalById.get(expression.signalId)
+      nodes.push({
+        id,
+        referenceId: signal?.id,
+        label: shortConstraintSignalName(signal?.qualifiedName ?? `s${expression.signalId}`),
+        kind: 'signal',
+        role: signalRole,
+        status: signal?.status,
+        constraintIndex,
+      })
+      return id
+    }
+    if (expression.kind === 'constant') {
+      nodes.push({ id, label: expression.value, kind: 'constant', constraintIndex })
+      return id
+    }
+    nodes.push({
+      id,
+      label: expression.kind === 'mul' ? 'x' : '+',
+      kind: 'operation',
+      role: 'constraint-expression',
+      constraintIndex,
+    })
+    expression.operands.forEach((operand, operandIndex) => {
+      const operandId = addExpression(operand, constraintId, constraintIndex, `${path}:${operandIndex}`)
+      edges.push({ id: `${id}:operand:${operandIndex}`, source: operandId, target: id, kind: 'data' })
+    })
+    return id
+  }
+
+  for (const constraint of graph.constraints) {
+    const equation = constraint.equation
+    const rightRoot = addExpression(equation.right, constraint.id, constraint.index, 'right')
+    const leftRoot = addExpression(
+      equation.left,
+      constraint.id,
+      constraint.index,
+      'left',
+      equation.isolatedSignalId === undefined ? 'input' : 'output',
+    )
+    const rightNode = nodes.find(node => node.id === rightRoot)
+    if (rightNode?.kind === 'operation') rightNode.referenceId = constraint.id
+    edges.push({
+      id: `${constraint.id}:equality`,
+      source: equation.isolatedSignalId === undefined ? leftRoot : rightRoot,
+      target: equation.isolatedSignalId === undefined ? rightRoot : leftRoot,
+      kind: 'constraint-equality',
+      label: '=',
+    })
+  }
+  return { nodes, edges }
+})
+
 const allNodes = computed<DisplayNode[]>(() => {
   if (props.graphKind === 'source') {
     return (props.sourceGraph?.nodes ?? [])
@@ -242,42 +303,7 @@ const allNodes = computed<DisplayNode[]>(() => {
         badge: node.role?.startsWith('mock-') ? 'MOCK' : undefined,
       }))
   }
-  const graph = props.constraintGraph
-  if (!graph) return []
-  const names = new Map(graph.signals.map(signal => [signal.signalId, shortConstraintSignalName(signal.qualifiedName)]))
-  return graph.constraints.flatMap<DisplayNode>(constraint => [
-    {
-      id: `${constraint.id}:A`,
-      kind: 'constraint-term',
-      role: 'constraint-A',
-      label: formatLc(constraint.A, names),
-      status: constraint.complexity,
-      constraintIndex: constraint.index,
-    },
-    {
-      id: `${constraint.id}:B`,
-      kind: 'constraint-term',
-      role: 'constraint-B',
-      label: formatLc(constraint.B, names),
-      status: constraint.complexity,
-      constraintIndex: constraint.index,
-    },
-    {
-      id: constraint.id,
-      kind: 'operation',
-      role: 'constraint-mul',
-      label: 'x',
-      constraintIndex: constraint.index,
-    },
-    {
-      id: `${constraint.id}:C`,
-      kind: 'constraint-term',
-      role: 'constraint-C',
-      label: formatLc(constraint.C, names),
-      status: constraint.complexity,
-      constraintIndex: constraint.index,
-    },
-  ])
+  return constraintDisplay.value.nodes
 })
 
 const allEdges = computed<DisplayEdge[]>(() => {
@@ -302,11 +328,7 @@ const allEdges = computed<DisplayEdge[]>(() => {
     }
     return direct.filter(edge => relevantSourceIds.value.has(edge.source) && relevantSourceIds.value.has(edge.target))
   }
-  return (props.constraintGraph?.constraints ?? []).flatMap(constraint => [
-    { id: `${constraint.id}:A:mul`, source: `${constraint.id}:A`, target: constraint.id, kind: 'port-A' },
-    { id: `${constraint.id}:B:mul`, source: `${constraint.id}:B`, target: constraint.id, kind: 'port-B' },
-    { id: `${constraint.id}:mul:C`, source: constraint.id, target: `${constraint.id}:C`, kind: 'constraint-equality', label: '=' },
-  ])
+  return constraintDisplay.value.edges
 })
 
 const visibleNodes = computed(() => allNodes.value)
@@ -390,20 +412,46 @@ const positions = computed(() => {
   if (props.graphKind === 'source') return sourceLayout.value.positions
   const map = new Map<string, { x: number; y: number }>()
   const constraintIndices = [...new Set(visibleNodes.value.map(node => node.constraintIndex).filter((index): index is number => index !== undefined))]
-  constraintIndices.forEach((constraintIndex, row) => {
+  let nextY = 100
+  for (const constraintIndex of constraintIndices) {
     const nodes = visibleNodes.value.filter(node => node.constraintIndex === constraintIndex)
-    const centerY = 140 + row * 260
-    for (const node of nodes) {
-      if (node.role === 'constraint-A') map.set(node.id, { x: 160, y: centerY - 65 })
-      else if (node.role === 'constraint-B') map.set(node.id, { x: 160, y: centerY + 65 })
-      else if (node.role === 'constraint-mul') map.set(node.id, { x: 420, y: centerY })
-      else if (node.role === 'constraint-C') map.set(node.id, { x: 720, y: centerY })
+    const nodeIds = new Set(nodes.map(node => node.id))
+    const edges = visibleEdges.value.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+    const incoming = new Map<string, string[]>()
+    for (const edge of edges) (incoming.get(edge.target) ?? incoming.set(edge.target, []).get(edge.target)!).push(edge.source)
+    const depthCache = new Map<string, number>()
+    const depth = (nodeId: string, visiting = new Set<string>()): number => {
+      if (depthCache.has(nodeId)) return depthCache.get(nodeId)!
+      if (visiting.has(nodeId)) return 0
+      visiting.add(nodeId)
+      const predecessors = incoming.get(nodeId) ?? []
+      const value = predecessors.length ? Math.max(...predecessors.map(id => depth(id, visiting))) + 1 : 0
+      depthCache.set(nodeId, value)
+      return value
     }
-  })
+    nodes.forEach(node => depth(node.id))
+    const leaves = nodes.filter(node => depth(node.id) === 0)
+    leaves.forEach((node, index) => map.set(node.id, { x: 110, y: nextY + index * 110 }))
+    const maxDepth = Math.max(0, ...nodes.map(node => depth(node.id)))
+    for (let column = 1; column <= maxDepth; column++) {
+      const occupied: number[] = []
+      for (const node of nodes.filter(candidate => depth(candidate.id) === column)) {
+        const predecessors = (incoming.get(node.id) ?? []).map(id => map.get(id)).filter((position): position is { x: number; y: number } => Boolean(position))
+        let y = predecessors.length ? predecessors.reduce((sum, position) => sum + position.y, 0) / predecessors.length : nextY
+        while (occupied.some(value => Math.abs(value - y) < 80)) y += 90
+        occupied.push(y)
+        map.set(node.id, { x: 110 + column * 190, y })
+      }
+    }
+    const bottom = Math.max(nextY, ...nodes.map(node => map.get(node.id)?.y ?? nextY))
+    nextY = bottom + 150
+  }
   return map
 })
 
-const canvasWidth = computed(() => props.graphKind === 'source' ? Math.max(760, sourceLayout.value.outputX + 130) : 900)
+const canvasWidth = computed(() => props.graphKind === 'source'
+  ? Math.max(760, sourceLayout.value.outputX + 130)
+  : Math.max(760, ...Array.from(positions.value.values()).map(position => position.x + 130)))
 const canvasHeight = computed(() => Math.max(420, ...Array.from(positions.value.values()).map(position => position.y + 90)))
 const sourceBoundary = computed(() => ({ x: 190, y: 35, width: Math.max(390, sourceLayout.value.outputX - 280), height: canvasHeight.value - 70 }))
 watch([canvasWidth, canvasHeight, () => visibleNodes.value.length], async () => {
@@ -415,29 +463,25 @@ watch([canvasWidth, canvasHeight, () => visibleNodes.value.length], async () => 
   }
   d3.select(svgRef.value).call(zoomBehavior.transform, d3.zoomIdentity)
 }, { flush: 'post' })
-const sourceValueLabelLimit = 12
-const isSourceValueNode = (node: DisplayNode) => props.graphKind === 'source' && (
-  node.kind === 'constant' ||
-  (node.kind === 'signal' && ['input', 'mock-input', 'output', 'mock-output'].includes(node.role ?? ''))
+const valueLabelLimit = 12
+const isValueNode = (node: DisplayNode) => node.kind === 'constant' || (
+  node.kind === 'signal' && ['input', 'mock-input', 'output', 'mock-output'].includes(node.role ?? '')
 )
-const sourceValueNeedsRectangle = (node: DisplayNode) => isSourceValueNode(node) && node.label.length > 4
+const valueNeedsRectangle = (node: DisplayNode) => isValueNode(node) && node.label.length > 4
 const displayNodeLabel = (node: DisplayNode) => truncate(
   node.label,
-  node.kind === 'constraint-term' ? 38 : node.kind === 'constraint' ? 31 : isSourceValueNode(node) ? sourceValueLabelLimit : 26,
+  node.kind === 'constraint-term' ? 38 : node.kind === 'constraint' ? 31 : isValueNode(node) ? valueLabelLimit : 26,
 )
 const nodeWidth = (node: DisplayNode) => {
   if (node.kind === 'constraint') return 320
   if (node.kind === 'constraint-term') return Math.min(330, Math.max(90, displayNodeLabel(node).length * 8.5 + 30))
-  if (sourceValueNeedsRectangle(node)) return Math.min(160, Math.max(76, displayNodeLabel(node).length * 9 + 28))
+  if (valueNeedsRectangle(node)) return Math.min(160, Math.max(76, displayNodeLabel(node).length * 9 + 28))
   return Math.min(260, Math.max(82, node.label.length * 7 + 28))
 }
-const nodeHeight = (node: DisplayNode) => sourceValueNeedsRectangle(node) || node.kind === 'constraint-term' ? 48 : 40
-const nodeCornerRadius = (node: DisplayNode) => node.kind === 'constraint' ? 8 : sourceValueNeedsRectangle(node) || node.kind === 'constraint-term' ? 24 : 18
+const nodeHeight = (node: DisplayNode) => valueNeedsRectangle(node) || node.kind === 'constraint-term' ? 48 : 40
+const nodeCornerRadius = (node: DisplayNode) => node.kind === 'constraint' ? 8 : valueNeedsRectangle(node) || node.kind === 'constraint-term' ? 24 : 18
 const isSvgOperationNode = (node: DisplayNode) => node.kind === 'operation' && (node.label === '+' || node.label === 'x')
-const isSourceCircleNode = (node: DisplayNode) => props.graphKind === 'source' && (
-  node.kind === 'operation' ||
-  (isSourceValueNode(node) && !sourceValueNeedsRectangle(node))
-)
+const isCircleNode = (node: DisplayNode) => node.kind === 'operation' || (isValueNode(node) && !valueNeedsRectangle(node))
 const nodeCircleRadius = (node: DisplayNode) => {
   if (node.kind === 'operation') return 25
   return 24
@@ -455,7 +499,7 @@ const edgePoint = (edge: DisplayEdge, side: 'source' | 'target') => {
   const dy = opposite.y - center.y
   if (dx === 0 && dy === 0) return center
 
-  if (isSvgOperationNode(node) || isSourceCircleNode(node)) {
+  if (isSvgOperationNode(node) || isCircleNode(node)) {
     const radius = isSvgOperationNode(node) ? 21 : nodeCircleRadius(node)
     const scale = radius / Math.hypot(dx, dy)
     return { x: center.x + dx * scale, y: center.y + dy * scale }
@@ -678,13 +722,8 @@ const outputOperatorLabel = (operator?: string) => {
   stroke-width: 2.5;
 }
 
-.graph-node .source-signal-label {
+.graph-node .value-label {
   fill: #111827;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.graph-node .constant-label {
   font-size: 18px;
   font-weight: 600;
 }

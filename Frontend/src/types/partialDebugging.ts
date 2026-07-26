@@ -25,9 +25,19 @@ export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEd
 
 export interface LinearCombinationTerm { signalId: number; coefficient: string; displayCoefficient: string }
 export interface LinearCombination { terms: LinearCombinationTerm[] }
+export type ConstraintExpressionDto =
+  | { kind: 'signal'; signalId: number }
+  | { kind: 'constant'; value: string }
+  | { kind: 'add' | 'mul'; operands: ConstraintExpressionDto[] }
+export interface ConstraintEquationDto {
+  left: ConstraintExpressionDto
+  right: ConstraintExpressionDto
+  isolatedSignalId?: number
+}
 export interface ConstraintNodeDto {
   id: string; kind: 'constraint'; optimization: OptimizationLevel; index: number
   A: LinearCombination; B: LinearCombination; C: LinearCombination
+  equation: ConstraintEquationDto
   canonicalFingerprint: string; complexity: 'linear' | 'simple-mul' | 'general-r1cs'
 }
 export interface ConstraintSignalNodeDto {

@@ -7,7 +7,8 @@ import type {
   ParseError,
   CircuitStatistics,
   CompilationConstraints,
-  HumanReadableConstraint
+  HumanReadableConstraint,
+  ParseCompilationStatus
 } from '@/types/circuitTypes';
 import { extractNodeModulesLibrary } from '@/utils/templateTree';
 
@@ -23,6 +24,7 @@ interface CircuitState {
 
   selectedTemplate: TemplateInfo | null;
   selectedTemplatePath: string[];
+  parseCompilation: ParseCompilationStatus | null;
 
   templateColorMap: Record<string, string>;
   
@@ -89,6 +91,7 @@ export const useCircuitStore = defineStore('circuit', {
     
     selectedTemplate: null,
     selectedTemplatePath: [],
+    parseCompilation: null,
     templateColorMap: {},
     
     compilationVersion: 0,
@@ -181,7 +184,12 @@ export const useCircuitStore = defineStore('circuit', {
       }
     },
 
+    setParseCompilation(status: ParseCompilationStatus | null) {
+      this.parseCompilation = status;
+    },
+
     resetParseData() {
+      this.parseCompilation = null;
       this.parseData = {
         repo: '',
         entry: '',

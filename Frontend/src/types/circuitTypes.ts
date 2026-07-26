@@ -74,6 +74,23 @@ export interface CircuitStatistics {
   maxDepth: number;
 }
 
+export interface ParseCompilationFailure {
+  templateName: string;
+  templatePath: string[];
+  sourceFile?: string;
+  line?: number;
+  column?: number;
+  errorCode?: string;
+}
+
+export interface ParseCompilationStatus {
+  id: string;
+  status: 'compiling' | 'success' | 'failure';
+  message?: string;
+  exitCode?: number | null;
+  failedComponents: ParseCompilationFailure[];
+}
+
 export interface ParseCircuitResponse {
   repo: string;
   entry: string;
@@ -81,6 +98,7 @@ export interface ParseCircuitResponse {
   tree: TemplateInfo;
   errors: ParseError[];
   statistics: CircuitStatistics;
+  compilation: ParseCompilationStatus;
 }
 
 export interface HumanReadableLinearExpression {

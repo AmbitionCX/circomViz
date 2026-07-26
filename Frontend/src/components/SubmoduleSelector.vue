@@ -3,7 +3,7 @@
     <div class="flex flex-row flex-nowrap justify-between mb-2">
       <div class="flex items-center gap-2">
         <h2 class="view-title text-base font-bold">Load Circuit</h2>
-        <el-tooltip content="Select and parse a circuit from toy examples or available submodules to begin debugging" placement="top">
+        <el-tooltip content="Choose a circuit from Examples or Projects, then parse it to load the analysis workspace." placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
           </el-icon>
@@ -178,11 +178,12 @@ const parseCircuit = async () => {
     const request: parse_circuit_request = {
       repo: selectionMode.value === 'example' ? 'toy-demos' : selectedCircuitConfig.value.id,
       entry: selectedCircuitConfig.value.entry,
-      rootComponent: selectedCircuitConfig.value.rootComponent
+      rootComponent: selectedCircuitConfig.value.rootComponent,
+      rootArguments: selectedCircuitConfig.value.rootArguments
     };
 
     const response = await parseCircuitRequest(request);
-    ElMessage.success(`Successfully parsed ${selectedCircuitConfig.value.name}`);
+    ElMessage.info(`${selectedCircuitConfig.value.name} parsed; compilation started`);
     
     emit('parse-complete', response);
   } catch (error: any) {

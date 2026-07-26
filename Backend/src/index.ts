@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 
 import { CircomParser as SubmoduleParser } from './core/parser/submoduleParser.js';
 import { parseCircuitHandler } from './server/routes/parseCircuit.js';
+import { readParseCompilationStatus } from './server/compilations/parseCompilation.js';
 import { compileTemplateHandler } from './server/routes/compileTemplate.js';
 import { findTemplateParamsHandler } from './server/routes/findTemplateParams.js';
 import { generateWrapperHandler } from './server/routes/generateWrapper.js';
@@ -77,6 +78,12 @@ server.get('/examples/:id', (request, reply) => {
 
 // parse circuit to tree structure
 server.post('/parse_circuit', parseCircuitHandler);
+server.get('/parse_compilation/:compilationId', async (request, reply) => {
+  const { compilationId } = request.params as { compilationId: string };
+  const status = await readParseCompilationStatus(compilationId);
+  if (!status) return reply.code(404).send({ error: 'Compilation status not found' });
+  return reply.send(status);
+});
 
 // partial compile
 server.post('/compile_template', compileTemplateHandler);

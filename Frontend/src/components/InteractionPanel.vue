@@ -4,7 +4,7 @@
       <div class="title-row">
         <div class="flex items-center gap-2">
           <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
-          <el-tooltip content="Compare source dataflow with compiled constraints" placement="top">
+          <el-tooltip content="Compare the selected template's source dataflow graph with simplified compiled signal relationships at O0, O1, or O2." placement="top">
             <el-icon class="text-gray-400 cursor-help">
               <QuestionFilled />
             </el-icon>

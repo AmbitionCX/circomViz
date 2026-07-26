@@ -3,6 +3,7 @@ export type SubmoduleInfo = {
   name: string;
   entry: string;
   rootComponent: string;
+  rootArguments?: number[];
   description: string;
 };
 
@@ -18,4 +19,5 @@ export interface parse_circuit_request {
   repo: string;
   entry: string;
   rootComponent?: string;
+  rootArguments?: number[];
 }

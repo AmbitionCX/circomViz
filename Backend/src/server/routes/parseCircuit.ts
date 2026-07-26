@@ -6,6 +6,7 @@ import { collectDirectComponents } from '../../core/parser/componentCollector.js
 import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { parse_circuit_request, parse_circuit_response, FileSummary, ParseMessage } from '../../types/circuitParser.js';
+import { startParseCompilation } from '../compilations/parseCompilation.js';
 
 import { writeFile, appendFile, mkdir, readdir } from 'fs/promises';
 import { spawn } from 'child_process';
@@ -16,7 +17,7 @@ export async function parseCircuitHandler(
   reply: FastifyReply
 ) {
   try {
-    const { repo, entry, rootComponent = 'main' } = request.body;
+    const { repo, entry, rootComponent = 'main', rootArguments = [] } = request.body;
 
     logger.info(`Parsing circuit: repo=${repo}, entry=${entry}, rootComponent=${rootComponent}`);
 
@@ -177,19 +178,31 @@ export async function parseCircuitHandler(
         totalTemplates,
         totalInstances,
         maxDepth
-      }
+      },
+      compilation: await startParseCompilation({
+        repo,
+        entry,
+        rootComponent,
+        rootArguments,
+        entryFilePath: entryFile.path,
+        repoPath: repoPath!,
+        hasMainComponent: parsedFiles.get(entryFile.path.replace(/\\/g, '/'))?.components
+          .some((component: any) => component.name === 'main') ?? false,
+        tree,
+        templates: Array.from(parsedFiles.values()).flatMap((file: any) =>
+          file.templates.map((template: any) => ({
+            name: template.name,
+            sourceFile: template.sourceFile,
+            line: template.line,
+          }))
+        ),
+      })
     };
 
     // save the response
     logResponseToDisk(response, repo, entry).catch(err => {
       logger.error(`Background logging failed: ${err.message}`);
     });
-
-    if (repo === 'toy-demos') {
-      compileToyDemoOnParse(entry, rootComponent).catch(err => {
-        logger.error(`Toy demo compilation logging failed: ${err.message}`);
-      });
-    }
 
     logger.info(`Successfully parsed circuit: ${fileSummaries.length} files, ${totalTemplates} templates`);
     reply.send(response); // Return parsing results to Frontend

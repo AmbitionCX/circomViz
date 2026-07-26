@@ -157,6 +157,7 @@ const handleParseComplete = (data: any) => {
     }
   });
   
+  circuitStore.setParseCompilation(data.compilation ?? null);
   circuitStore.clearSelectedTemplate();
   circuitStore.resetCompilationData();
   circuitStore.autoConfirmNodeModulesTemplates();

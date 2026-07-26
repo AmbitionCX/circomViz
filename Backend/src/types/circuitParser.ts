@@ -4,6 +4,24 @@ export interface parse_circuit_request {
   repo: string;
   entry: string;
   rootComponent?: string;
+  rootArguments?: number[];
+}
+
+export interface ParseCompilationFailure {
+  templateName: string;
+  templatePath: string[];
+  sourceFile?: string;
+  line?: number;
+  column?: number;
+  errorCode?: string;
+}
+
+export interface ParseCompilationStatus {
+  id: string;
+  status: 'compiling' | 'success' | 'failure';
+  message?: string;
+  exitCode?: number | null;
+  failedComponents: ParseCompilationFailure[];
 }
 
 export interface parse_circuit_response {
@@ -18,6 +36,7 @@ export interface parse_circuit_response {
     totalInstances: number;
     maxDepth: number;
   };
+  compilation: ParseCompilationStatus;
 }
 
 export interface FileSummary {

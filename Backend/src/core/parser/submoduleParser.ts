@@ -3,6 +3,7 @@ export type SubmoduleInfo = Readonly<{
   name: string;
   entry: string;
   rootComponent: string;
+  rootArguments?: readonly number[];
   description: string;
 }>;
 
@@ -67,6 +68,7 @@ export class CircomParser {
       name: 'ZK Email Verify',
       entry: 'packages/circuits/email-verifier.circom',
       rootComponent: 'EmailVerifier',
+      rootArguments: [640, 768, 121, 17, 0, 0, 0, 0],
       description: 'Email signature verification circuit'
     },
     {
@@ -88,6 +90,7 @@ export class CircomParser {
       name: 'ZK Franchise Proof',
       entry: 'circuit/census.circom',
       rootComponent: 'ZkFranchiseProofCircuit',
+      rootArguments: [160],
       description: 'Anonymous voting circuit'
     },
     {
@@ -95,6 +98,7 @@ export class CircomParser {
       name: 'Semaphore',
       entry: 'packages/circuits/src/semaphore.circom',
       rootComponent: 'Semaphore',
+      rootArguments: [20],
       description: 'Anonymous group membership circuit'
     }
   ] as const;

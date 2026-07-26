@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between flex-shrink-0">
       <div class="flex items-center gap-2">
         <h2 class="view-title text-base font-bold text-gray-800">File Structure</h2>
-        <el-tooltip content="View all signals organized by source file and template" placement="top">
+        <el-tooltip content="Browse parsed source files, templates, and signals, and open their Circom source code." placement="top">
           <el-icon class="text-gray-400 cursor-help">
             <QuestionFilled />
           </el-icon>

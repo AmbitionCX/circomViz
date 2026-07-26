@@ -10,14 +10,23 @@ template Num2Bits(n) {
     signal input in;
     signal output out[n];
 
+    component b[n];
+
     var acc = 0;
     var pow = 1;
 
     for (var i = 0; i < n; i++) {
-        component b = Bit();
-        b.in <== out[i];
+        b[i] = Bit();
 
-        acc += out[i] * pow;
+        // Witness generation only.
+        // This is intentional and is backed by the constraints below:
+        //   1. out[i] is boolean
+        //   2. sum(out[i] * 2^i) === in
+        out[i] <-- (in >> i) & 1;
+
+        b[i].in <== out[i];
+
+        acc = acc + out[i] * pow;
         pow = pow * 2;
     }
 
