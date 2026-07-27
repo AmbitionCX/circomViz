@@ -6,8 +6,6 @@ import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { generate_wrapper_request, generate_wrapper_response } from '../../types/circuitParser.js';
 import { compileDebug, getCircomArtifactPaths } from '../compilations/compileDebug.js';
-import { compileOptimized } from '../compilations/compileOptimized.js';
-import { compileBasic } from '../compilations/compileBasic.js';
 import { buildPartialDebuggingBundle } from '../../core/partialDebugging/build.js';
 import { savePartialDebuggingBuild } from '../../core/partialDebugging/store.js';
 import { assembleMockedSource, assembleOriginSource, buildStandaloneTemplateSource } from '../../core/mocking/templateSourceExtractor.js';
@@ -156,6 +154,7 @@ export async function generateWrapperHandler(
     let effectiveTemplateSource = standaloneSource.selectedSource;
     let effectiveTemplateName = templateDef.template.name;
     let mockedChildren: string[] = [];
+    let mockedTemplateNames: string[] = [];
     let unmockedChildren: string[] = [];
     let validatorWarnings: generate_wrapper_response['validatorWarnings'] = [];
     let boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }> = [];
@@ -170,6 +169,7 @@ export async function generateWrapperHandler(
         { originalFilePath: templateDef.filePath || '' },
       );
       mockedChildren = abstractResult.mockedChildren;
+      mockedTemplateNames = abstractResult.mockedTemplateNames;
       unmockedChildren = abstractResult.unmockedChildren;
       validatorWarnings = abstractResult.validatorWarnings;
       boundaryInputs = abstractResult.boundaryInputs;
@@ -219,14 +219,6 @@ export async function generateWrapperHandler(
     const primarySymPath = primaryArtifacts.symPath;
     const primaryConstraintsJsonPath = primaryArtifacts.constraintsJsonPath;
     logger.info(`Mocked O0 compilation ${primaryDebugResult.success ? 'succeeded' : 'failed'}`);
-    const optimizedDir = join(mockedFilesDir, 'O2');
-    const optimizedResult = await compileOptimized(primaryWrapperPath, includePaths, optimizedDir);
-    logger.info(`Primary optimized compilation ${optimizedResult.success ? 'succeeded' : 'failed'}`);
-
-    const basicDir = join(mockedFilesDir, 'O1');
-    const basicResult = await compileBasic(primaryWrapperPath, includePaths, basicDir);
-    logger.info(`Primary basic O1 compilation ${basicResult.success ? 'succeeded' : 'failed'}`);
-
     // --- Resolve primary R1CS for diagram ---
 
     let r1csConstraints: HumanReadableConstraint[] = [];
@@ -245,19 +237,18 @@ export async function generateWrapperHandler(
     }
 
     // --- Build response ---
-    if (primaryDebugResult.success && basicResult.success && optimizedResult.success) {
+    if (primaryDebugResult.success) {
       try {
         const bundle = await buildPartialDebuggingBundle({
           parsedFiles,
           rootTemplate: effectiveRootTemplate,
           params,
           selectedComponentPath: templatePath.join('.') || 'main',
-          mockedTemplateNames: confirmedTemplateNames,
+          mockedTemplateNames,
+          mockedChildren,
           boundaryInputs,
           artifacts: {
             O0: getCircomArtifactPaths(primaryWrapperPath, primaryDir),
-            O1: getCircomArtifactPaths(primaryWrapperPath, basicDir),
-            O2: getCircomArtifactPaths(primaryWrapperPath, optimizedDir),
           },
         });
         savePartialDebuggingBuild(bundle);
@@ -274,8 +265,6 @@ export async function generateWrapperHandler(
       // Primary compilation = mocked (when available), else origin
       debugOutput: primaryDebugResult.stdout + primaryDebugResult.stderr,
       debugSuccess: primaryDebugResult.success,
-      optimizedOutput: optimizedResult.stdout + optimizedResult.stderr,
-      optimizedSuccess: optimizedResult.success,
       symPath: primarySymPath,
       constraintsJsonPath: primaryConstraintsJsonPath,
       r1csConstraints,

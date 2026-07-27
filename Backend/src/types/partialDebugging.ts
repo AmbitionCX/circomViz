@@ -1,4 +1,4 @@
-export type OptimizationLevel = 'O0' | 'O1' | 'O2';
+export type OptimizationLevel = 'O0';
 
 export interface SourceSpan { file: string; startLine: number; endLine: number }
 export interface SourceGraphNode {
@@ -60,7 +60,6 @@ export interface ConstraintGraphDto {
 export interface ProvenanceLink {
   sourceNodeId: string; constraintNodeIds: string[]; confidence: 'exact' | 'high' | 'medium' | 'low'; evidence: string[];
 }
-export interface OptimizationLink { fromNodeId: string; toNodeIds: string[]; confidence: 'exact' | 'high' | 'medium' | 'low' }
 export interface GraphDiagnostic {
   id: string;
   type: 'WITNESS_ONLY_UNVERIFIED' | 'SOURCE_CONSTRAINT_UNMATCHED' | 'UNUSED_OR_UNCONSTRAINED';
@@ -88,6 +87,6 @@ export interface PartialDebuggingBuildSummary {
 export interface PartialDebuggingGraphBundle {
   summary: PartialDebuggingBuildSummary;
   sourceGraph: SourceGraphDto;
-  constraintGraphs: Record<OptimizationLevel, ConstraintGraphDto>;
-  mappings: { sourceToO0: ProvenanceLink[]; O0ToO1: OptimizationLink[]; O1ToO2: OptimizationLink[] };
+  constraintGraph: ConstraintGraphDto;
+  mappings: { sourceToO0: ProvenanceLink[] };
 }

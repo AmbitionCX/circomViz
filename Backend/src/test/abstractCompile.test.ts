@@ -118,7 +118,7 @@ describe('MockTemplateGenerator', () => {
       outputs: [{ name: 'y', kind: 'output' as const, isArray: false, arraySizes: [] }],
     };
     const result = gen.generate(iface);
-    assert.equal(result.templateName, 'Square_Mock');
+    assert.equal(result.templateName, 'Square_mocked');
     assert.equal(result.isValidator, false);
     assert.ok(result.source.includes('signal input x;'));
     assert.ok(result.source.includes('signal output y;'));
@@ -151,8 +151,8 @@ describe('MockTemplateGenerator', () => {
     const result = gen.generate(iface);
     assert.ok(result.source.includes('signal output out[2];'));
     assert.ok(result.source.includes('signal input __mock_out[2];'));
-    assert.ok(result.source.includes('for (var __i = 0; __i < 2; __i++)'));
-    assert.ok(result.source.includes('out[__i] <== __mock_out[__i];'));
+    assert.ok(result.source.includes('for (var __mock_out_i0 = 0; __mock_out_i0 < 2; __mock_out_i0++)'));
+    assert.ok(result.source.includes('out[__mock_out_i0] <== __mock_out[__mock_out_i0];'));
   });
 });
 
@@ -191,11 +191,11 @@ describe('ParentRewriter', () => {
     assert.equal(out.mockedInstances[0].name, 's');
     assert.equal(out.mockedInstances[0].templateName, 'Square');
 
-    assert.ok(!out.source.includes('component s = Square'), 'component declaration removed');
-    assert.ok(!out.source.includes('s.x <=='), 'input assignment removed');
-    assert.ok(out.source.includes('signal input __s_y'), 'boundary signal declared');
-    assert.ok(out.source.includes('__s_y + 1'), 'output reference replaced');
-    assert.ok(!out.source.includes('s.y'), 'no more component output references');
+    assert.ok(out.source.includes('component s = Square_mocked();'), 'component shell preserved');
+    assert.ok(out.source.includes('s.x <== a;'), 'original input wiring preserved');
+    assert.ok(out.source.includes('signal input __mock_s_y;'), 'synthetic boundary input declared');
+    assert.ok(out.source.includes('s.__mock_y <== __mock_s_y;'), 'synthetic child input wired');
+    assert.ok(out.source.includes('z <== s.y + 1;'), 'original output wiring preserved');
   });
 
   it('leaves unconfirmed children fully expanded', () => {
@@ -224,7 +224,7 @@ describe('ParentRewriter', () => {
 
     assert.equal(out.mockedInstances.length, 0);
     assert.ok(out.source.includes('component c = Unconfirmed();'));
-    assert.ok(!out.source.includes('Unconfirmed_Mock'));
+    assert.ok(!out.source.includes('Unconfirmed_mocked'));
   });
 
   it('warns on validator-style confirmed child (no outputs)', () => {
@@ -286,15 +286,18 @@ describe('AbstractWrapperGenerator', () => {
 
     assert.ok(result.wrapperCode.includes('pragma circom 2.2.3;'));
     assert.ok(result.wrapperCode.includes('include "/repo/parent.circom";'));
-    assert.ok(!result.wrapperCode.includes('Square_Mock'), 'no mock template');
+    assert.ok(result.wrapperCode.includes('template Square_mocked()'), 'mock shell emitted');
     assert.ok(result.wrapperCode.includes('template Parent_Partial()'));
     assert.ok(result.wrapperCode.includes('component main = Parent_Partial();'));
-    assert.ok(result.wrapperCode.includes('signal input __s_y'), 'boundary signal');
-    assert.ok(result.wrapperCode.includes('__s_y + 1'), 'output ref replaced');
+    assert.ok(result.wrapperCode.includes('signal input __mock_s_y;'), 'synthetic boundary input');
+    assert.ok(result.wrapperCode.includes('component s = Square_mocked();'), 'mock shell instantiated');
+    assert.ok(result.wrapperCode.includes('s.x <== a;'), 'input wiring retained');
+    assert.ok(result.wrapperCode.includes('s.__mock_y <== __mock_s_y;'), 'synthetic output routed');
+    assert.ok(result.wrapperCode.includes('z <== s.y + 1;'), 'output wiring retained');
     assert.deepEqual(result.mockedChildren, ['Square']);
     assert.equal(result.boundaryInputs.length, 1);
     assert.equal(result.boundaryInputs[0].instance, 's');
-    assert.equal(result.boundaryInputs[0].signal, '__s_y');
+    assert.equal(result.boundaryInputs[0].signal, '__mock_s_y');
   });
 
   it('eliminates child and replaces output references', () => {
@@ -322,11 +325,12 @@ describe('AbstractWrapperGenerator', () => {
     const result = gen.build(parent, ['Doubler'], [], []);
 
     assert.ok(result.mockedChildren.includes('Doubler'));
-    assert.ok(!result.wrapperCode.includes('Doubler_Mock'), 'no mock template');
-    assert.ok(!result.wrapperCode.includes('component d ='), 'component removed');
-    assert.ok(!result.wrapperCode.includes('d.x <==', ), 'input assignment removed');
-    assert.ok(result.wrapperCode.includes('__d_y'), 'boundary signal');
-    assert.ok(result.wrapperCode.includes('z <== __d_y'), 'output ref replaced');
+    assert.ok(result.wrapperCode.includes('template Doubler_mocked()'), 'mock shell emitted');
+    assert.ok(result.wrapperCode.includes('component d = Doubler_mocked();'), 'component shell preserved');
+    assert.ok(result.wrapperCode.includes('d.x <== a;'), 'input assignment preserved');
+    assert.ok(result.wrapperCode.includes('__mock_d_y'), 'synthetic boundary signal');
+    assert.ok(result.wrapperCode.includes('d.__mock_y <== __mock_d_y;'), 'synthetic output routed');
+    assert.ok(result.wrapperCode.includes('z <== d.y;'), 'output reference preserved');
   });
 
   it('handles backward-compatible empty confirmation (no mocks emitted)', () => {
@@ -582,8 +586,8 @@ describe('Print: mocked templates (manual inspection)', () => {
       result.wrapperCode,
       { boundaryInputs: result.boundaryInputs },
     );
-    assert.ok(result.wrapperCode.includes('__s1_y'));
-    assert.ok(result.wrapperCode.includes('__s2_y'));
+    assert.ok(result.wrapperCode.includes('__mock_s1_y'));
+    assert.ok(result.wrapperCode.includes('__mock_s2_y'));
   });
 
   it('scenario 7: no children confirmed (backward compatible)', () => {
@@ -614,5 +618,83 @@ describe('Print: mocked templates (manual inspection)', () => {
       mockedChildren: result.mockedChildren,
     });
     assert.deepEqual(result.mockedChildren, []);
+  });
+});
+
+
+describe('Component shell mock contract', () => {
+  it('preserves DonorRecord signals and ToyCommit2 component boundaries', () => {
+    const file = parseSource(`
+      template ToyCommit2() {
+        signal input x;
+        signal input secret;
+        signal output commitment;
+        commitment <== x * 13 + secret * 17;
+      }
+      template DonorRecord() {
+        signal input donorId;
+        signal input donorSecret;
+        signal output donorCommit;
+        component c = ToyCommit2();
+        c.x <== donorId;
+        c.secret <== donorSecret;
+        donorCommit <== c.commitment;
+      }
+    `, 'donor.circom');
+    const generator = new AbstractWrapperGenerator(makeParsedFilesMap(file));
+    const result = generator.build(findTemplate(file, 'DonorRecord'), ['ToyCommit2'], [], []);
+
+    assert.ok(result.wrapperCode.includes('template ToyCommit2_mocked()'));
+    assert.ok(result.wrapperCode.includes('signal input x;'));
+    assert.ok(result.wrapperCode.includes('signal input secret;'));
+    assert.ok(result.wrapperCode.includes('signal output commitment;'));
+    assert.ok(result.wrapperCode.includes('signal input __mock_commitment;'));
+    assert.ok(result.wrapperCode.includes('commitment <== __mock_commitment;'));
+    assert.ok(result.wrapperCode.includes('signal input donorId;'));
+    assert.ok(result.wrapperCode.includes('signal input donorSecret;'));
+    assert.ok(result.wrapperCode.includes('signal output donorCommit;'));
+    assert.ok(result.wrapperCode.includes('signal input __mock_c_commitment;'));
+    assert.ok(result.wrapperCode.includes('component c = ToyCommit2_mocked();'));
+    assert.ok(result.wrapperCode.includes('c.x <== donorId;'));
+    assert.ok(result.wrapperCode.includes('c.secret <== donorSecret;'));
+    assert.ok(result.wrapperCode.includes('c.__mock_commitment <== __mock_c_commitment;'));
+    assert.ok(result.wrapperCode.includes('donorCommit <== c.commitment;'));
+    assert.ok(result.wrapperCode.indexOf('c.__mock_commitment <== __mock_c_commitment;') < result.wrapperCode.indexOf('donorCommit <== c.commitment;'));
+  });
+
+  it('clones ancestors and routes synthetic inputs along a nested instance path', () => {
+    const file = parseSource(`
+      template ToyCommit2() {
+        signal input x;
+        signal output commitment;
+        commitment <== x * x;
+      }
+      template DonorLayer() {
+        signal input donorId;
+        signal output donorCommit;
+        component c = ToyCommit2();
+        c.x <== donorId;
+        donorCommit <== c.commitment;
+      }
+      template Parent() {
+        signal input id;
+        signal output result;
+        component donor = DonorLayer();
+        donor.donorId <== id;
+        result <== donor.donorCommit;
+      }
+    `, 'nested.circom');
+    const generator = new AbstractWrapperGenerator(makeParsedFilesMap(file));
+    const result = generator.build(findTemplate(file, 'Parent'), ['ToyCommit2'], [], []);
+
+    assert.ok(result.wrapperCode.includes('template ToyCommit2_mocked()'));
+    assert.ok(result.wrapperCode.includes('template DonorLayer_Partial()'));
+    assert.ok(result.wrapperCode.includes('component c = ToyCommit2_mocked();'));
+    assert.ok(result.wrapperCode.includes('signal input __mock_c_commitment;'));
+    assert.ok(result.wrapperCode.includes('template Parent_Partial()'));
+    assert.ok(result.wrapperCode.includes('component donor = DonorLayer_Partial();'));
+    assert.ok(result.wrapperCode.includes('signal input __mock_donor_c_commitment;'));
+    assert.ok(result.wrapperCode.includes('donor.__mock_c_commitment <== __mock_donor_c_commitment;'));
+    assert.ok(result.wrapperCode.includes('result <== donor.donorCommit;'));
   });
 });

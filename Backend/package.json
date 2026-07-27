@@ -6,7 +6,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node ./dist/index.js",
     "test": "pnpm run build && node --test dist/test/*.test.js",
-    "test:unit": "node --test dist/test/*.test.js"
+    "test:unit": "node --test dist/test/*.test.js",
+    "clean": "rm -rf ./compilations/* && rm -rf ./mockedFiles/*"
   },
   "keywords": [],
   "author": "",

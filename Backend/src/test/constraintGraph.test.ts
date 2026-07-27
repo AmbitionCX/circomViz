@@ -32,11 +32,21 @@ describe('constraint equation simplification', () => {
     assert.deepEqual(equation.right, { kind: 'constant', value: '0' });
   });
 
-  it('preserves genuinely nonlinear R1CS factors', () => {
+  it('isolates a nonlinear output signal', () => {
     const equation = simplifyConstraintEquation(lc([1, 1n]), lc([2, 1n]), lc([3, 1n]));
     assert.deepEqual(equation, {
-      left: { kind: 'mul', operands: [{ kind: 'signal', signalId: 1 }, { kind: 'signal', signalId: 2 }] },
-      right: { kind: 'signal', signalId: 3 },
+      left: { kind: 'signal', signalId: 3 },
+      right: { kind: 'mul', operands: [{ kind: 'signal', signalId: 1 }, { kind: 'signal', signalId: 2 }] },
+      isolatedSignalId: 3,
+    });
+  });
+
+  it('cancels matching negative signs while isolating a nonlinear output signal', () => {
+    const equation = simplifyConstraintEquation(lc([1, -1n]), lc([2, 1n]), lc([3, -1n]));
+    assert.deepEqual(equation, {
+      left: { kind: 'signal', signalId: 3 },
+      right: { kind: 'mul', operands: [{ kind: 'signal', signalId: 1 }, { kind: 'signal', signalId: 2 }] },
+      isolatedSignalId: 3,
     });
   });
 });

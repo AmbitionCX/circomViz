@@ -50,7 +50,7 @@
                 :class="['bg-white p-4 rounded-lg shadow-custom overflow-hidden flex flex-col cursor-pointer transition-all duration-300', interactionPanelHeightClass]"
                 @click="handleInteractionPanelClick"
               >
-               <InteractionPanel />
+               <InteractionPanel @confirmed="handleTemplateConfirmed" />
              </div>
          </el-col>
        </el-row>
@@ -110,6 +110,10 @@ const handleCircuitViewClick = () => {
 
 const handleInteractionPanelClick = () => {
   activePanel.value = 'interaction';
+};
+
+const handleTemplateConfirmed = () => {
+  activePanel.value = 'circuit';
 };
 
 const handleSubmoduleClick = () => {

@@ -287,7 +287,7 @@ template Parent() {
     assert.ok(result.mockedCompile.success, `Mocked compile failed:\n${result.mockedCompile.output}`);
     assert.deepEqual(result.mockedChildren, ['Square']);
     assert.ok(result.mockedWrapperCode.includes('component d = Doubler();'), 'Doubler should NOT be mocked');
-    assert.ok(result.mockedWrapperCode.includes('__s_y'), 'Square eliminated, boundary signal present');
+    assert.ok(result.mockedWrapperCode.includes('__mock_s_y'), 'Square mock shell boundary signal present');
   });
 
   // ---- Scenario 4: component array ----
@@ -410,8 +410,8 @@ template Parent() {
 
     assert.ok(result.mockedCompile.success, `Mocked compile failed:\n${result.mockedCompile.output}`);
     assert.ok(result.originCompile.success, `Origin compile failed:\n${result.originCompile.output}`);
-    assert.ok(result.mockedWrapperCode.includes('__s1_y'), 'Should have boundary for s1');
-    assert.ok(result.mockedWrapperCode.includes('__s2_y'), 'Should have boundary for s2');
+    assert.ok(result.mockedWrapperCode.includes('__mock_s1_y'), 'Should have boundary for s1');
+    assert.ok(result.mockedWrapperCode.includes('__mock_s2_y'), 'Should have boundary for s2');
     assert.ok(
       result.mockedCompile.quadraticConstraintCount < result.originCompile.quadraticConstraintCount,
       `Mocked quadratic (${result.mockedCompile.quadraticConstraintCount}) should be < origin quadratic (${result.originCompile.quadraticConstraintCount})`,
@@ -454,8 +454,8 @@ template Parent() {
     assert.ok(result.mockedCompile.success, `Mocked compile failed:\n${result.mockedCompile.output}`);
     assert.ok(result.originCompile.success, `Origin compile failed:\n${result.originCompile.output}`);
     assert.deepEqual(result.mockedChildren.sort(), ['IsEqual', 'Square']);
-    assert.ok(result.mockedWrapperCode.includes('__sq_y'), 'Simple component boundary');
-    assert.ok(result.mockedWrapperCode.includes('__checkers_out'), 'Array component boundary');
+    assert.ok(result.mockedWrapperCode.includes('__mock_sq_y'), 'Simple component boundary');
+    assert.ok(result.mockedWrapperCode.includes('__mock_checkers_out'), 'Array component boundary');
   });
 
   // ---- Scenario 9: realistic multi-component with loops ----

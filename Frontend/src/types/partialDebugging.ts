@@ -1,4 +1,4 @@
-export type OptimizationLevel = 'O0' | 'O1' | 'O2'
+export type OptimizationLevel = 'O0'
 export type ConstraintRenderMode = 'intuitive' | 'exact'
 
 export interface SourceSpan { file: string; startLine: number; endLine: number }
@@ -47,7 +47,6 @@ export interface ConstraintSignalNodeDto {
 export interface ConstraintEdgeDto { id: string; signalNodeId: string; constraintNodeId: string; port: 'A' | 'B' | 'C'; coefficient: string; displayCoefficient: string }
 export interface ConstraintGraphDto { level: OptimizationLevel; signals: ConstraintSignalNodeDto[]; constraints: ConstraintNodeDto[]; edges: ConstraintEdgeDto[]; adjacency: Record<string, string[]> }
 export interface ProvenanceLink { sourceNodeId: string; constraintNodeIds: string[]; confidence: 'exact' | 'high' | 'medium' | 'low'; evidence: string[] }
-export interface OptimizationLink { fromNodeId: string; toNodeIds: string[]; confidence: string }
 export interface GraphDiagnostic { id: string; type: string; severity: 'high' | 'medium' | 'low'; message: string; nodeIds: string[] }
 export interface PartialDebuggingBuildSummary {
   buildId: string
@@ -59,6 +58,6 @@ export interface PartialDebuggingBuildSummary {
 }
 export interface ConstraintGraphResponse {
   graph: ConstraintGraphDto
-  mappings: { sourceToO0: ProvenanceLink[]; O0ToO1: OptimizationLink[]; O1ToO2: OptimizationLink[] }
+  mappings: { sourceToO0: ProvenanceLink[] }
   diagnostics: GraphDiagnostic[]
 }

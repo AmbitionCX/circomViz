@@ -4,7 +4,7 @@
       <div class="title-row">
         <div class="flex items-center gap-2">
           <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
-          <el-tooltip content="Compare the selected template's source dataflow graph with simplified compiled signal relationships at O0, O1, or O2." placement="top">
+          <el-tooltip content="Compare the selected template's source dataflow graph with its unoptimized O0 constraint relationships." placement="top">
             <el-icon class="text-gray-400 cursor-help">
               <QuestionFilled />
             </el-icon>
@@ -15,26 +15,10 @@
         </div>
 
         <div class="title-actions">
-          <div class="segmented-custom-style mr-4">
-            <el-segmented
-              :model-value="partialDebuggingStore.optimization"
-              :options="optimizationOptions"
-              size="small"
-              :disabled="!partialDebuggingStore.summary"
-              @change="changeOptimization"
-            >
-              <template #default="scope">
-                <div class="optimization-option">
-                  <span>{{ scope.item.label }}</span>
-                  <span class="option-detail">{{ scope.item.detail }}</span>
-                </div>
-              </template>
-            </el-segmented>
-          </div>
           <el-button
             type="success"
             size="small"
-            :disabled="!selectedTemplate || isSelectedTemplateConfirmed"
+            :disabled="!selectedTemplate"
             @click.stop="handleConfirmTemplate"
           >
             {{ isSelectedTemplateConfirmed ? 'Confirmed' : 'Confirm' }}
@@ -54,17 +38,9 @@ import { computed } from 'vue'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import PartialDebuggingWorkspace from './PartialDebuggingWorkspace.vue'
 import { useCircuitStore } from '@/stores/circuit'
-import { usePartialDebuggingStore } from '@/stores/partialDebugging'
-import type { OptimizationLevel } from '@/types/partialDebugging'
 import { hexToRgba } from '@/composables/colors'
 
 const circuitStore = useCircuitStore()
-const partialDebuggingStore = usePartialDebuggingStore()
-const optimizationOptions = [
-  { label: 'O0', value: 'O0', detail: 'Raw' },
-  { label: 'O1', value: 'O1', detail: 'Basic' },
-  { label: 'O2', value: 'O2', detail: 'Simplified' },
-]
 const selectedTemplate = computed(() => circuitStore.selectedTemplate)
 const isSelectedTemplateConfirmed = computed(() => selectedTemplate.value ? circuitStore.isTemplateConfirmed(selectedTemplate.value.templateName) : false)
 
@@ -73,12 +49,14 @@ const templateColorStyle = (templateName: string) => {
   return { backgroundColor: hexToRgba(color, 0.15), color, borderRadius: '4px', padding: '1px 8px', fontWeight: '600' }
 }
 
-const changeOptimization = (value: string | number | boolean | undefined) => {
-  partialDebuggingStore.setOptimization(value as OptimizationLevel)
-}
+const emit = defineEmits<{ confirmed: [] }>()
 
 const handleConfirmTemplate = () => {
-  if (selectedTemplate.value) circuitStore.confirmTemplateName(selectedTemplate.value.templateName)
+  if (!selectedTemplate.value) return
+  if (!isSelectedTemplateConfirmed.value) {
+    circuitStore.confirmTemplateName(selectedTemplate.value.templateName)
+  }
+  emit('confirmed')
 }
 </script>
 
@@ -90,8 +68,6 @@ const handleConfirmTemplate = () => {
 
 .title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .title-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.option-detail { margin-left: 2px; font-size: 9px; opacity: .68; }
-
 .view-title {
   padding: 2px 10px;
   border: 1px solid #dcdfe6;
@@ -103,25 +79,6 @@ const handleConfirmTemplate = () => {
 .view-title:hover {
   border-color: #409eff;
   color: #409eff;
-}
-
-.segmented-custom-style :deep(.el-segmented) {
-  --el-border-radius-base: 4px;
-  border-radius: 16px;
-}
-
-.segmented-custom-style :deep(.el-segmented__item) {
-  border-radius: 16px;
-}
-
-.segmented-custom-style :deep(.el-segmented__item-selected) {
-  border-radius: 16px;
-}
-
-.optimization-option {
-  display: flex;
-  align-items: baseline;
-  gap: 3px;
 }
 
 @media (max-width: 760px) {

@@ -5,7 +5,6 @@
     <div v-else class="graph-scroll">
       <span class="figure-title">{{ graphKind === 'source' ? 'Raw Code Graph' : 'Constraint Graph' }}</span>
       <div
-        v-if="graphKind === 'source'"
         class="absolute bottom-3 left-3 z-30 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm px-3 py-2.5 flex flex-col gap-1.5"
       >
         <div class="flex items-center gap-2">

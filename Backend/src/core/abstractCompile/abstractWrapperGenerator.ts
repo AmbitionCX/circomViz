@@ -1,6 +1,12 @@
 import type { ParsedFile, TemplateDefinitionNode } from '../parser/ast.js';
 import { InterfaceExtractor, type TemplateInterface } from './interfaceExtractor.js';
-import { ParentRewriter, type RewrittenParentResult, type ValidatorWarning as AbstractValidatorWarning } from './parentRewriter.js';
+import { MockTemplateGenerator, type MockTemplateResult } from './mockTemplateGenerator.js';
+import {
+  ParentRewriter,
+  type ChildReplacementPlan,
+  type RewrittenParentResult,
+  type ValidatorWarning as AbstractValidatorWarning,
+} from './parentRewriter.js';
 
 export interface AbstractWrapperResult {
   wrapperCode: string;
@@ -8,6 +14,7 @@ export interface AbstractWrapperResult {
   entryTemplateName: string;
   partialTemplateName: string;
   mockedChildren: string[];
+  mockedTemplateNames: string[];
   unmockedChildren: string[];
   validatorWarnings: AbstractValidatorWarning[];
   boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }>;
@@ -17,6 +24,11 @@ export interface BuildOptions {
   partialSuffix?: string;
   pragmaVersion?: string;
   originalFilePath?: string;
+}
+
+interface RecursiveRewrite {
+  rewritten: RewrittenParentResult;
+  changed: boolean;
 }
 
 export class AbstractWrapperGenerator {
@@ -39,125 +51,176 @@ export class AbstractWrapperGenerator {
     const partialSuffix = opts.partialSuffix ?? '_Partial';
     const pragmaVersion = opts.pragmaVersion ?? '2.2.3';
     const originalFilePath = opts.originalFilePath ?? parentDef.sourceFile ?? '';
+    const definitions = this.templateDefinitions();
+    const mockGenerator = new MockTemplateGenerator();
+    const mocks = new Map<string, { iface: TemplateInterface; result: MockTemplateResult }>();
+    const variants = new Map<string, string>();
+    const usedMocks = new Set<string>();
+    const validatorWarnings: AbstractValidatorWarning[] = [];
+    const unmockedChildren = new Set<string>();
+    const memo = new Map<string, RecursiveRewrite | null>();
+    const visiting = new Set<string>();
 
-    const interfaceMap = new Map<string, TemplateInterface>();
-    const referencedChildren = this.collectReferencedTemplateNames(parentDef);
-    for (const name of referencedChildren) {
-      if (confirmSet.has(name)) {
-        const iface = this.extractor.extract(name);
-        if (iface) interfaceMap.set(name, iface);
+    const ensureMock = (templateName: string) => {
+      const existing = mocks.get(templateName);
+      if (existing) return existing;
+      const iface = this.extractor.extract(templateName);
+      if (!iface) return null;
+      const result = mockGenerator.generate(iface);
+      const generated = { iface, result };
+      mocks.set(templateName, generated);
+      variants.set(result.templateName, result.source);
+      return generated;
+    };
+
+    const rewriteDefinition = (definition: TemplateDefinitionNode, isRoot = false): RecursiveRewrite | null => {
+      if (!isRoot && memo.has(definition.name)) return memo.get(definition.name)!;
+      if (visiting.has(definition.name)) return null;
+      visiting.add(definition.name);
+
+      const replacementPlans = new Map<string, ChildReplacementPlan>();
+      for (const childName of this.collectReferencedTemplateNames(definition)) {
+        const childInterface = this.extractor.extract(childName);
+        if (confirmSet.has(childName)) {
+          const mock = ensureMock(childName);
+          if (!mock) {
+            unmockedChildren.add(childName);
+            continue;
+          }
+          usedMocks.add(childName);
+          replacementPlans.set(childName, {
+            originalTemplateName: childName,
+            replacementTemplateName: mock.result.templateName,
+            inputNames: mock.iface.inputs.map((input) => input.name),
+            syntheticInputs: mock.result.outputBindings.map((binding) => ({
+              name: binding.mockInputName,
+              isArray: binding.port.isArray,
+              arraySizes: binding.port.arraySizes,
+            })),
+            outputs: mock.iface.outputs,
+            isMock: true,
+            isValidator: mock.result.isValidator,
+          });
+          continue;
+        }
+
+        const childDefinition = definitions.get(childName);
+        if (!childDefinition || !childInterface) continue;
+        const childRewrite = rewriteDefinition(childDefinition);
+        if (!childRewrite?.changed) continue;
+        replacementPlans.set(childName, {
+          originalTemplateName: childName,
+          replacementTemplateName: childRewrite.rewritten.templateName,
+          inputNames: childInterface.inputs.map((input) => input.name),
+          syntheticInputs: childRewrite.rewritten.boundaryPorts,
+          outputs: childInterface.outputs,
+          isMock: false,
+          isValidator: false,
+        });
       }
-    }
 
-    const rewriter = new ParentRewriter(confirmSet, interfaceMap, {
-      partialSuffix,
-    });
+      const changed = replacementPlans.size > 0;
+      if (!changed && !isRoot) {
+        visiting.delete(definition.name);
+        memo.set(definition.name, null);
+        return null;
+      }
 
-    const fullSource = this.getTemplateSource(parentDef);
-    const rewritten: RewrittenParentResult = rewriter.rewrite(parentDef, fullSource);
+      const rewriter = new ParentRewriter(new Set(), new Map(), { partialSuffix, replacementPlans });
+      const rewritten = rewriter.rewrite(definition, this.getTemplateSource(definition));
+      validatorWarnings.push(...rewritten.validatorWarnings);
+      rewritten.unmockedInstances.forEach((instance) => unmockedChildren.add(instance.templateName));
+      const result = { rewritten, changed };
+      if (!isRoot) {
+        memo.set(definition.name, result);
+        variants.set(rewritten.templateName, rewritten.source);
+      }
+      visiting.delete(definition.name);
+      return result;
+    };
 
-    const mockedTemplateNames = new Set<string>();
-    for (const inst of rewritten.mockedInstances) {
-      mockedTemplateNames.add(inst.templateName);
-    }
-
-    const validatorWarnings: AbstractValidatorWarning[] = [...rewritten.validatorWarnings];
-
-    const paramValues = params.map((p) => String(p.value)).join(', ');
-    let publicBlock = '';
-    if (publicSignals && publicSignals.length > 0) {
-      publicBlock = ` { public [${publicSignals.join(', ')}] }`;
-    }
-
-    const headerLines = [
-      `pragma circom ${pragmaVersion};`,
-    ];
-    if (originalFilePath) {
-      headerLines.push(`include "${originalFilePath}";`);
-    }
+    const rootRewrite = rewriteDefinition(parentDef, true)!;
+    const rewritten = rootRewrite.rewritten;
+    const paramValues = params.map((param) => String(param.value)).join(', ');
+    const publicBlock = publicSignals.length > 0 ? ` { public [${publicSignals.join(', ')}] }` : '';
+    const headerLines = [`pragma circom ${pragmaVersion};`];
+    if (originalFilePath) headerLines.push(`include "${originalFilePath}";`);
     headerLines.push(
       '',
-      '/* === Abstract Partial Compile (reference elimination) ===',
+      '/* === Abstract Partial Compile (component shell mocking) ===',
       ` * Selected template: ${parentDef.name}`,
       ` * Partial variant:   ${rewritten.templateName}`,
-      ` * Eliminated children: ${[...mockedTemplateNames].join(', ') || '(none)'}`,
+      ` * Mocked children:   ${[...usedMocks].join(', ') || '(none)'}`,
+      ' * Parent declarations and component wiring are preserved.',
+      ' * Mocked child internals are replaced by synthetic output bindings.',
       ` * Validator warnings: ${validatorWarnings.length}`,
-      ` * Kept expanded: ${rewritten.unmockedInstances.map((u) => u.templateName).join(', ') || '(none)'}`,
       ' */',
       '',
     );
-    const header = headerLines.join('\n');
 
-    const sections: string[] = [header];
-    sections.push(rewritten.source);
-    sections.push('');
-    sections.push(`component main${publicBlock} = ${rewritten.templateName}(${paramValues});`);
-    sections.push('');
+    const generatedDefinitions = [...variants.values()];
+    const templateSource = [...generatedDefinitions, rewritten.source].join('\n\n');
+    const wrapperCode = [
+      headerLines.join('\n'),
+      templateSource,
+      '',
+      `component main${publicBlock} = ${rewritten.templateName}(${paramValues});`,
+      '',
+    ].join('\n');
 
     return {
-      wrapperCode: sections.join('\n'),
-      templateSource: rewritten.source,
+      wrapperCode,
+      templateSource,
       entryTemplateName: rewritten.templateName,
       partialTemplateName: rewritten.templateName,
-      mockedChildren: [...mockedTemplateNames],
-      unmockedChildren: rewritten.unmockedInstances.map((u) => u.templateName),
+      mockedChildren: [...usedMocks],
+      mockedTemplateNames: [...mocks.values()].map((mock) => mock.result.templateName),
+      unmockedChildren: [...unmockedChildren],
       validatorWarnings,
       boundaryInputs: rewritten.boundaryInputs,
     };
   }
 
-  private getTemplateSource(def: TemplateDefinitionNode): string {
-    if (!def.sourceFile) return '';
-    const file = this.parsedFiles.get(def.sourceFile);
-    return file?.content ?? '';
+  private templateDefinitions(): Map<string, TemplateDefinitionNode> {
+    const definitions = new Map<string, TemplateDefinitionNode>();
+    for (const file of this.parsedFiles.values()) {
+      for (const definition of file.templates) if (!definitions.has(definition.name)) definitions.set(definition.name, definition);
+    }
+    return definitions;
   }
 
-  private collectReferencedTemplateNames(def: TemplateDefinitionNode): Set<string> {
-    const names = new Set<string>();
+  private getTemplateSource(definition: TemplateDefinitionNode): string {
+    if (!definition.sourceFile) return '';
+    for (const [path, file] of this.parsedFiles) {
+      if (path === definition.sourceFile || file.path === definition.sourceFile || file.templates.includes(definition)) return file.content;
+    }
+    return '';
+  }
 
+  private collectReferencedTemplateNames(definition: TemplateDefinitionNode): Set<string> {
+    const names = new Set<string>();
     const componentArrayNames = new Set<string>();
     const componentVarNames = new Set<string>();
-    for (const comp of def.components || []) {
-      if (comp.type === 'ComponentDeclaration') {
-        if (comp.arraySizes) componentArrayNames.add(comp.name);
-        else componentVarNames.add(comp.name);
-      } else if (comp.type === 'ComponentArrayInit') {
-        componentArrayNames.add(comp.name);
-      }
+    for (const component of definition.components || []) {
+      if (component.type === 'ComponentDeclaration') {
+        if (component.arraySizes) componentArrayNames.add(component.name);
+        else componentVarNames.add(component.name);
+      } else if (component.type === 'ComponentArrayInit') componentArrayNames.add(component.name);
     }
-
     const visit = (node: any) => {
       if (!node || typeof node !== 'object') return;
-      if (Array.isArray(node)) {
-        for (const n of node) visit(n);
-        return;
-      }
-      if (node.type === 'ComponentInstantiationNode' && typeof node.templateName === 'string') {
-        if (!node.isAnonymous) names.add(node.templateName);
-      }
+      if (Array.isArray(node)) { node.forEach(visit); return; }
+      if (node.type === 'ComponentInstantiationNode' && typeof node.templateName === 'string' && !node.isAnonymous) names.add(node.templateName);
       if (node.type === 'Assignment') {
         const left = node.left;
         const right = node.right;
-        if (left?.type === 'ArrayAccess' &&
-            left.array?.type === 'Identifier' &&
-            componentArrayNames.has(left.array.name) &&
-            right?.type === 'FunctionCall') {
-          names.add(right.function);
-        }
-        if (left?.type === 'Identifier' &&
-            componentVarNames.has(left.name) &&
-            right?.type === 'FunctionCall') {
-          names.add(right.function);
-        }
+        if (left?.type === 'ArrayAccess' && left.array?.type === 'Identifier' && componentArrayNames.has(left.array.name) && right?.type === 'FunctionCall') names.add(right.function);
+        if (left?.type === 'Identifier' && componentVarNames.has(left.name) && right?.type === 'FunctionCall') names.add(right.function);
       }
-      for (const key of Object.keys(node)) {
-        if (key === 'type') continue;
-        const val = node[key];
-        if (val && typeof val === 'object') visit(val);
-      }
+      for (const [key, value] of Object.entries(node)) if (key !== 'type' && value && typeof value === 'object') visit(value);
     };
-    for (const comp of def.components || []) visit(comp);
-    for (const stmt of def.statements || []) visit(stmt);
+    definition.components.forEach(visit);
+    definition.statements.forEach(visit);
     return names;
   }
 }

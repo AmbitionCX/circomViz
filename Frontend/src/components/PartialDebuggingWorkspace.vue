@@ -63,7 +63,7 @@ const constraintLinkedIds = computed(() => {
   if (!selected) return ids
   if (selected.startsWith('signal:')) ids.add(selected)
   const sourceLink = store.sourceToO0.find(link => link.sourceNodeId === selected)
-  if (store.optimization === 'O0') sourceLink?.constraintNodeIds.forEach(id => ids.add(id))
+  sourceLink?.constraintNodeIds.forEach(id => ids.add(id))
   return ids
 })
 </script>

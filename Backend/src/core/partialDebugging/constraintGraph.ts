@@ -58,11 +58,39 @@ const expressionForCoefficients = (coefficients: Map<number, bigint>): Constrain
   return { kind: 'add', operands };
 };
 const expressionForCombination = (lc: LinearCombination) => expressionForCoefficients(coefficientMap(lc));
+const scaleCombination = (lc: LinearCombination, scale: bigint): LinearCombination => ({
+  terms: lc.terms
+    .map((term) => {
+      const normalized = canonical(term.coefficient) * scale;
+      const coefficient = canonical(normalized);
+      return {
+        signalId: term.signalId,
+        coefficient: String(coefficient),
+        displayCoefficient: display(coefficient),
+      };
+    })
+    .filter((term) => term.coefficient !== '0'),
+});
+const singleUnitSignal = (lc: LinearCombination) => {
+  if (lc.terms.length !== 1 || lc.terms[0].signalId === 0) return undefined;
+  const coefficient = canonical(lc.terms[0].coefficient);
+  if (coefficient !== 1n && coefficient !== CIRCOM_BN254_PRIME - 1n) return undefined;
+  return { signalId: lc.terms[0].signalId, coefficient };
+};
 
 export const simplifyConstraintEquation = (A: LinearCombination, B: LinearCombination, C: LinearCombination): ConstraintEquationDto => {
   const aConstant = constantFactor(A);
   const bConstant = constantFactor(B);
   if (aConstant === null && bConstant === null) {
+    const output = singleUnitSignal(C);
+    if (output) {
+      const normalizedA = output.coefficient === 1n ? A : scaleCombination(A, -1n);
+      return {
+        left: { kind: 'signal', signalId: output.signalId },
+        right: { kind: 'mul', operands: [expressionForCombination(normalizedA), expressionForCombination(B)] },
+        isolatedSignalId: output.signalId,
+      };
+    }
     return {
       left: { kind: 'mul', operands: [expressionForCombination(A), expressionForCombination(B)] },
       right: expressionForCombination(C),
