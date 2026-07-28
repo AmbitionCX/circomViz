@@ -178,5 +178,5 @@ export async function buildConstraintGraph(level: OptimizationLevel, symPath: st
     (adjacency[edge.signalNodeId] ??= []).push(edge.constraintNodeId);
     (adjacency[edge.constraintNodeId] ??= []).push(edge.signalNodeId);
   }
-  return { level, signals, constraints, edges, adjacency };
+  return { level, signals, constraints, edges, adjacency, mockBoundaries: [] };
 }

@@ -48,28 +48,43 @@ export interface ConstraintNodeDto {
 export interface ConstraintSignalNodeDto {
   id: string; kind: 'signal'; signalId: number; witnessIndex: number; componentId: number; qualifiedName: string;
   status: 'surviving' | 'substituted' | 'unused-or-unconstrained';
+  role?: 'input' | 'output' | 'intermediate' | 'synthetic';
+  mockSupplied?: boolean;
   substitution?: LinearCombination;
 }
 export interface ConstraintEdgeDto {
   id: string; signalNodeId: string; constraintNodeId: string; port: 'A' | 'B' | 'C'; coefficient: string; displayCoefficient: string;
 }
+export interface MockBoundaryDto { id: string; outputSignalId: string; label: string }
 export interface ConstraintGraphDto {
   level: OptimizationLevel; signals: ConstraintSignalNodeDto[]; constraints: ConstraintNodeDto[];
   edges: ConstraintEdgeDto[]; adjacency: Record<string, string[]>;
+  mockBoundaries: MockBoundaryDto[];
 }
 export interface ProvenanceLink {
   sourceNodeId: string; constraintNodeIds: string[]; confidence: 'exact' | 'high' | 'medium' | 'low'; evidence: string[];
 }
 export interface GraphDiagnostic {
   id: string;
-  type: 'WITNESS_ONLY_UNVERIFIED' | 'SOURCE_CONSTRAINT_UNMATCHED' | 'UNUSED_OR_UNCONSTRAINED';
+  type: 'WITNESS_ONLY_UNVERIFIED' | 'SOURCE_CONSTRAINT_UNMATCHED' | 'UNUSED_OR_UNCONSTRAINED' | 'MOCK_LEAKAGE';
   severity: 'high' | 'medium' | 'low'; message: string; nodeIds: string[];
+}
+export interface MockSyntheticSignal {
+  path: string;
+  role: 'root-mock-input' | 'mock-bridge';
+  forOutput: string;
+}
+export interface MockManifestEntry {
+  instancePath: string;
+  originalTemplate: string;
+  mockedTemplate: string;
+  boundaryInputs: string[];
+  boundaryOutputs: string[];
+  syntheticSignals: MockSyntheticSignal[];
 }
 export interface MockManifest {
   selectedRoot: string;
-  mockedComponents: Array<{
-    originalComponentPath: string; templateName: string; replacementInputs: string[]; preservedOutputs: string[]; allowedChanges: string[];
-  }>;
+  mocks: MockManifestEntry[];
 }
 export interface PartialDebuggingBuildSummary {
   buildId: string;

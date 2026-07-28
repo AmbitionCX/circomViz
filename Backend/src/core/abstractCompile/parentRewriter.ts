@@ -11,6 +11,16 @@ export interface SyntheticInputPort {
   name: string;
   isArray: boolean;
   arraySizes: Array<number | string>;
+  forOutput?: string;
+}
+
+export interface MockProvenanceEntry {
+  instancePath: string;
+  originalTemplate: string;
+  mockedTemplate: string;
+  boundaryInputs: string[];
+  boundaryOutputs: string[];
+  syntheticSignals: Array<{ path: string; role: 'root-mock-input' | 'mock-bridge'; forOutput: string }>;
 }
 
 export interface ChildReplacementPlan {
@@ -31,6 +41,7 @@ export interface RewrittenParentResult {
   validatorWarnings: ValidatorWarning[];
   boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }>;
   boundaryPorts: SyntheticInputPort[];
+  mockProvenance: MockProvenanceEntry[];
 }
 
 export interface ParentRewriterOptions {
@@ -85,6 +96,7 @@ function defaultMockPlan(iface: TemplateInterface): ChildReplacementPlan {
       name: `__mock_${output.name}`,
       isArray: output.isArray,
       arraySizes: output.arraySizes,
+      forOutput: output.name,
     })),
     outputs: iface.outputs,
     isMock: true,
@@ -102,6 +114,7 @@ export class ParentRewriter {
   private validatorWarnings: ValidatorWarning[] = [];
   private boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }> = [];
   private boundaryPorts: SyntheticInputPort[] = [];
+  private mockProvenance: MockProvenanceEntry[] = [];
 
   constructor(
     confirmSet: Set<string>,
@@ -120,6 +133,7 @@ export class ParentRewriter {
     this.validatorWarnings = [];
     this.boundaryInputs = [];
     this.boundaryPorts = [];
+    this.mockProvenance = [];
 
     const newName = `${def.name}${this.partialSuffix}`;
     const { lines, offsetLine } = this.extractTemplateBlock(fullSource, def.line);
@@ -163,7 +177,17 @@ export class ParentRewriter {
       lineReplacements.push({ original: inst.templateName, replacement: plan.replacementTemplateName });
       replacementsByLine.set(instantiationIndex, lineReplacements);
 
+      let provenance: MockProvenanceEntry | undefined;
       if (plan.isMock) {
+        provenance = {
+          instancePath: componentRef,
+          originalTemplate: plan.originalTemplateName,
+          mockedTemplate: plan.replacementTemplateName,
+          boundaryInputs: plan.inputNames.map((name) => `${componentRef}.${name}`),
+          boundaryOutputs: plan.outputs.map((output) => `${componentRef}.${output.name}`),
+          syntheticSignals: [],
+        };
+        this.mockProvenance.push(provenance);
         this.mockedInstances.push({
           name: componentName,
           templateName: inst.templateName,
@@ -195,6 +219,14 @@ export class ParentRewriter {
           declarationsBefore.set(declarationIndex, declarations);
           this.boundaryInputs.push({ instance: componentName, signal: boundaryName, isArray: arraySizes.length > 0 });
           this.boundaryPorts.push({ name: boundaryName, isArray: arraySizes.length > 0, arraySizes });
+        }
+
+        if (provenance && synthetic.forOutput) {
+          const forOutput = `${componentRef}.${synthetic.forOutput}`;
+          provenance.syntheticSignals.push(
+            { path: boundaryName, role: 'root-mock-input', forOutput },
+            { path: `${componentRef}.${synthetic.name}`, role: 'mock-bridge', forOutput },
+          );
         }
 
         const feeders = feedersAfter.get(feederInsertionIndex) ?? [];
@@ -231,6 +263,7 @@ export class ParentRewriter {
       validatorWarnings: this.validatorWarnings,
       boundaryInputs: this.boundaryInputs,
       boundaryPorts: this.boundaryPorts,
+      mockProvenance: this.mockProvenance,
     };
   }
 

@@ -44,6 +44,10 @@
           <span class="text-gray-600 text-xs">Confirmed template</span>
         </div>
         <div class="flex items-center gap-2">
+          <span class="w-4 h-3 border border-red-600 bg-red-600/30 rounded inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Vulnerable node</span>
+        </div>
+        <div class="flex items-center gap-2">
           <span class="w-4 h-3 border border-dashed border-gray-500 rounded inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Duplicate pattern</span>
         </div>
@@ -294,6 +298,7 @@ const NODE_GAP_Y = 16;
 const NODE_GAP_X = 400;
 
 const CONFIRMED_GREEN = '#16a34a';
+const VULNERABLE_RED = '#dc2626';
 const RECURSIVE_BORDER = '#d97706';
 const RECURSIVE_ENCLOSURE_PAD = 8;
 const SELECTED_SIGNAL_COLOR = '#f59e0b';
@@ -441,6 +446,10 @@ function confirmedNamesSet(): Set<string> {
   return new Set(circuitStore.confirmedTemplateNames);
 }
 
+function vulnerableNamesSet(): Set<string> {
+  return new Set(circuitStore.vulnerableTemplateNames);
+}
+
 const isNodeSelectableForPanel = computed(() => {
   if (!detailPanel.node) return false;
   return isNodeSelectable(detailPanel.node, confirmedNamesSet());
@@ -528,6 +537,7 @@ function renderTree() {
   const containerHeight = svgContainer.value.clientHeight;
 
   const confirmed = confirmedNamesSet();
+  const vulnerable = vulnerableNamesSet();
 
   const defs = svg.append('defs');
 
@@ -634,6 +644,7 @@ function renderTree() {
     const isExternal = d.data.isExternal;
     const isRecursiveReference = d.data.isRecursiveReference;
     const isConfirmed = confirmed.has(d.data.templateName);
+    const isVulnerable = vulnerable.has(d.data.templateName);
     const isNmLib = !!d.data.nodeModulesLibrary;
     const hw = NODE_WIDTH / 2;
 
@@ -643,7 +654,7 @@ function renderTree() {
     const bodyFill = '#ffffff';
     const isSelectable = isNodeSelectable(d.data, confirmed);
     const isCompilationFailure = isCompilationFailureNode(d.data);
-    const borderColor = isCompilationFailure ? COMPILATION_FAILURE_RED : (isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0'));
+    const borderColor = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerable ? VULNERABLE_RED : (isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0')));
 
     const bgRect = nodeG.append('rect')
       .attr('class', 'node-bg')
@@ -818,13 +829,13 @@ function renderTree() {
 
     if (isConfirmed && !isExternal) {
       nodeG.append('rect')
-        .attr('class', 'node-confirmed-overlay')
+        .attr('class', isVulnerable ? 'node-vulnerable-overlay' : 'node-confirmed-overlay')
         .attr('x', -hw)
         .attr('y', -NODE_HEIGHT / 2)
         .attr('width', NODE_WIDTH)
         .attr('height', NODE_HEIGHT)
         .attr('rx', 8)
-        .attr('fill', CONFIRMED_GREEN)
+        .attr('fill', isVulnerable ? VULNERABLE_RED : CONFIRMED_GREEN)
         .attr('opacity', 0.3)
         .attr('pointer-events', 'none');
     }
@@ -837,9 +848,10 @@ function renderTree() {
     .on('mouseleave', function (_event, d) {
       const isSelected = d.data.templateInfo === circuitStore.selectedTemplate;
       const isConfirmedNode = confirmed.has(d.data.templateName);
+      const isVulnerableNode = vulnerable.has(d.data.templateName);
       const isSel = isNodeSelectable(d.data, confirmed);
       const isCompilationFailure = isCompilationFailureNode(d.data);
-      const border = isCompilationFailure ? COMPILATION_FAILURE_RED : (isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0')));
+      const border = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerableNode ? VULNERABLE_RED : (isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0'))));
       const sw = isCompilationFailure ? 3.5 : (isConfirmedNode ? 2 : (isSelected ? 2.5 : (isSel ? 2.5 : 1.5)));
       d3.select(this).select('.node-bg')
         .attr('stroke', border)
@@ -1068,12 +1080,14 @@ const confirmParamSelection = () => {
 function updateSelection() {
   const svg = d3.select(svgRef.value);
   const confirmed = confirmedNamesSet();
+  const vulnerable = vulnerableNamesSet();
 
   svg.selectAll<SVGGElement, d3.HierarchyPointNode<TreeNodeData>>('g.node').each(function (d) {
     const nodeGroup = d3.select(this);
     const data = d.data;
     const isSelected = data.templateInfo === circuitStore.selectedTemplate;
     const isConfirmedNode = confirmed.has(data.templateName);
+    const isVulnerableNode = vulnerable.has(data.templateName);
     const isCompilationFailure = isCompilationFailureNode(data);
 
     const isSel = isNodeSelectable(data, confirmed);
@@ -1083,6 +1097,13 @@ function updateSelection() {
         .attr('filter', 'url(#node-shadow)')
         .attr('stroke', COMPILATION_FAILURE_RED)
         .attr('stroke-width', 3.5)
+        .attr('stroke-dasharray', 'none')
+        .attr('fill', '#ffffff');
+    } else if (isVulnerableNode && !data.isExternal) {
+      bgRect
+        .attr('filter', 'url(#node-shadow)')
+        .attr('stroke', VULNERABLE_RED)
+        .attr('stroke-width', 2)
         .attr('stroke-dasharray', 'none')
         .attr('fill', '#ffffff');
     } else if (isConfirmedNode && !data.isExternal) {
@@ -1172,7 +1193,7 @@ watch(
 );
 
 watch(
-  () => circuitStore.confirmedTemplateNames,
+  [() => circuitStore.confirmedTemplateNames, () => circuitStore.vulnerableTemplateNames],
   () => {
     renderTree();
   },

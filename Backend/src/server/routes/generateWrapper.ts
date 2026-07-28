@@ -12,6 +12,7 @@ import { assembleMockedSource, assembleOriginSource, buildStandaloneTemplateSour
 import { AbstractWrapperGenerator } from '../../core/abstractCompile/index.js';
 import { PathGuard } from '../../core/project/pathGuard.js';
 import { promises as fs } from 'fs';
+import type { MockManifest } from '../../types/partialDebugging.js';
 import { join, dirname } from 'path';
 import {
   parseSymFile,
@@ -158,6 +159,7 @@ export async function generateWrapperHandler(
     let unmockedChildren: string[] = [];
     let validatorWarnings: generate_wrapper_response['validatorWarnings'] = [];
     let boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }> = [];
+    let mockManifest: MockManifest = { selectedRoot: 'main', mocks: [] };
 
     if (confirmedTemplateNames.length > 0) {
       const generator = new AbstractWrapperGenerator(parsedFiles);
@@ -173,6 +175,7 @@ export async function generateWrapperHandler(
       unmockedChildren = abstractResult.unmockedChildren;
       validatorWarnings = abstractResult.validatorWarnings;
       boundaryInputs = abstractResult.boundaryInputs;
+      mockManifest = abstractResult.mockManifest;
       if (mockedChildren.length > 0) {
         effectiveTemplateSource = abstractResult.templateSource;
         effectiveTemplateName = abstractResult.entryTemplateName;
@@ -241,12 +244,14 @@ export async function generateWrapperHandler(
       try {
         const bundle = await buildPartialDebuggingBundle({
           parsedFiles,
-          rootTemplate: effectiveRootTemplate,
+          rootTemplate: templateDef.template,
+          compiledRootTemplate: effectiveRootTemplate,
           params,
           selectedComponentPath: templatePath.join('.') || 'main',
           mockedTemplateNames,
           mockedChildren,
           boundaryInputs,
+          mockManifest,
           artifacts: {
             O0: getCircomArtifactPaths(primaryWrapperPath, primaryDir),
           },

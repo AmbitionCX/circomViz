@@ -1,4 +1,5 @@
 import type { ParsedFile, TemplateDefinitionNode } from '../parser/ast.js';
+import type { MockManifest } from '../../types/partialDebugging.js';
 import { InterfaceExtractor, type TemplateInterface } from './interfaceExtractor.js';
 import { MockTemplateGenerator, type MockTemplateResult } from './mockTemplateGenerator.js';
 import {
@@ -18,6 +19,7 @@ export interface AbstractWrapperResult {
   unmockedChildren: string[];
   validatorWarnings: AbstractValidatorWarning[];
   boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }>;
+  mockManifest: MockManifest;
 }
 
 export interface BuildOptions {
@@ -96,6 +98,7 @@ export class AbstractWrapperGenerator {
               name: binding.mockInputName,
               isArray: binding.port.isArray,
               arraySizes: binding.port.arraySizes,
+              forOutput: binding.outputName,
             })),
             outputs: mock.iface.outputs,
             isMock: true,
@@ -168,6 +171,18 @@ export class AbstractWrapperGenerator {
       '',
     ].join('\n');
 
+    const qualify = (path: string) => path.startsWith('main.') ? path : `main.${path}`;
+    const mockManifest: MockManifest = {
+      selectedRoot: 'main',
+      mocks: rewritten.mockProvenance.map((mock) => ({
+        ...mock,
+        instancePath: qualify(mock.instancePath),
+        boundaryInputs: mock.boundaryInputs.map(qualify),
+        boundaryOutputs: mock.boundaryOutputs.map(qualify),
+        syntheticSignals: mock.syntheticSignals.map((signal) => ({ ...signal, path: qualify(signal.path), forOutput: qualify(signal.forOutput) })),
+      })),
+    };
+
     return {
       wrapperCode,
       templateSource,
@@ -178,6 +193,7 @@ export class AbstractWrapperGenerator {
       unmockedChildren: [...unmockedChildren],
       validatorWarnings,
       boundaryInputs: rewritten.boundaryInputs,
+      mockManifest,
     };
   }
 

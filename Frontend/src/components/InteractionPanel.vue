@@ -16,6 +16,14 @@
 
         <div class="title-actions">
           <el-button
+            type="danger"
+            size="small"
+            :disabled="!selectedTemplate"
+            @click.stop="handleVulnerableTemplate"
+          >
+            Vulnerable
+          </el-button>
+          <el-button
             type="success"
             size="small"
             :disabled="!selectedTemplate"
@@ -42,7 +50,8 @@ import { hexToRgba } from '@/composables/colors'
 
 const circuitStore = useCircuitStore()
 const selectedTemplate = computed(() => circuitStore.selectedTemplate)
-const isSelectedTemplateConfirmed = computed(() => selectedTemplate.value ? circuitStore.isTemplateConfirmed(selectedTemplate.value.templateName) : false)
+const isSelectedTemplateVulnerable = computed(() => selectedTemplate.value ? circuitStore.isTemplateVulnerable(selectedTemplate.value.templateName) : false)
+const isSelectedTemplateConfirmed = computed(() => selectedTemplate.value ? circuitStore.isTemplateConfirmed(selectedTemplate.value.templateName) && !isSelectedTemplateVulnerable.value : false)
 
 const templateColorStyle = (templateName: string) => {
   const color = circuitStore.getTemplateColor(templateName)
@@ -56,6 +65,12 @@ const handleConfirmTemplate = () => {
   if (!isSelectedTemplateConfirmed.value) {
     circuitStore.confirmTemplateName(selectedTemplate.value.templateName)
   }
+  emit('confirmed')
+}
+
+const handleVulnerableTemplate = () => {
+  if (!selectedTemplate.value) return
+  circuitStore.markTemplateVulnerable(selectedTemplate.value.templateName)
   emit('confirmed')
 }
 </script>

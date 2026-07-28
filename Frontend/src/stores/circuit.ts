@@ -30,6 +30,7 @@ interface CircuitState {
   
   compilationVersion: number;
   confirmedTemplateNames: string[];
+  vulnerableTemplateNames: string[];
   compilationData: {
     isCompiling: boolean;
     debugOutput: string | null;
@@ -96,6 +97,7 @@ export const useCircuitStore = defineStore('circuit', {
     
     compilationVersion: 0,
     confirmedTemplateNames: [],
+    vulnerableTemplateNames: [],
     compilationData: {
       isCompiling: false,
       debugOutput: null,
@@ -291,6 +293,7 @@ export const useCircuitStore = defineStore('circuit', {
     resetCompilationData() {
       this.compilationVersion++;
       this.confirmedTemplateNames = [];
+      this.vulnerableTemplateNames = [];
       this.compilationData = {
         isCompiling: false,
         debugOutput: null,
@@ -368,10 +371,24 @@ export const useCircuitStore = defineStore('circuit', {
       if (!this.confirmedTemplateNames.includes(templateName)) {
         this.confirmedTemplateNames = [...this.confirmedTemplateNames, templateName];
       }
+      this.vulnerableTemplateNames = this.vulnerableTemplateNames.filter((name) => name !== templateName);
+    },
+
+    markTemplateVulnerable(templateName: string) {
+      if (!this.confirmedTemplateNames.includes(templateName)) {
+        this.confirmedTemplateNames = [...this.confirmedTemplateNames, templateName];
+      }
+      if (!this.vulnerableTemplateNames.includes(templateName)) {
+        this.vulnerableTemplateNames = [...this.vulnerableTemplateNames, templateName];
+      }
     },
 
     isTemplateConfirmed(templateName: string): boolean {
       return this.confirmedTemplateNames.includes(templateName);
+    },
+
+    isTemplateVulnerable(templateName: string): boolean {
+      return this.vulnerableTemplateNames.includes(templateName);
     },
 
     collectTemplateNames(template: TemplateInfo): string[] {

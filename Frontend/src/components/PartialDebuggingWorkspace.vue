@@ -14,6 +14,7 @@
             :hovered-node-id="store.hoveredNodeId"
             :diagnostics="store.diagnostics"
             :linked-node-ids="sourceLinkedIds"
+            :mirrored-node-ids="sourceMirroredIds"
             @select="store.selectNode"
             @hover="store.hoveredNodeId = $event"
           />
@@ -27,6 +28,8 @@
             :hovered-node-id="store.hoveredNodeId"
             :diagnostics="store.diagnostics"
             :linked-node-ids="constraintLinkedIds"
+            :mirrored-node-ids="constraintMirroredIds"
+            :signal-role-overrides="sourceSignalRoles"
             @select="store.selectNode"
             @hover="store.hoveredNodeId = $event"
           />
@@ -44,11 +47,54 @@ import { usePartialDebuggingStore } from '@/stores/partialDebugging'
 
 const store = usePartialDebuggingStore()
 
+const sourceSignalRoles = computed(() => {
+  const roles = new Map<string, string>()
+  for (const node of store.sourceGraph?.nodes ?? []) {
+    if (node.kind !== 'signal' || !node.role) continue
+    const qualifiedName = node.qualifiedName ?? (node.componentPath && node.localName ? `${node.componentPath}.${node.localName}` : undefined)
+    if (qualifiedName) roles.set(qualifiedName, node.role)
+  }
+  return roles
+})
+
+const sourceSignalNames = computed(() => {
+  const names = new Map<string, string>()
+  for (const node of store.sourceGraph?.nodes ?? []) {
+    if (node.kind !== 'signal') continue
+    const qualifiedName = node.qualifiedName ?? (node.componentPath && node.localName ? `${node.componentPath}.${node.localName}` : undefined)
+    if (qualifiedName) names.set(node.id, qualifiedName)
+  }
+  return names
+})
+
+const constraintSignalNames = computed(() => new Map(
+  (store.activeConstraintGraph?.signals ?? []).map(signal => [signal.id, signal.qualifiedName]),
+))
+
+const sourceMirroredIds = computed(() => {
+  const ids = new Set<string>()
+  const selectedName = store.selectedNodeId ? constraintSignalNames.value.get(store.selectedNodeId) : undefined
+  if (!selectedName) return ids
+  for (const [nodeId, qualifiedName] of sourceSignalNames.value) {
+    if (qualifiedName === selectedName) ids.add(nodeId)
+  }
+  return ids
+})
+
+const constraintMirroredIds = computed(() => {
+  const ids = new Set<string>()
+  const selectedName = store.selectedNodeId ? sourceSignalNames.value.get(store.selectedNodeId) : undefined
+  if (!selectedName) return ids
+  for (const [nodeId, qualifiedName] of constraintSignalNames.value) {
+    if (qualifiedName === selectedName) ids.add(nodeId)
+  }
+  return ids
+})
+
 const sourceLinkedIds = computed(() => {
   const ids = new Set<string>()
   const selected = store.selectedNodeId
   if (!selected) return ids
-  if (selected.startsWith('signal:')) ids.add(selected)
   const graph = store.activeConstraintGraph
   if (selected.startsWith('constraint:')) {
     (graph?.adjacency[selected] ?? []).filter(id => id.startsWith('signal:')).forEach(id => ids.add(id))
@@ -61,7 +107,6 @@ const constraintLinkedIds = computed(() => {
   const ids = new Set<string>()
   const selected = store.selectedNodeId
   if (!selected) return ids
-  if (selected.startsWith('signal:')) ids.add(selected)
   const sourceLink = store.sourceToO0.find(link => link.sourceNodeId === selected)
   sourceLink?.constraintNodeIds.forEach(id => ids.add(id))
   return ids

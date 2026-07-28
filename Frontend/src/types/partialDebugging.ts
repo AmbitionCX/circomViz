@@ -43,16 +43,19 @@ export interface ConstraintNodeDto {
 export interface ConstraintSignalNodeDto {
   id: string; kind: 'signal'; signalId: number; witnessIndex: number; componentId: number; qualifiedName: string
   status: 'surviving' | 'substituted' | 'unused-or-unconstrained'; substitution?: LinearCombination
+  role?: 'input' | 'output' | 'intermediate' | 'synthetic'
+  mockSupplied?: boolean
 }
 export interface ConstraintEdgeDto { id: string; signalNodeId: string; constraintNodeId: string; port: 'A' | 'B' | 'C'; coefficient: string; displayCoefficient: string }
-export interface ConstraintGraphDto { level: OptimizationLevel; signals: ConstraintSignalNodeDto[]; constraints: ConstraintNodeDto[]; edges: ConstraintEdgeDto[]; adjacency: Record<string, string[]> }
+export interface MockBoundaryDto { id: string; outputSignalId: string; label: string }
+export interface ConstraintGraphDto { level: OptimizationLevel; signals: ConstraintSignalNodeDto[]; constraints: ConstraintNodeDto[]; edges: ConstraintEdgeDto[]; adjacency: Record<string, string[]>; mockBoundaries: MockBoundaryDto[] }
 export interface ProvenanceLink { sourceNodeId: string; constraintNodeIds: string[]; confidence: 'exact' | 'high' | 'medium' | 'low'; evidence: string[] }
 export interface GraphDiagnostic { id: string; type: string; severity: 'high' | 'medium' | 'low'; message: string; nodeIds: string[] }
 export interface PartialDebuggingBuildSummary {
   buildId: string
   compiler: { version: string; prime: string; actualOptimization?: OptimizationLevel }
   selectedComponentPath: string
-  mockManifest: { selectedRoot: string; mockedComponents: Array<{ originalComponentPath: string; templateName: string; replacementInputs: string[]; preservedOutputs: string[]; allowedChanges: string[] }> }
+  mockManifest: { selectedRoot: string; mocks: Array<{ instancePath: string; originalTemplate: string; mockedTemplate: string; boundaryInputs: string[]; boundaryOutputs: string[]; syntheticSignals: Array<{ path: string; role: 'root-mock-input' | 'mock-bridge'; forOutput: string }> }> }
   stats: { sourceSignals: number; sourceOperations: number; constraints: Record<OptimizationLevel, number>; survivingSignals: Record<OptimizationLevel, number>; substitutedSignals: Record<OptimizationLevel, number> }
   diagnostics: GraphDiagnostic[]
 }

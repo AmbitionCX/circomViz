@@ -107,8 +107,31 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
       const child = templates.get(component.templateName); if (!child) continue;
       const childEnv: CompileEnv = {};
       child.parameters.forEach((parameter, index) => { const value = component.arguments[index] ? evaluate(component.arguments[index], env) : undefined; if (value !== undefined) childEnv[parameter.name] = value; });
-      const childPath = `${instancePath}.${component.name}`; const childMocked = mockSet.has(component.templateName);
-      visitInstance(child, childPath, childEnv, childMocked); if (childMocked) addEdge(groupId, `component:${childPath}`, 'mock-boundary');
+      const childPath = `${instancePath}.${component.name}`;
+      const childGroupId = addNode({
+        id: `component:${childPath}`,
+        kind: 'component-group',
+        label: child.name,
+        templateName: child.name,
+        componentPath: childPath,
+        mocked: mockSet.has(component.templateName),
+        childNodeIds: [],
+        sourceSpan: at(component.line),
+      });
+      for (const signal of child.signals.filter((candidate) => candidate.kind === 'input' || candidate.kind === 'output')) {
+        const arraySize = signal.arraySizes?.length === 1 ? signal.arraySizes[0] : undefined;
+        const length = typeof arraySize === 'number' ? arraySize : arraySize ? evaluate(arraySize, childEnv) : undefined;
+        const names = length !== undefined && length <= 512
+          ? Array.from({ length }, (_, index) => `${component.name}.${signal.name}[${index}]`)
+          : [`${component.name}.${signal.name}`];
+        for (const name of names) {
+          const signalId = ensureSignal(name, 'intermediate');
+          const childGroup = nodes.find((node) => node.id === childGroupId);
+          if (childGroup?.childNodeIds && !childGroup.childNodeIds.includes(signalId)) childGroup.childNodeIds.push(signalId);
+          if (signal.kind === 'input') addEdge(signalId, childGroupId, 'component-input');
+          else addEdge(childGroupId, signalId, 'component-output');
+        }
+      }
     }
   };
   visitInstance(rootTemplate, 'main', Object.fromEntries(params.map((param) => [param.name, param.value])));
