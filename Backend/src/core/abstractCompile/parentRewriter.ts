@@ -56,6 +56,7 @@ interface InstanceInfo {
   isArrayElement: boolean;
   arrayName?: string;
   arrayIndex?: string;
+  arguments?: any[];
 }
 
 function escapeRegex(value: string): string {
@@ -85,6 +86,45 @@ function arraySizeToStr(size: any): string {
 
 function renderArraySizes(sizes: Array<number | string>): string {
   return sizes.map((size) => `[${size}]`).join('');
+}
+
+export function instantiateReplacementPlan(
+  plan: ChildReplacementPlan,
+  iface: TemplateInterface | undefined,
+  args: any[],
+): ChildReplacementPlan {
+  if (!iface || args.length === 0) return plan;
+
+  const bindings = new Map<string, string>();
+  iface.parameters.forEach((parameter, index) => {
+    const argument = args[index];
+    if (!argument) return;
+    const rendered = exprToStr(argument);
+    if (!rendered) return;
+    const replacement = argument.type === 'Identifier' || argument.type === 'Literal'
+      ? rendered
+      : `(${rendered})`;
+    bindings.set(parameter.name, replacement);
+  });
+  if (bindings.size === 0) return plan;
+
+  const resolveSizes = (sizes: Array<number | string>) => sizes.map((size) => {
+    if (typeof size === 'number') return size;
+    return size.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (identifier) =>
+      bindings.get(identifier) ?? identifier);
+  });
+
+  return {
+    ...plan,
+    syntheticInputs: plan.syntheticInputs.map((input) => ({
+      ...input,
+      arraySizes: resolveSizes(input.arraySizes),
+    })),
+    outputs: plan.outputs.map((output) => ({
+      ...output,
+      arraySizes: resolveSizes(output.arraySizes),
+    })),
+  };
 }
 
 function defaultMockPlan(iface: TemplateInterface): ChildReplacementPlan {
@@ -165,6 +205,11 @@ export class ParentRewriter {
         plan = defaultMockPlan(iface);
       }
       if (!plan) continue;
+      plan = instantiateReplacementPlan(
+        plan,
+        this.interfaceMap.get(inst.templateName),
+        inst.arguments ?? [],
+      );
 
       const componentName = inst.isArrayElement ? inst.arrayName! : inst.name;
       const componentRef = inst.isArrayElement ? `${inst.arrayName}[${inst.arrayIndex}]` : inst.name;
@@ -389,13 +434,25 @@ export class ParentRewriter {
     };
     for (const component of def.components || []) {
       if (component.type === 'ComponentInstantiationNode' && !component.isAnonymous) {
-        add({ name: component.name, templateName: component.templateName, line: component.line, isArrayElement: false });
+        add({
+          name: component.name,
+          templateName: component.templateName,
+          line: component.line,
+          isArrayElement: false,
+          arguments: component.arguments,
+        });
       }
     }
     const visit = (statement: any) => {
       if (!statement) return;
       if (statement.type === 'ComponentInstantiationNode' && !statement.isAnonymous) {
-        add({ name: statement.name, templateName: statement.templateName, line: statement.line, isArrayElement: false });
+        add({
+          name: statement.name,
+          templateName: statement.templateName,
+          line: statement.line,
+          isArrayElement: false,
+          arguments: statement.arguments,
+        });
       }
       if (statement.type === 'Assignment') {
         const left = statement.left;
@@ -408,10 +465,17 @@ export class ParentRewriter {
             isArrayElement: true,
             arrayName: left.array.name,
             arrayIndex: exprToStr(left.index),
+            arguments: right.arguments,
           });
         }
         if (left?.type === 'Identifier' && componentVars.has(left.name) && right?.type === 'FunctionCall') {
-          add({ name: left.name, templateName: right.function, line: statement.line, isArrayElement: false });
+          add({
+            name: left.name,
+            templateName: right.function,
+            line: statement.line,
+            isArrayElement: false,
+            arguments: right.arguments,
+          });
         }
       }
       if (Array.isArray(statement.body)) statement.body.forEach(visit);

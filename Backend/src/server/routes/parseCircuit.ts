@@ -18,6 +18,7 @@ export async function parseCircuitHandler(
 ) {
   try {
     const { repo, entry, rootComponent = 'main', rootArguments = [] } = request.body;
+    const startedAt = Date.now();
 
     logger.info(`Parsing circuit: repo=${repo}, entry=${entry}, rootComponent=${rootComponent}`);
 
@@ -67,24 +68,19 @@ export async function parseCircuitHandler(
 
       // read file content and parse
       try {
-        logger.info(`Parsing file: ${normalizedPath}`);
         const parsedFile = await projectLoader.parseFile(currentFile.path);
         parsedFiles.set(normalizedPath, parsedFile);
-        logger.info(`Parsed file ${normalizedPath}: ${parsedFile.templates.length} templates, ${parsedFile.components.length} components, ${parsedFile.includes.length} includes`);
 
         dependencyGraph.addFile(normalizedPath);
 
         // Recursive parsing include files
         for (const include of parsedFile.includes) {
-          logger.info(`Resolving include: ${include.path} from ${normalizedPath}`);
           includeResolver.setCurrentFile(normalizedPath);
           const resolvedPath = await includeResolver.resolveInclude(include);
 
           if (resolvedPath) {
             const normalizedIncludePath = resolvedPath.replace(/\\/g, '/');
             dependencyGraph.addDependency(normalizedPath, normalizedIncludePath);
-            logger.info(`Resolved include: ${include.path} -> ${normalizedIncludePath}`);
-
             if (!processedPaths.has(normalizedIncludePath)) {
               const content = await (await import('fs/promises')).readFile(resolvedPath, 'utf-8');
               filesToProcess.push({
@@ -92,14 +88,13 @@ export async function parseCircuitHandler(
                 content,
                 relativePath: include.path
               });
-              logger.info(`Added to processing queue: ${normalizedIncludePath}`);
             }
           } else {
             logger.warn(`Failed to resolve include: ${include.path}`);
           }
         }
       } catch (error: any) {
-        logger.error(`Failed to parse file ${normalizedPath}: ${error.message}`);
+        logger.warn(`Skipped unreadable circuit file: path=${normalizedPath}, error=${error.message}`);
         errorCollector.error(`Failed to parse file: ${error.message}`, currentFile.path);
       }
     }
@@ -122,8 +117,6 @@ export async function parseCircuitHandler(
     }
 
     const rootTemplate = findTemplate(parsedFiles, rootComponent);
-    logger.info(`Root template search: ${rootComponent}, found: ${rootTemplate ? 'yes' : 'no'}`);
-
     if (!rootTemplate) {
       const allTemplates: string[] = [];
       for (const [path, file] of parsedFiles.entries()) {
@@ -134,7 +127,6 @@ export async function parseCircuitHandler(
           allTemplates.push(`${path}: component ${component.name} = ${component.templateName}`);
         }
       }
-      logger.info(`All templates and components found: ${JSON.stringify(allTemplates, null, 2)}`);
       const rootError = `Requested root component '${rootComponent}' was not found. Available templates/components: ${allTemplates.join('; ') || '(none)'}`;
       return reply.code(400).send({
         error: rootError,
@@ -199,12 +191,7 @@ export async function parseCircuitHandler(
       })
     };
 
-    // save the response
-    logResponseToDisk(response, repo, entry).catch(err => {
-      logger.error(`Background logging failed: ${err.message}`);
-    });
-
-    logger.info(`Successfully parsed circuit: ${fileSummaries.length} files, ${totalTemplates} templates`);
+    logger.info(`Circuit parsed: root=${rootComponent}, files=${fileSummaries.length}, templates=${totalTemplates}, durationMs=${Date.now() - startedAt}`);
     reply.send(response); // Return parsing results to Frontend
 
   } catch (error: any) {
@@ -217,12 +204,7 @@ export async function parseCircuitHandler(
 }
 
 function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
-  // CRITICAL: Log the actual name being searched for (including undefined)
-  logger.debug(`findTemplate searching for: ${name} (type: ${typeof name})`);
-  logger.debug(`Parsed files count: ${parsedFiles.size}`);
-  
   if (!name || name === undefined || name === null) {
-    logger.error(`[findTemplate ERROR] Attempting to find template with undefined/null name`);
     return null;
   }
   
@@ -232,19 +214,16 @@ function findTemplate(parsedFiles: Map<string, any>, name: string): any | null {
     // First try to find a template with this name
     const template = file.templates.find((t: any) => t.name === name);
     if (template) {
-      logger.debug(`Found template: ${name} in ${filePath}`);
       return template;
     }
 
     // If not found as template, try to find a component instantiation
     const component = file.components.find((c: any) => c.name === name);
     if (component) {
-      logger.debug(`Found component: ${name} (templateName: ${component.templateName}) in ${filePath}`);
       return component;
     }
   }
 
-  logger.warn(`Template ${name} not found in any parsed file`);
   return null;
 }
 
@@ -459,6 +438,6 @@ async function logResponseToDisk(
     await writeFile(filepath, JSON.stringify(response, null, 2), 'utf-8');
     
   } catch (err) {
-    console.error(`Failed to write response log: ${err instanceof Error ? err.message : err}`);
+    logger.error(`Failed to write response log: ${err instanceof Error ? err.message : err}`);
   }
 }

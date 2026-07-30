@@ -50,13 +50,8 @@ export async function generateWrapperHandler(
       .replace(/[_]+/g, '_')
       || 'template';
 
-    logger.info(`Generating wrapper for template: ${templateName}`);
-    logger.info(`Parameters: ${JSON.stringify(params)}`);
-    logger.info(`Public params: ${publicParams.join(', ')}`);
-    logger.info(`Public signals: ${publicSignals.join(', ')}`);
-    if (confirmedTemplateNames.length > 0) {
-      logger.info(`Abstract partial compile: mode=${mode}, confirmed=${confirmedTemplateNames.join(', ')}`);
-    }
+    const startedAt = Date.now();
+    logger.info(`Partial compile started: template=${templateName}, mode=${mode}, params=${params.length}, confirmed=${confirmedTemplateNames.length}`);
 
     const errorCollector = new ErrorCollector();
     const projectLoader = new ProjectLoader();
@@ -100,7 +95,6 @@ export async function generateWrapperHandler(
       processedPaths.add(normalizedPath);
 
       try {
-        logger.info(`Parsing file: ${normalizedPath}`);
         const parsedFile = await projectLoader.parseFile(currentFile.path);
         parsedFiles.set(normalizedPath, parsedFile);
 
@@ -125,7 +119,7 @@ export async function generateWrapperHandler(
           }
         }
       } catch (error: any) {
-        logger.error(`Failed to parse file ${normalizedPath}: ${error.message}`);
+        logger.warn(`Skipped unreadable circuit file: path=${normalizedPath}, error=${error.message}`);
       }
     }
 
@@ -137,8 +131,6 @@ export async function generateWrapperHandler(
       });
     }
 
-    logger.info(`Found template definition in: ${templateDef.filePath || 'unknown'}`);
-
     const templateDir = templateDef.filePath ? dirname(templateDef.filePath) : '';
     const includePaths: string[] = [];
     if (repoPath && !includePaths.includes(`${repoPath}/node_modules`)) {
@@ -147,8 +139,6 @@ export async function generateWrapperHandler(
     if (templateDir && !includePaths.includes(templateDir)) {
       includePaths.push(templateDir);
     }
-    logger.info(`Include paths: ${includePaths.join(', ')}`);
-
     // --- Generate standalone origin and effective mocked source ---
 
     const standaloneSource = buildStandaloneTemplateSource(parsedFiles, templateDef.template);
@@ -208,9 +198,6 @@ export async function generateWrapperHandler(
       fs.writeFile(originFilePath, originCode, 'utf-8'),
       fs.writeFile(mockedFilePath, mockedCode, 'utf-8'),
     ]);
-    logger.info(`Selected template source written to: ${originFilePath}`);
-    logger.info(`Effective mocked source written to: ${mockedFilePath}`);
-
     const mockedParsedFile = await projectLoader.parseFile(mockedFilePath);
     parsedFiles.set(mockedFilePath.replace(/\\/g, '/'), mockedParsedFile);
     const effectiveRootTemplate = mockedParsedFile.templates.find((template: any) => template.name === effectiveTemplateName) ?? templateDef.template;
@@ -221,7 +208,7 @@ export async function generateWrapperHandler(
     const primaryArtifacts = getCircomArtifactPaths(primaryWrapperPath, primaryDir);
     const primarySymPath = primaryArtifacts.symPath;
     const primaryConstraintsJsonPath = primaryArtifacts.constraintsJsonPath;
-    logger.info(`Mocked O0 compilation ${primaryDebugResult.success ? 'succeeded' : 'failed'}`);
+    if (!primaryDebugResult.success) logger.warn(`Mocked O0 compilation failed: template=${templateName}`);
     // --- Resolve primary R1CS for diagram ---
 
     let r1csConstraints: HumanReadableConstraint[] = [];
@@ -233,7 +220,6 @@ export async function generateWrapperHandler(
         const payload = await resolveR1csDiagramPayload(primarySymPath, primaryConstraintsJsonPath);
         r1csConstraints = payload.r1csConstraints ?? [];
         r1csEquationText = payload.r1csEquationText ?? '';
-        logger.info(`Resolved primary R1CS for diagram: ${r1csConstraints.length} constraints`);
       } catch (error: any) {
         logger.warn(`Failed to resolve primary R1CS for diagram: ${error.message}`);
       }
@@ -277,6 +263,7 @@ export async function generateWrapperHandler(
       partialDebugging,
     };
 
+    logger.info(`Partial compile completed: template=${templateName}, compilation=${primaryDebugResult.success ? 'success' : 'failed'}, constraints=${r1csConstraints.length}, mockedChildren=${mockedChildren.length}, durationMs=${Date.now() - startedAt}`);
     reply.send(results);
 
   } catch (error: any) {
@@ -300,4 +287,3 @@ function findTemplateDefinition(parsedFiles: Map<string, any>, templateName: str
   }
   return null;
 }
-

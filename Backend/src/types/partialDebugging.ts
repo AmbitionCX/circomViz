@@ -3,7 +3,7 @@ export type OptimizationLevel = 'O0';
 export interface SourceSpan { file: string; startLine: number; endLine: number }
 export interface SourceGraphNode {
   id: string;
-  kind: 'signal' | 'constant' | 'operation' | 'assignment' | 'source-constraint' | 'component-group';
+  kind: 'signal' | 'constant' | 'operation' | 'ternary-condition' | 'ternary-result' | 'assignment' | 'source-constraint' | 'component-group';
   label: string;
   qualifiedName?: string;
   localName?: string;
@@ -24,6 +24,7 @@ export interface SourceGraphEdge {
   kind: 'data' | 'result' | 'assignment' | 'constraint-relation' | 'component-input' | 'component-output' | 'mock-boundary' | 'control-dependency';
   operandIndex?: number;
   operator?: '<==' | '==>' | '<--' | '-->' | '===';
+  label?: string;
 }
 export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEdge[]; adjacency: Record<string, string[]> }
 

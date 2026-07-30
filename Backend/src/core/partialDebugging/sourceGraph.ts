@@ -48,7 +48,7 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
   const templates = new Map<string, TemplateDefinitionNode>(); const mockSet = new Set(mockedTemplateNames); let sequence = 0;
   for (const file of parsedFiles.values()) for (const template of file.templates) templates.set(template.name, template);
   const addNode = (node: SourceGraphNode) => { if (!knownNodes.has(node.id)) { knownNodes.add(node.id); nodes.push(node); } return node.id; };
-  const addEdge = (source: string, target: string, kind: SourceGraphEdge['kind'], operandIndex?: number, operator?: SourceGraphEdge['operator']) => edges.push({ id: `source-edge:${sequence++}`, source, target, kind, operandIndex, operator });
+  const addEdge = (source: string, target: string, kind: SourceGraphEdge['kind'], operandIndex?: number, operator?: SourceGraphEdge['operator'], label?: string) => edges.push({ id: `source-edge:${sequence++}`, source, target, kind, operandIndex, operator, label });
 
   const visitInstance = (definition: TemplateDefinitionNode, instancePath: string, env: CompileEnv, mocked = false) => {
     const at = (line: number) => ({ file: definition.sourceFile, startLine: line, endLine: line });
@@ -66,6 +66,47 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
       if (length !== undefined && length <= 512) for (let index = 0; index < length; index++) ensureSignal(`${signal.name}[${index}]`, role);
       else ensureSignal(signal.name, role);
     }
+    const collectSignalReferences = (expr: ExpressionNode): string[] => {
+      if (expr.type === 'Identifier' || expr.type === 'ArrayAccess' || expr.type === 'MemberAccess') return [ensureSignal(printExpression(expr))];
+      if (expr.type === 'Literal') return [];
+      if (expr.type === 'BinaryOp') return [...collectSignalReferences(expr.left), ...collectSignalReferences(expr.right)];
+      if (expr.type === 'UnaryOp') return collectSignalReferences(expr.operand);
+      if (expr.type === 'Ternary') return [...collectSignalReferences(expr.condition), ...collectSignalReferences(expr.thenExpr), ...collectSignalReferences(expr.elseExpr)];
+      if (expr.type === 'FunctionCall') return expr.arguments.flatMap(collectSignalReferences);
+      if (expr.type === 'ComponentCall') return [...expr.templateArgs, ...expr.callArgs].flatMap(collectSignalReferences);
+      if (expr.type === 'ArrayLiteral' || expr.type === 'Tuple') return expr.elements.flatMap(collectSignalReferences);
+      return [];
+    };
+    const lowerTernary = (expr: Extract<ExpressionNode, { type: 'Ternary' }>) => {
+      const conditionId = addNode({
+        id: `ternary-condition:${instancePath}:${expr.line}:${sequence++}`,
+        kind: 'ternary-condition',
+        label: printExpression(expr.condition),
+        operation: 'ternary-condition',
+        componentPath: instancePath,
+        sourceSpan: at(expr.line),
+      });
+      for (const reference of new Set(collectSignalReferences(expr.condition))) addEdge(reference, conditionId, 'data');
+      const thenId = addNode({
+        id: `ternary-result:${instancePath}:${expr.line}:then:${sequence++}`,
+        kind: 'ternary-result',
+        label: printExpression(expr.thenExpr),
+        operation: 'ternary-result',
+        componentPath: instancePath,
+        sourceSpan: at(expr.line),
+      });
+      const elseId = addNode({
+        id: `ternary-result:${instancePath}:${expr.line}:else:${sequence++}`,
+        kind: 'ternary-result',
+        label: printExpression(expr.elseExpr),
+        operation: 'ternary-result',
+        componentPath: instancePath,
+        sourceSpan: at(expr.line),
+      });
+      addEdge(conditionId, thenId, 'control-dependency', undefined, undefined, 'Yes');
+      addEdge(conditionId, elseId, 'control-dependency', undefined, undefined, 'No');
+      return { conditionId, thenId, elseId };
+    };
     const lower = (expr: ExpressionNode): string => {
       if (expr.type === 'Identifier' || expr.type === 'ArrayAccess' || expr.type === 'MemberAccess') return ensureSignal(printExpression(expr));
       if (expr.type === 'Literal') return addNode({ id: `constant:${String(expr.value)}`, kind: 'constant', label: String(expr.value) });
@@ -82,15 +123,19 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
     const visitStatements = (statements: StatementNode[], localEnv: CompileEnv) => {
       for (const statement of statements) {
         if (statement.type === 'Assignment' && (statement.operator === '<==' || statement.operator === '==>' || statement.operator === '<--' || statement.operator === '-->' || statement.operator === '===')) {
-          const left = lower(statement.left); const right = lower(statement.right);
+          const left = lower(statement.left);
+          const ternary = statement.operator !== '===' && statement.right.type === 'Ternary' ? lowerTernary(statement.right) : undefined;
+          const right = ternary ? undefined : lower(statement.right);
           if (statement.operator === '===') {
             const id = addNode({ id: `source-constraint:${instancePath}:${statement.line}:${sequence++}`, kind: 'source-constraint', label: '===', operator: '===', generatesConstraint: true, sourceSpan: at(statement.line) });
-            addEdge(left, id, 'constraint-relation', undefined, '==='); addEdge(right, id, 'constraint-relation', undefined, '===');
+            addEdge(left, id, 'constraint-relation', undefined, '==='); addEdge(right!, id, 'constraint-relation', undefined, '===');
           } else {
             const constrained = statement.operator === '<==' || statement.operator === '==>';
             const id = addNode({ id: `assignment:${instancePath}:${statement.line}:${sequence++}`, kind: 'assignment', label: statement.operator, operator: statement.operator, generatesWitness: true, generatesConstraint: constrained, dangerLevel: constrained ? 'safe' : 'review', sourceSpan: at(statement.line) });
             const reverse = statement.operator === '==>' || statement.operator === '-->';
-            addEdge(reverse ? left : right, id, 'data', undefined, statement.operator); addEdge(id, reverse ? right : left, 'assignment', undefined, statement.operator);
+            const sources = ternary ? [ternary.thenId, ternary.elseId] : [reverse ? left : right!];
+            for (const source of sources) addEdge(source, id, 'data', undefined, statement.operator);
+            addEdge(id, reverse ? right! : left, 'assignment', undefined, statement.operator);
           }
         } else if (statement.type === 'BlockStatement') visitStatements(statement.body, localEnv);
         else if (statement.type === 'IfStatement') {

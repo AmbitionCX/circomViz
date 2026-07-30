@@ -1,6 +1,7 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { Logger } from '../../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +11,7 @@ dotenv.config({ path: __rootname + '/.env' });
 const LLM_API_URL = process.env.LLM_API_URL || '';
 const LLM_API_TOKEN = process.env.LLM_API_TOKEN || '';
 const LLM_MODEL = process.env.LLM_MODEL || 'glm-5-turbo';
+const logger = new Logger('LLM');
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
@@ -53,8 +55,8 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
     temperature: 0.3,
   };
 
-  console.log(`[LLM] Sending request to ${LLM_API_URL}, model=${LLM_MODEL}, userMessage length=${userMessage.length}`);
   const startTime = Date.now();
+  logger.info(`Request started: model=${LLM_MODEL}`);
 
   try {
     const response = await fetch(LLM_API_URL, {
@@ -68,11 +70,11 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
     });
 
     const elapsed = Date.now() - startTime;
-    console.log(`[LLM] Response status=${response.status} in ${elapsed}ms`);
+    logger.debug(`Response received: status=${response.status}, durationMs=${elapsed}`);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[LLM] API error response: ${errorText.substring(0, 500)}`);
+      logger.error(`Request failed: status=${response.status}, durationMs=${elapsed}`);
       return {
         success: false,
         error: `LLM API returned ${response.status}: ${errorText}`,
@@ -83,14 +85,14 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
 
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
-      console.error(`[LLM] Empty response, full data:`, JSON.stringify(data).substring(0, 500));
+      logger.error(`Malformed response: model=${LLM_MODEL}, durationMs=${elapsed}`);
       return {
         success: false,
         error: 'LLM API returned empty or malformed response',
       };
     }
 
-    console.log(`[LLM] Success in ${elapsed}ms, content length=${content.length}, usage=`, data.usage);
+    logger.info(`Request completed: model=${LLM_MODEL}, durationMs=${elapsed}, tokens=${data.usage?.total_tokens ?? 'unknown'}`);
     return {
       success: true,
       content,
@@ -104,7 +106,7 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
     };
   } catch (error: any) {
     const elapsed = Date.now() - startTime;
-    console.error(`[LLM] Error after ${elapsed}ms: ${error.name}: ${error.message}`);
+    logger.error(`Request failed: durationMs=${elapsed}, error=${error.name}: ${error.message}`);
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
       return { success: false, error: 'LLM request timed out (120s)' };
     }

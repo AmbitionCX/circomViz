@@ -4,7 +4,7 @@ export type ConstraintRenderMode = 'intuitive' | 'exact'
 export interface SourceSpan { file: string; startLine: number; endLine: number }
 export interface SourceGraphNode {
   id: string
-  kind: 'signal' | 'constant' | 'operation' | 'assignment' | 'source-constraint' | 'component-group'
+  kind: 'signal' | 'constant' | 'operation' | 'ternary-condition' | 'ternary-result' | 'assignment' | 'source-constraint' | 'component-group'
   label: string
   qualifiedName?: string
   localName?: string
@@ -20,7 +20,7 @@ export interface SourceGraphNode {
   childNodeIds?: string[]
   sourceSpan?: SourceSpan
 }
-export interface SourceGraphEdge { id: string; source: string; target: string; kind: string; operandIndex?: number; operator?: string }
+export interface SourceGraphEdge { id: string; source: string; target: string; kind: string; operandIndex?: number; operator?: string; label?: string }
 export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEdge[]; adjacency: Record<string, string[]> }
 
 export interface LinearCombinationTerm { signalId: number; coefficient: string; displayCoefficient: string }

@@ -499,8 +499,6 @@ export class CircomParser {
     
     // CRITICAL: Validate templateName is not undefined
     if (!templateName || templateName === undefined) {
-      console.error(`[Parser ERROR] templateName is undefined after consumeIdentifier() at line ${line}`);
-      console.error(`[Parser ERROR] Component name: ${name}, Next token: ${this.peek().type}:${this.peek().value}`);
       throw new Error(`Failed to parse template name at line ${line}: Expected template name after '='`);
     }
 

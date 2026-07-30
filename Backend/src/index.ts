@@ -14,11 +14,13 @@ import { generateWrapperHandler } from './server/routes/generateWrapper.js';
 import { fileContentHandler } from './server/routes/fileContent.js';
 import { generateContractHandler } from './server/routes/generateContract.js';
 import { partialDebuggingConstraintGraphHandler, partialDebuggingSliceHandler, partialDebuggingSourceGraphHandler } from './server/routes/partialDebugging.js';
+import { Logger } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../..');
 const frontendDist = path.join(repoRoot, 'Frontend/dist');
+const logger = new Logger('Server');
 
 const server = fastify();
 server.register(cors, {
@@ -40,8 +42,10 @@ if (fs.existsSync(frontendDist)) {
   });
 }
 
-server.setErrorHandler((error, _, reply) => {
-  reply.status(500).send({ error: error });
+server.setErrorHandler((error, request, reply) => {
+  const message = error instanceof Error ? error.message : String(error);
+  logger.error(`${request.method} ${request.url} failed: ${message}`);
+  reply.status(500).send({ error: message });
 });
 
 server.get('/submodules', (_, reply) => {
@@ -105,8 +109,8 @@ server.post('/generate_contract', generateContractHandler);
 
 server.listen({ port: 8080 }, (err, address) => {
   if (err) {
-    console.error(err);
+    logger.error(`Failed to start server: ${err.message}`);
     process.exit(1);
   }
-  console.log(`Server listening at ${address}`);
+  logger.info(`Listening at ${address}`);
 });

@@ -1,5 +1,8 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { Logger } from './logger.js';
+
+const logger = new Logger('CompilationLog');
 
 export interface CompilationLog {
   timestamp: string;
@@ -24,7 +27,7 @@ class CompilationLogger {
     try {
       await fs.mkdir(this.logDir, { recursive: true });
     } catch (error) {
-      console.error(`Failed to create log directory: ${error instanceof Error ? error.message : error}`);
+      logger.error(`Failed to create log directory: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -39,7 +42,7 @@ class CompilationLogger {
     try {
       await fs.writeFile(filepath, JSON.stringify(log, null, 2), 'utf-8');
     } catch (error) {
-      console.error(`Failed to write compilation log: ${error instanceof Error ? error.message : error}`);
+      logger.error(`Failed to write compilation log: ${error instanceof Error ? error.message : error}`);
     }
   }
 }

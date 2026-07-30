@@ -8,11 +8,19 @@ export enum LogLevel {
   NONE = 4
 }
 
+function configuredLogLevel(): LogLevel {
+  const value = process.env.LOG_LEVEL?.trim().toUpperCase();
+  if (value && value in LogLevel && typeof LogLevel[value as keyof typeof LogLevel] === 'number') {
+    return LogLevel[value as keyof typeof LogLevel] as LogLevel;
+  }
+  return LogLevel.INFO;
+}
+
 export class Logger {
   private level: LogLevel;
   private context: string;
 
-  constructor(context: string, level: LogLevel = LogLevel.INFO) {
+  constructor(context: string, level: LogLevel = configuredLogLevel()) {
     this.context = context;
     this.level = level;
   }
@@ -50,4 +58,4 @@ export class Logger {
   }
 }
 
-export const logger = new Logger('CircomParser');
+export const logger = new Logger('Backend');

@@ -81,8 +81,10 @@ export class AbstractWrapperGenerator {
       visiting.add(definition.name);
 
       const replacementPlans = new Map<string, ChildReplacementPlan>();
+      const childInterfaces = new Map<string, TemplateInterface>();
       for (const childName of this.collectReferencedTemplateNames(definition)) {
         const childInterface = this.extractor.extract(childName);
+        if (childInterface) childInterfaces.set(childName, childInterface);
         if (confirmSet.has(childName)) {
           const mock = ensureMock(childName);
           if (!mock) {
@@ -129,7 +131,7 @@ export class AbstractWrapperGenerator {
         return null;
       }
 
-      const rewriter = new ParentRewriter(new Set(), new Map(), { partialSuffix, replacementPlans });
+      const rewriter = new ParentRewriter(new Set(), childInterfaces, { partialSuffix, replacementPlans });
       const rewritten = rewriter.rewrite(definition, this.getTemplateSource(definition));
       validatorWarnings.push(...rewritten.validatorWarnings);
       rewritten.unmockedInstances.forEach((instance) => unmockedChildren.add(instance.templateName));

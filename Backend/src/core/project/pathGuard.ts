@@ -49,7 +49,7 @@ export class PathGuard {
     this.mockedFilesRoot = path.resolve(this.backendRoot, 'mockedFiles');
     this.artifactRoots = [this.compilationsRoot, this.mockedFilesRoot];
 
-    logger.info(`PathGuard initialized: backendRoot=${this.backendRoot}, submodulesRoot=${this.submodulesRoot}, toyDemosRoot=${this.toyDemosRoot}`);
+    logger.debug(`PathGuard initialized: backendRoot=${this.backendRoot}, submodulesRoot=${this.submodulesRoot}, toyDemosRoot=${this.toyDemosRoot}`);
   }
 
   private isSubPath(candidate: string, base: string): boolean {
@@ -155,7 +155,7 @@ export class PathGuard {
       };
     }
 
-    logger.info(`validateRepoPath: repoName=${repoName}, repoPath=${repoPath}, exists=true`);
+    logger.debug(`Validated repository path: repoName=${repoName}, repoPath=${repoPath}`);
     return {
       valid: true,
       path: repoPath,
@@ -369,12 +369,12 @@ export class PathGuard {
       return parentCircomlibPath;
     }
 
-    logger.warn(`circomlib not found at any of these locations:`);
-    logger.warn(`  - Local: ${localCircomlibPath}`);
-    if (workspaceRoot) {
-      logger.warn(`  - Workspace root: ${path.join(workspaceRoot, 'node_modules', 'circomlib', subPath)}`);
-    }
-    logger.warn(`  - Parent: ${parentCircomlibPath}`);
+    const searchedPaths = [
+      localCircomlibPath,
+      workspaceRoot ? path.join(workspaceRoot, 'node_modules', 'circomlib', subPath) : undefined,
+      parentCircomlibPath,
+    ].filter(Boolean);
+    logger.warn(`Unable to resolve circomlib/${subPath}; searched ${searchedPaths.join(', ')}`);
 
     return null;
   }

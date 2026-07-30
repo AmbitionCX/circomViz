@@ -17,6 +17,7 @@
             :mirrored-node-ids="sourceMirroredIds"
             @select="store.selectNode"
             @hover="store.hoveredNodeId = $event"
+            @navigate-signal="navigateToFileStructureSignal"
           />
         </el-col>
         <el-col :xs="24" :sm="12">
@@ -32,6 +33,7 @@
             :signal-role-overrides="sourceSignalRoles"
             @select="store.selectNode"
             @hover="store.hoveredNodeId = $event"
+            @navigate-signal="navigateToFileStructureSignal"
           />
         </el-col>
       </el-row>
@@ -44,8 +46,51 @@ import { computed } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import PartialDebuggingGraph from './PartialDebuggingGraph.vue'
 import { usePartialDebuggingStore } from '@/stores/partialDebugging'
+import { useCircuitStore } from '@/stores/circuit'
+import type { TemplateInfo } from '@/types/circuitTypes'
 
 const store = usePartialDebuggingStore()
+const circuitStore = useCircuitStore()
+
+const findTemplateSourceFile = (templateName: string) => {
+  const root = circuitStore.parseData.tree
+  if (!root) return undefined
+  const queue: TemplateInfo[] = [root]
+  const visited = new Set<TemplateInfo>()
+  while (queue.length) {
+    const template = queue.shift()!
+    if (visited.has(template)) continue
+    visited.add(template)
+    if (template.templateName === templateName) return template.sourceFile
+    for (const component of template.components) {
+      if (component.template) queue.push(component.template)
+    }
+  }
+  return undefined
+}
+
+const navigateToFileStructureSignal = (nodeId: string) => {
+  const sourceNodes = store.sourceGraph?.nodes ?? []
+  const sourceSignal = sourceNodes.find(node => node.id === nodeId && node.kind === 'signal')
+  const constraintSignal = store.activeConstraintGraph?.signals.find(signal => signal.id === nodeId)
+  const qualifiedName = sourceSignal?.qualifiedName ?? constraintSignal?.qualifiedName
+  if (!qualifiedName) return
+
+  const owner = sourceNodes
+    .filter(node => node.kind === 'component-group' && node.componentPath && node.templateName)
+    .filter(node => qualifiedName.startsWith(`${node.componentPath}.`))
+    .sort((left, right) => (right.componentPath?.length ?? 0) - (left.componentPath?.length ?? 0))[0]
+  if (!owner?.componentPath || !owner.templateName) return
+
+  const declaredSignalName = qualifiedName
+    .slice(owner.componentPath.length + 1)
+    .replace(/\[.*$/, '')
+  if (!declaredSignalName || declaredSignalName.includes('.')) return
+
+  const sourceFile = findTemplateSourceFile(owner.templateName)
+    ?? (owner.componentPath === 'main' ? sourceSignal?.sourceSpan?.file : undefined)
+  circuitStore.highlightSignal(sourceFile, owner.templateName, declaredSignalName)
+}
 
 const sourceSignalRoles = computed(() => {
   const roles = new Map<string, string>()

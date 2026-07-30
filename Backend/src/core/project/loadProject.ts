@@ -79,10 +79,7 @@ export class ProjectLoader {
       } else if (node.type === 'ComponentInstantiationNode') {
         // CRITICAL: Validate templateName field exists
         if (!node.templateName || node.templateName === undefined) {
-          console.error(`[Parser VALIDATION ERROR] ComponentInstantiationNode has undefined templateName at line ${node.line}`);
-          console.error(`[Parser VALIDATION ERROR] Component name: ${node.name}`);
-          console.error(`[Parser VALIDATION ERROR] File: ${filePath}`);
-          console.error(`[Parser VALIDATION ERROR] Full node structure: ${JSON.stringify(node, null, 2)}`);
+          logger.error(`Invalid component instantiation: file=${filePath}, line=${node.line}, component=${node.name}, templateName is missing`);
         }
         components.push(node);
       } else if ((node as any).type === 'ComponentArrayInit') {
@@ -157,3 +154,4 @@ export class ProjectLoader {
     this.parsedFiles.clear();
   }
 }
+import { logger } from '../../utils/logger.js';

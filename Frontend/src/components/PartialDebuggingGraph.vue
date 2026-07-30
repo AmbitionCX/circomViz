@@ -23,6 +23,10 @@
           <span class="child-template-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Child template</span>
         </div>
+        <div v-if="graphKind === 'source'" class="flex items-center gap-2">
+          <span class="ternary-legend-diamond inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Ternary operator</span>
+        </div>
         <div v-else class="flex items-center gap-2">
           <span class="mock-boundary-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Mock-supplied output</span>
@@ -60,18 +64,24 @@
             :key="`${edge.id}:label`"
             :x="edgeLabelPosition(edge).x"
             :y="edgeLabelPosition(edge).y"
-            class="edge-label"
+            :class="['edge-label', edge.kind, edge.operandRole]"
           >{{ edge.label }}</text>
           <g
             v-for="edge in outputOperatorEdges"
             :key="`${edge.id}:operator`"
             :transform="`translate(${edgeMidpoint(edge).x},${edgeMidpoint(edge).y})`"
-            :class="['output-operator', { active: hoveredEdgeId === edge.id }]"
+            :class="['output-operator', edge.kind, { active: hoveredEdgeId === edge.id }]"
             @mouseenter="hoveredEdgeId = edge.id"
             @mouseleave="hoveredEdgeId = null"
           >
-            <rect x="-20" y="-11" width="40" height="22" rx="10" />
-            <text text-anchor="middle" dy="4">{{ outputOperatorLabel(edge.label) }}</text>
+            <rect
+              :x="edge.kind === 'constraint-equality' ? -27 : -20"
+              :y="edge.kind === 'constraint-equality' ? -16 : -11"
+              :width="edge.kind === 'constraint-equality' ? 54 : 40"
+              :height="edge.kind === 'constraint-equality' ? 32 : 22"
+              :rx="edge.kind === 'constraint-equality' ? 16 : 10"
+            />
+            <text text-anchor="middle" :dy="edge.kind === 'constraint-equality' ? 6 : 4">{{ outputOperatorLabel(edge.label) }}</text>
           </g>
         </g>
 
@@ -83,6 +93,7 @@
           tabindex="0"
           role="button"
           @click.stop="$emit('select', nodeReferenceId(node))"
+          @dblclick.stop="node.kind === 'signal' && $emit('navigate-signal', nodeReferenceId(node))"
           @mouseenter="$emit('hover', node.id)"
           @focus="$emit('hover', node.id)"
         >
@@ -94,11 +105,17 @@
               fill="#333333"
             />
             <path
+              v-else-if="node.label === '-'"
+              d="M511.45 1024C228.987 1024 0 794.749 0 512.006 0 229.251 228.987 0 511.45 0c282.466 0 511.482 229.251 511.482 512.006C1022.932 794.75 793.916 1024 511.45 1024z m0-895.998c-211.827 0-383.616 171.928-383.616 384.004 0 212.05 171.789 383.99 383.616 383.99 211.857 0 383.589-171.94 383.589-383.99 0-212.076-171.732-384.004-383.59-384.004z m191.81 448.005H319.642c-35.291 0-63.917-28.654-63.917-64 0-35.345 28.628-64.002 63.917-64.002H703.26c35.29 0 63.945 28.655 63.945 64.001 0 35.349-28.654 64-63.945 64z"
+              fill="#333333"
+            />
+            <path
               v-else
               d="M647.38816 728.54528c22.4768 22.4768 58.9824 22.3232 81.60768-0.30208 22.6304-22.6304 22.77888-59.136 0.30208-81.60768l-135.00928-135.0144 134.784-134.784c22.62528-22.62528 22.77888-59.13088 0.30208-81.60768l-0.45568-0.45056c-22.47168-22.4768-58.97728-22.32832-81.60768 0.30208l-134.784 134.784L377.1392 294.4768c-22.4768-22.4768-58.9824-22.32832-81.60768 0.30208-22.6304 22.62528-22.77888 59.13088-0.30208 81.60768L430.6944 511.85152l-134.784 134.784c-22.6304 22.62528-22.77888 59.13088-0.30208 81.60768l0.45056 0.45056c22.4768 22.4768 58.9824 22.32832 81.60768-0.30208l134.784-134.784 134.9376 134.9376zM174.62272 173.87008c186.44992-186.44992 489.20576-186.14784 675.3536 0 186.44992 186.44992 186.14784 489.20576 0 675.3536-186.44992 186.44992-489.20064 186.14784-675.3536 0-186.5216-186.52672-186.14784-489.20576 0-675.3536z"
               fill="#2c2c2c"
             />
           </svg>
+          <polygon v-else-if="node.kind === 'ternary-condition'" :points="diamondPoints(node)" />
           <circle v-else-if="isCircleNode(node)" :r="nodeCircleRadius(node)" />
           <rect
             v-else
@@ -164,6 +181,8 @@ interface DisplayEdge {
   target: string
   kind: string
   label?: string
+  operandIndex?: number
+  operandRole?: 'minuend' | 'subtrahend'
 }
 
 const props = defineProps<{
@@ -179,7 +198,11 @@ const props = defineProps<{
   signalRoleOverrides?: Map<string, string>
 }>()
 
-const emit = defineEmits<{ select: [nodeId: string]; hover: [nodeId: string | null] }>()
+const emit = defineEmits<{
+  select: [nodeId: string]
+  hover: [nodeId: string | null]
+  'navigate-signal': [nodeId: string]
+}>()
 
 const hoveredEdgeId = ref<string | null>(null)
 const clearGraphHover = () => {
@@ -268,25 +291,31 @@ const constraintDisplay = computed(() => {
   const edges: DisplayEdge[] = []
   if (!graph) return { nodes, edges }
   const signalById = new Map(graph.signals.map(signal => [signal.signalId, signal]))
-  const displayIdBySignalNodeId = new Map<string, string>()
+  const displayIdsBySignalNodeId = new Map<string, string[]>()
 
-  const ensureSignalNode = (signalId: number, constraintIndex: number): string => {
+  const addSignalNode = (
+    signalId: number,
+    id: string,
+    constraintIndex: number,
+    labelPrefix = '',
+  ) => {
     const signal = signalById.get(signalId)
     const qualifiedName = signal?.qualifiedName ?? `s${signalId}`
-    const id = `constraint-signal:${qualifiedName}`
-    if (!nodes.some(node => node.id === id)) {
-      nodes.push({
-        id,
-        referenceId: signal?.id,
-        label: shortConstraintSignalName(qualifiedName),
-        kind: 'signal',
-        role: props.signalRoleOverrides?.get(qualifiedName) ?? signal?.role ?? 'intermediate',
-        status: signal?.status,
-        badge: signal?.mockSupplied ? 'MOCK OUTPUT' : undefined,
-        constraintIndex,
-      })
+    nodes.push({
+      id,
+      referenceId: signal?.id,
+      label: `${labelPrefix}${shortConstraintSignalName(qualifiedName)}`,
+      kind: 'signal',
+      role: props.signalRoleOverrides?.get(qualifiedName) ?? signal?.role ?? 'intermediate',
+      status: signal?.status,
+      badge: signal?.mockSupplied ? 'MOCK OUTPUT' : undefined,
+      constraintIndex,
+    })
+    if (signal) {
+      const displayIds = displayIdsBySignalNodeId.get(signal.id) ?? []
+      displayIds.push(id)
+      displayIdsBySignalNodeId.set(signal.id, displayIds)
     }
-    if (signal) displayIdBySignalNodeId.set(signal.id, id)
     return id
   }
 
@@ -296,14 +325,26 @@ const constraintDisplay = computed(() => {
     constraintIndex: number,
     path: string,
   ): string => {
-    if (expression.kind === 'signal') return ensureSignalNode(expression.signalId, constraintIndex)
     const id = `${constraintId}:expression:${path}`
+    if (expression.kind === 'signal') {
+      return addSignalNode(expression.signalId, id, constraintIndex)
+    }
     if (expression.kind === 'constant') {
       nodes.push({ id, label: expression.value, kind: 'constant', constraintIndex })
       return id
     }
+    if (expression.kind === 'mul' && expression.operands.length === 2) {
+      const [first, second] = expression.operands
+      const negatedSignal = first.kind === 'signal' && second.kind === 'constant' && second.value === '-1'
+        ? first
+        : second.kind === 'signal' && first.kind === 'constant' && first.value === '-1'
+          ? second
+          : undefined
+      if (negatedSignal) return addSignalNode(negatedSignal.signalId, id, constraintIndex, '-')
+    }
     nodes.push({
       id,
+      referenceId: constraintId,
       label: expression.kind === 'mul' ? 'x' : '+',
       kind: 'operation',
       role: 'constraint-expression',
@@ -318,14 +359,12 @@ const constraintDisplay = computed(() => {
 
   for (const constraint of graph.constraints) {
     const equation = constraint.equation
-    const rightRoot = addExpression(equation.right, constraint.id, constraint.index, 'right')
     const leftRoot = addExpression(equation.left, constraint.id, constraint.index, 'left')
-    const rightNode = nodes.find(node => node.id === rightRoot)
-    if (rightNode?.kind === 'operation') rightNode.referenceId = constraint.id
+    const rightRoot = addExpression(equation.right, constraint.id, constraint.index, 'right')
     edges.push({
       id: `${constraint.id}:equality`,
-      source: equation.isolatedSignalId === undefined ? leftRoot : rightRoot,
-      target: equation.isolatedSignalId === undefined ? rightRoot : leftRoot,
+      source: leftRoot,
+      target: rightRoot,
       kind: 'constraint-equality',
       label: '=',
     })
@@ -334,9 +373,13 @@ const constraintDisplay = computed(() => {
   for (const boundary of graph.mockBoundaries ?? []) {
     const output = graph.signals.find(signal => signal.id === boundary.outputSignalId)
     if (!output) continue
-    const outputNodeId = displayIdBySignalNodeId.get(output.id) ?? ensureSignalNode(output.signalId, Number.MAX_SAFE_INTEGER)
-    nodes.push({ id: boundary.id, label: 'mock', kind: 'mock-boundary', role: 'mock-boundary' })
-    edges.push({ id: `${boundary.id}:edge`, source: boundary.id, target: outputNodeId, kind: 'mock-supplied' })
+    const outputNodeIds = displayIdsBySignalNodeId.get(output.id) ?? []
+    outputNodeIds.forEach((outputNodeId, index) => {
+      const outputNode = nodes.find(node => node.id === outputNodeId)
+      const boundaryId = `${boundary.id}:${index}`
+      nodes.push({ id: boundaryId, label: 'mock', kind: 'mock-boundary', role: 'mock-boundary', constraintIndex: outputNode?.constraintIndex })
+      edges.push({ id: `${boundaryId}:edge`, source: boundaryId, target: outputNodeId, kind: 'mock-supplied' })
+    })
   }
   return { nodes, edges }
 })
@@ -369,20 +412,34 @@ const allEdges = computed<DisplayEdge[]>(() => {
     const assignmentIds = new Set(graph.nodes.filter(node => node.kind === 'assignment').map(node => node.id))
     const relationIds = new Set(graph.nodes.filter(node => node.kind === 'source-constraint').map(node => node.id))
     const collapsedNodeIds = new Set([...assignmentIds, ...relationIds])
-    const direct = graph.edges
+    const direct: DisplayEdge[] = graph.edges
       .filter(edge => !collapsedNodeIds.has(edge.source) && !collapsedNodeIds.has(edge.target))
-      .map(edge => ({ id: edge.id, source: edge.source, target: edge.target, kind: edge.kind, label: edge.operator }))
+      .map(edge => {
+        const target = graph.nodes.find(node => node.id === edge.target)
+        const operandRole: DisplayEdge['operandRole'] = target?.kind === 'operation' && target.operation === 'sub'
+          ? edge.operandIndex === 0 ? 'minuend' : edge.operandIndex === 1 ? 'subtrahend' : undefined
+          : undefined
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          kind: edge.kind,
+          label: edge.label ?? edge.operator ?? operandRole,
+          operandIndex: edge.operandIndex,
+          operandRole,
+        }
+      })
     for (const assignment of graph.nodes.filter(node => node.kind === 'assignment')) {
-      const incoming = graph.edges.find(edge => edge.target === assignment.id)
+      const incoming = graph.edges.filter(edge => edge.target === assignment.id)
       const outgoing = graph.edges.find(edge => edge.source === assignment.id)
-      if (!incoming || !outgoing) continue
-      direct.push({
-        id: `collapsed:${assignment.id}`,
-        source: incoming.source,
+      if (!incoming.length || !outgoing) continue
+      incoming.forEach((input, index) => direct.push({
+        id: `collapsed:${assignment.id}:${index}`,
+        source: input.source,
         target: outgoing.target,
         kind: assignment.generatesConstraint ? 'constrained-assignment' : 'witness-assignment',
         label: assignment.operator,
-      })
+      }))
     }
     for (const relation of graph.nodes.filter(node => node.kind === 'source-constraint')) {
       const operands = graph.edges.filter(edge => edge.target === relation.id).map(edge => edge.source)
@@ -417,12 +474,12 @@ const sourceLayout = computed(() => {
   const inputX = 140
   const firstOperationX = 430
   const operationColumnGap = 250
-  const inputRowGap = 160
-  const operationRowGap = 120
+  const inputRowGap = 210
+  const operationRowGap = 165
   const edgeGap = 76
   const inputs = visibleNodes.value.filter(node => node.kind === 'signal' && (node.role === 'input' || node.role === 'mock-input'))
   const outputs = visibleNodes.value.filter(node => node.kind === 'signal' && (node.role === 'output' || node.role === 'mock-output'))
-  const operations = visibleNodes.value.filter(node => node.kind === 'operation' || node.kind === 'source-constraint')
+  const operations = visibleNodes.value.filter(node => node.kind === 'operation' || node.kind === 'source-constraint' || node.kind === 'ternary-condition' || node.kind === 'ternary-result')
   const components = visibleNodes.value.filter(node => node.kind === 'component')
   const constants = visibleNodes.value.filter(node => node.kind === 'constant')
   const componentInputPortIds = new Set(visibleEdges.value.filter(edge => edge.kind === 'component-input').map(edge => edge.source))
@@ -437,10 +494,10 @@ const sourceLayout = computed(() => {
       const other = nodeById.get(otherId)
       if (!other) return false
       const horizontalClearance = (nodeVisualWidth(node) + nodeVisualWidth(other)) / 2 + 24
-      const verticalClearance = (nodeHeight(node) + nodeHeight(other)) / 2 + 28
+      const verticalClearance = (nodeHeight(node) + nodeHeight(other)) / 2 + 48
       return Math.abs(position.x - x) < horizontalClearance && Math.abs(position.y - y) < verticalClearance
     })
-    while (collides()) y += Math.max(82, nodeHeight(node) + 34)
+    while (collides()) y += Math.max(112, nodeHeight(node) + 60)
     map.set(node.id, { x, y })
   }
 
@@ -500,7 +557,7 @@ const sourceLayout = computed(() => {
       const port = nodeById.get(edge.target)
       if (!port) return
       const x = componentPosition.x + nodeVisualWidth(component) / 2 + edgeGap + nodeVisualWidth(port) / 2
-      const y = componentPosition.y + (index - (outputEdges.length - 1) / 2) * 76
+      const y = componentPosition.y + (index - (outputEdges.length - 1) / 2) * 108
       placeWithoutOverlap(port, x, y)
     })
   })
@@ -512,87 +569,119 @@ const sourceLayout = computed(() => {
     const x = target && targetNode
       ? target.x - nodeVisualWidth(targetNode) / 2 - edgeGap - nodeVisualWidth(node) / 2
       : firstOperationX - edgeGap - nodeVisualWidth(node) / 2
-    placeWithoutOverlap(node, x, (target?.y ?? 110 + index * operationRowGap) + 68)
+    placeWithoutOverlap(node, x, (target?.y ?? 110 + index * operationRowGap) + 92)
   })
 
   const pendingIntermediates = [...intermediates]
   for (let pass = 0; pass <= intermediates.length && pendingIntermediates.length; pass++) {
     for (let index = pendingIntermediates.length - 1; index >= 0; index--) {
       const node = pendingIntermediates[index]
-      const producer = visibleEdges.value.find(edge => edge.target === node.id)
-      const producerNode = producer ? nodeById.get(producer.source) : undefined
-      const producerPosition = producer ? map.get(producer.source) : undefined
-      if (!producerPosition || !producerNode) continue
-      const x = producerPosition.x + nodeVisualWidth(producerNode) / 2 + edgeGap + nodeVisualWidth(node) / 2
-      placeWithoutOverlap(node, x, producerPosition.y)
+      const producers = visibleEdges.value
+        .filter(edge => edge.target === node.id)
+        .map(edge => ({ node: nodeById.get(edge.source), position: map.get(edge.source) }))
+        .filter((producer): producer is { node: DisplayNode; position: { x: number; y: number } } => Boolean(producer.node && producer.position))
+      if (!producers.length) continue
+      const x = Math.max(...producers.map(producer => producer.position.x + nodeVisualWidth(producer.node) / 2)) + edgeGap + nodeVisualWidth(node) / 2
+      const y = producers.reduce((sum, producer) => sum + producer.position.y, 0) / producers.length
+      placeWithoutOverlap(node, x, y)
       pendingIntermediates.splice(index, 1)
     }
   }
   pendingIntermediates.forEach((node, index) => placeWithoutOverlap(node, firstOperationX, 110 + index * operationRowGap))
 
+  const internalNodes = visibleNodes.value.filter(node => !inputs.includes(node) && !outputs.includes(node))
+  const internalRight = Math.max(
+    firstOperationX + maxDepth * operationColumnGap,
+    ...internalNodes.map(node => {
+      const position = map.get(node.id)
+      return position ? position.x + nodeVisualWidth(node) / 2 : 0
+    }),
+  )
+  const boundaryRight = Math.max(580, internalRight + 48)
+
   outputs.forEach((node, index) => {
-    const producer = visibleEdges.value.find(edge => edge.target === node.id)
-    const producerNode = producer ? nodeById.get(producer.source) : undefined
-    const producerPosition = producer ? map.get(producer.source) : undefined
-    const x = producerPosition && producerNode
-      ? producerPosition.x + nodeVisualWidth(producerNode) / 2 + edgeGap + nodeVisualWidth(node) / 2
-      : firstOperationX + maxDepth * operationColumnGap + 230
-    placeWithoutOverlap(node, x, producerPosition?.y ?? 110 + index * inputRowGap)
+    const producers = visibleEdges.value
+      .filter(edge => edge.target === node.id)
+      .map(edge => map.get(edge.source))
+      .filter((position): position is { x: number; y: number } => Boolean(position))
+    const x = boundaryRight + edgeGap + nodeVisualWidth(node) / 2
+    const y = producers.length
+      ? producers.reduce((sum, position) => sum + position.y, 0) / producers.length
+      : 110 + index * inputRowGap
+    placeWithoutOverlap(node, x, y)
   })
 
-  const outputX = Math.max(firstOperationX + maxDepth * operationColumnGap + 230, ...outputs.map(node => map.get(node.id)?.x ?? 0))
-  return { positions: map, maxDepth, outputX }
+  const outputX = Math.max(boundaryRight, ...outputs.map(node => map.get(node.id)?.x ?? 0))
+  return { positions: map, maxDepth, outputX, boundaryRight }
 })
 
 const positions = computed(() => {
   if (props.graphKind === 'source') return sourceLayout.value.positions
   const map = new Map<string, { x: number; y: number }>()
-  const nodes = visibleNodes.value
-  const incoming = new Map<string, string[]>()
-  for (const edge of visibleEdges.value) {
-    const predecessors = incoming.get(edge.target) ?? []
-    predecessors.push(edge.source)
-    incoming.set(edge.target, predecessors)
-  }
+  const nodeById = new Map(visibleNodes.value.map(node => [node.id, node]))
+  const equalityEdges = visibleEdges.value.filter(edge => edge.kind === 'constraint-equality')
+  const expressionEdges = visibleEdges.value.filter(edge => edge.kind !== 'constraint-equality')
+  const childrenOf = (nodeId: string) => expressionEdges.filter(edge => edge.target === nodeId).map(edge => edge.source)
 
-  const depthCache = new Map<string, number>()
   const depth = (nodeId: string, visiting = new Set<string>()): number => {
-    if (depthCache.has(nodeId)) return depthCache.get(nodeId)!
     if (visiting.has(nodeId)) return 0
-    const nextVisiting = new Set(visiting).add(nodeId)
-    const predecessors = incoming.get(nodeId) ?? []
-    const value = predecessors.length ? Math.max(...predecessors.map(id => depth(id, nextVisiting))) + 1 : 0
-    depthCache.set(nodeId, value)
-    return value
+    const children = childrenOf(nodeId)
+    if (!children.length) return 0
+    const next = new Set(visiting).add(nodeId)
+    return Math.max(...children.map(childId => depth(childId, next))) + 1
   }
-  nodes.forEach(node => depth(node.id))
-  const maxDepth = Math.max(0, ...nodes.map(node => depth(node.id)))
-  const columnWidths = Array.from({ length: maxDepth + 1 }, (_, column) =>
-    Math.max(48, ...nodes.filter(node => depth(node.id) === column).map(nodeVisualWidth)))
-  const columnCenters: number[] = [70 + columnWidths[0] / 2]
-  for (let column = 1; column <= maxDepth; column++) {
-    columnCenters[column] = columnCenters[column - 1] + columnWidths[column - 1] / 2 + 100 + columnWidths[column] / 2
+  const maxLeftDepth = Math.max(0, ...equalityEdges.map(edge => depth(edge.source)))
+  const equalityX = 150 + maxLeftDepth * 230
+  const rootGap = 62
+  const columnGap = 230
+  const leafGap = 122
+  let nextBandTop = 90
+
+  const layoutSide = (rootId: string, direction: -1 | 1) => {
+    const relative = new Map<string, { x: number; y: number }>()
+    let nextLeafY = 0
+    const visit = (nodeId: string, nodeDepth: number, visiting = new Set<string>()): number => {
+      if (visiting.has(nodeId)) return nextLeafY
+      const next = new Set(visiting).add(nodeId)
+      const children = childrenOf(nodeId)
+      let y: number
+      if (!children.length) {
+        y = nextLeafY
+        nextLeafY += leafGap
+      } else {
+        const childYs = children.map(childId => visit(childId, nodeDepth + 1, next))
+        y = childYs.reduce((sum, value) => sum + value, 0) / childYs.length
+      }
+      relative.set(nodeId, { x: direction * nodeDepth * columnGap, y })
+      return y
+    }
+    visit(rootId, 0)
+    const rootY = relative.get(rootId)?.y ?? 0
+    for (const [nodeId, position] of relative) relative.set(nodeId, { x: position.x, y: position.y - rootY })
+    return relative
   }
 
-  const occupiedByColumn = new Map<number, Array<{ y: number; height: number }>>()
-  for (let column = 0; column <= maxDepth; column++) {
-    const columnNodes = nodes.filter(node => depth(node.id) === column)
-    for (const [index, node] of columnNodes.entries()) {
-      const predecessors = (incoming.get(node.id) ?? [])
-        .map(id => map.get(id))
-        .filter((position): position is { x: number; y: number } => Boolean(position))
-      let y = predecessors.length
-        ? predecessors.reduce((sum, position) => sum + position.y, 0) / predecessors.length
-        : 100 + index * 122
-      const occupied = occupiedByColumn.get(column) ?? []
-      while (occupied.some(item => Math.abs(item.y - y) < (item.height + nodeHeight(node)) / 2 + 38)) {
-        y += Math.max(96, nodeHeight(node) + 48)
-      }
-      occupied.push({ y, height: nodeHeight(node) })
-      occupiedByColumn.set(column, occupied)
-      map.set(node.id, { x: columnCenters[column], y })
-    }
+  for (const equality of equalityEdges) {
+    const leftRootNode = nodeById.get(equality.source)
+    const rightRootNode = nodeById.get(equality.target)
+    if (!leftRootNode || !rightRootNode) continue
+    const left = layoutSide(equality.source, -1)
+    const right = layoutSide(equality.target, 1)
+    const allRelative = [...left.entries(), ...right.entries()]
+    const minY = Math.min(0, ...allRelative.map(([nodeId, position]) => position.y - nodeHeight(nodeById.get(nodeId)!) / 2))
+    const maxY = Math.max(0, ...allRelative.map(([nodeId, position]) => position.y + nodeHeight(nodeById.get(nodeId)!) / 2))
+    const centerY = nextBandTop - minY
+    const leftRootX = equalityX - rootGap - nodeVisualWidth(leftRootNode) / 2
+    const rightRootX = equalityX + rootGap + nodeVisualWidth(rightRootNode) / 2
+
+    for (const [nodeId, position] of left) map.set(nodeId, { x: leftRootX + position.x, y: centerY + position.y })
+    for (const [nodeId, position] of right) map.set(nodeId, { x: rightRootX + position.x, y: centerY + position.y })
+    nextBandTop = centerY + maxY + 120
   }
+
+  visibleNodes.value.filter(node => !map.has(node.id)).forEach((node, index) => {
+    map.set(node.id, { x: equalityX, y: nextBandTop + index * leafGap })
+  })
   return map
 })
 
@@ -600,8 +689,8 @@ const canvasWidth = computed(() => Math.max(760, ...visibleNodes.value.map(node 
   const position = positions.value.get(node.id)
   return (position?.x ?? 0) + nodeVisualWidth(node) / 2 + 70
 })))
-const canvasHeight = computed(() => Math.max(420, ...Array.from(positions.value.values()).map(position => position.y + 90)))
-const sourceBoundary = computed(() => ({ x: 190, y: 35, width: Math.max(390, sourceLayout.value.outputX - 280), height: canvasHeight.value - 70 }))
+const canvasHeight = computed(() => Math.max(props.graphKind === 'source' ? 560 : 420, ...Array.from(positions.value.values()).map(position => position.y + (props.graphKind === 'source' ? 130 : 90))))
+const sourceBoundary = computed(() => ({ x: 190, y: 35, width: sourceLayout.value.boundaryRight - 190, height: canvasHeight.value - 70 }))
 watch([canvasWidth, canvasHeight, () => visibleNodes.value.length], async () => {
   await nextTick()
   if (!svgRef.value) return
@@ -612,7 +701,7 @@ watch([canvasWidth, canvasHeight, () => visibleNodes.value.length], async () => 
   d3.select(svgRef.value).call(zoomBehavior.transform, d3.zoomIdentity)
 }, { flush: 'post' })
 function isValueNode(node: DisplayNode) {
-  return node.kind === 'constant' || (
+  return node.kind === 'constant' || node.kind === 'ternary-result' || (
     node.kind === 'signal' && ['input', 'mock-input', 'output', 'mock-output'].includes(node.role ?? '')
   )
 }
@@ -628,6 +717,7 @@ function displayNodeLabel(node: DisplayNode) {
 function nodeFontSize(node: DisplayNode) {
   const length = displayNodeLabel(node).length
   if (node.kind === 'operation') return 22
+  if (node.kind === 'ternary-condition') return 15
   if (node.kind === 'component') return 16
   if (node.kind === 'constraint-term') return length > 20 ? 13 : length > 14 ? 14 : 16
   if (node.kind === 'signal' && !isValueNode(node)) return length > 17 ? 13 : length > 12 ? 14 : 16
@@ -638,6 +728,7 @@ function nodeWidth(node: DisplayNode) {
   if (node.kind === 'constraint') return 320
   if (node.kind === 'mock-boundary') return 72
   if (node.kind === 'component') return Math.min(250, Math.max(190, displayNodeLabel(node).length * 10 + 56))
+  if (node.kind === 'ternary-condition') return Math.min(190, Math.max(130, displayNodeLabel(node).length * 10 + 48))
   const labelWidth = displayNodeLabel(node).length * nodeFontSize(node) * 0.62
   if (node.kind === 'constraint-term') return Math.min(360, Math.max(96, labelWidth + 34))
   if (node.kind === 'signal' || node.kind === 'constant') return Math.min(270, Math.max(76, labelWidth + 34))
@@ -646,14 +737,20 @@ function nodeWidth(node: DisplayNode) {
 function nodeHeight(node: DisplayNode) {
   if (node.kind === 'mock-boundary') return 34
   if (node.kind === 'component') return 110
+  if (node.kind === 'ternary-condition') return 82
   return node.kind === 'signal' || valueNeedsRectangle(node) || node.kind === 'constraint-term' ? 48 : 40
+}
+function diamondPoints(node: DisplayNode) {
+  const halfWidth = nodeWidth(node) / 2
+  const halfHeight = nodeHeight(node) / 2
+  return `0,${-halfHeight} ${halfWidth},0 0,${halfHeight} ${-halfWidth},0`
 }
 function nodeCornerRadius(node: DisplayNode) {
   if (node.kind === 'component') return 8
   return node.kind === 'constraint' ? 8 : node.kind === 'signal' || valueNeedsRectangle(node) || node.kind === 'constraint-term' ? 24 : 18
 }
 function isSvgOperationNode(node: DisplayNode) {
-  return node.kind === 'operation' && (node.label === '+' || node.label === 'x')
+  return node.kind === 'operation' && (node.label === '+' || node.label === '-' || node.label === 'x')
 }
 function isCircleNode(node: DisplayNode) {
   return node.kind === 'operation' || (isValueNode(node) && !valueNeedsRectangle(node))
@@ -679,6 +776,13 @@ const edgePoint = (edge: DisplayEdge, side: 'source' | 'target') => {
   const dx = opposite.x - center.x
   const dy = opposite.y - center.y
   if (dx === 0 && dy === 0) return center
+
+  if (node.kind === 'ternary-condition') {
+    const halfWidth = nodeWidth(node) / 2
+    const halfHeight = nodeHeight(node) / 2
+    const scale = 1 / (Math.abs(dx) / halfWidth + Math.abs(dy) / halfHeight)
+    return { x: center.x + dx * scale, y: center.y + dy * scale }
+  }
 
   if (isSvgOperationNode(node) || isCircleNode(node)) {
     const radius = isSvgOperationNode(node) ? 21 : nodeCircleRadius(node)
@@ -719,8 +823,8 @@ const routeIntersectsNode = (edge: DisplayEdge, route: EdgeRoute) => {
   return obstacles.some(node => {
     const center = positions.value.get(node.id)
     if (!center) return false
-    const halfWidth = nodeVisualWidth(node) / 2 + 26
-    const halfHeight = nodeHeight(node) / 2 + 26
+    const halfWidth = nodeVisualWidth(node) / 2 + 12
+    const halfHeight = nodeHeight(node) / 2 + 12
     for (let step = 2; step < 39; step++) {
       const point = routePoint(route, step / 40)
       if (Math.abs(point.x - center.x) <= halfWidth && Math.abs(point.y - center.y) <= halfHeight) return true
@@ -750,27 +854,46 @@ const buildEdgeRoute = (edge: DisplayEdge): EdgeRoute => {
   const source = edgePoint(edge, 'source')
   const target = edgePoint(edge, 'target')
   const direct = { source, target }
-  if (props.graphKind !== 'source' || !routeIntersectsNode(edge, direct)) return direct
-
   const dx = target.x - source.x
   const dy = target.y - source.y
   const length = Math.hypot(dx, dy)
   if (!length) return direct
   const normal = { x: -dy / length, y: dx / length }
-  const offsets = [72, -72, 104, -104, 144, -144, 192, -192, 256, -256]
+  const curvedRoute = (offset: number): EdgeRoute => ({
+    source,
+    target,
+    control1: {
+      x: source.x + dx / 3 + normal.x * offset,
+      y: source.y + dy / 3 + normal.y * offset,
+    },
+    control2: {
+      x: source.x + dx * 2 / 3 + normal.x * offset,
+      y: source.y + dy * 2 / 3 + normal.y * offset,
+    },
+  })
+
+  if (props.graphKind !== 'source') return direct
+
+  const parallelEdges = visibleEdges.value.filter(candidate =>
+    candidate.source === edge.source && candidate.target === edge.target
+  )
+  const parallelIndex = parallelEdges.findIndex(candidate => candidate.id === edge.id)
+  if (parallelIndex > 0) {
+    const direction = parallelIndex % 2 === 1 ? 1 : -1
+    const rank = Math.ceil(parallelIndex / 2)
+    const offsets = [28 + (rank - 1) * 18, 44 + (rank - 1) * 18, 64 + (rank - 1) * 18]
+      .map(offset => offset * direction)
+    const route = offsets
+      .map(curvedRoute)
+      .find(candidate => routeStaysInsideCanvas(candidate) && !routeIntersectsNode(edge, candidate))
+    return route ?? curvedRoute(offsets[0])
+  }
+
+  if (!routeIntersectsNode(edge, direct)) return direct
+
+  const offsets = [36, -36, 52, -52, 72, -72, 96, -96, 128, -128]
   for (const offset of offsets) {
-    const route: EdgeRoute = {
-      source,
-      target,
-      control1: {
-        x: source.x + dx / 3 + normal.x * offset,
-        y: source.y + dy / 3 + normal.y * offset,
-      },
-      control2: {
-        x: source.x + dx * 2 / 3 + normal.x * offset,
-        y: source.y + dy * 2 / 3 + normal.y * offset,
-      },
-    }
+    const route = curvedRoute(offset)
     if (routeStaysInsideCanvas(route) && !routeIntersectsNode(edge, route)) return route
   }
   return direct
@@ -788,6 +911,7 @@ const edgeLabelPosition = (edge: DisplayEdge) => {
   const midpoint = edgeMidpoint(edge)
   return { x: midpoint.x, y: midpoint.y - 7 }
 }
+
 const outputOperatorLabel = (operator?: string) => {
   if (operator === '<==') return '==>'
   if (operator === '<--') return '-->'
@@ -861,6 +985,15 @@ const outputOperatorLabel = (operator?: string) => {
 .child-template-legend-box {
   background: rgba(255, 255, 255, 0.94);
   border: 2px solid #6b7280;
+}
+
+.ternary-legend-diamond {
+  width: 11px;
+  height: 11px;
+  margin: 0 3px;
+  background: #fffdf6;
+  border: 1.5px solid #aa823f;
+  transform: rotate(45deg);
 }
 
 .mock-boundary-legend-box {
@@ -979,6 +1112,18 @@ const outputOperatorLabel = (operator?: string) => {
   pointer-events: none;
 }
 
+.output-operator.constraint-equality rect {
+  stroke: #374151;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 1px 2px rgba(17, 24, 39, 0.18));
+}
+
+.output-operator.constraint-equality text {
+  fill: #111827;
+  font-size: 24px;
+  font-weight: 800;
+}
+
 .graph-node {
   cursor: pointer;
   outline: none;
@@ -1009,10 +1154,36 @@ const outputOperatorLabel = (operator?: string) => {
 }
 
 .graph-node.constant circle,
-.graph-node.constant rect {
+.graph-node.constant rect,
+.graph-node.ternary-result circle,
+.graph-node.ternary-result rect {
   fill: #f8f1df;
   stroke: #aa823f;
   stroke-width: 2.5;
+}
+
+.graph-node.ternary-condition polygon {
+  fill: #fffdf6;
+  stroke: #aa823f;
+  stroke-width: 2.5;
+}
+
+.graph-node.ternary-condition text {
+  fill: #3f3422;
+  font-weight: 700;
+}
+
+.edge-label.control-dependency {
+  fill: #7c5a22;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.edge-label.minuend,
+.edge-label.subtrahend {
+  fill: #374151;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .graph-node.input circle,
@@ -1148,14 +1319,16 @@ const outputOperatorLabel = (operator?: string) => {
 }
 
 .graph-node.selected rect,
-.graph-node.selected circle {
+.graph-node.selected circle,
+.graph-node.selected polygon {
   fill: rgba(220, 38, 38, 0.2);
   stroke: #dc2626;
   stroke-width: 3;
 }
 
 .graph-node.linked rect,
-.graph-node.linked circle {
+.graph-node.linked circle,
+.graph-node.linked polygon {
   stroke: #17806b;
   stroke-width: 2.5;
 }

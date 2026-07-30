@@ -16,6 +16,7 @@ export async function findTemplateParamsHandler(
 ) {
   try {
     const { templateName, repo, entry } = request.body;
+    const startedAt = Date.now();
 
     logger.info(`Searching for template parameters: templateName=${templateName}, repo=${repo}, entry=${entry}`);
 
@@ -60,15 +61,12 @@ export async function findTemplateParamsHandler(
       processedPaths.add(normalizedPath);
 
       try {
-        logger.info(`Parsing file: ${normalizedPath}`);
         const parsedFile = await projectLoader.parseFile(currentFile.path);
         parsedFiles.set(normalizedPath, parsedFile);
-        logger.info(`Parsed file ${normalizedPath}: ${parsedFile.templates.length} templates, ${parsedFile.components.length} components`);
 
         dependencyGraph.addFile(normalizedPath);
 
         for (const include of parsedFile.includes) {
-          logger.info(`Resolving include: ${include.path} from ${normalizedPath}`);
           includeResolver.setCurrentFile(normalizedPath);
           const resolvedPath = await includeResolver.resolveInclude(include);
 
@@ -87,7 +85,7 @@ export async function findTemplateParamsHandler(
           }
         }
       } catch (error: any) {
-        logger.error(`Failed to parse file ${normalizedPath}: ${error.message}`);
+        logger.warn(`Skipped unreadable circuit file: path=${normalizedPath}, error=${error.message}`);
       }
     }
 
@@ -95,47 +93,30 @@ export async function findTemplateParamsHandler(
     let templateParams: string[] = [];
     let templateSignals: Array<{ name: string; kind: string }> = [];
 
-    logger.info(`Searching for template ${templateName} in ${parsedFiles.size} parsed files`);
-
     for (const [filePath, file] of parsedFiles.entries()) {
-      logger.info(`File ${filePath}: ${file.components.length} components, ${file.templates.length} templates`);
-      
       for (const template of file.templates) {
         if (template.name === templateName) {
-          logger.info(`Found template definition: ${templateName} in ${filePath}`);
           templateParams = template.parameters.map((p: any) => p.name);
           templateSignals = template.signals.map((s: any) => ({
             name: s.name,
             kind: s.kind
           }));
-          logger.info(`Template params: ${templateParams}, signals count: ${templateSignals.length}`);
         }
       }
     }
 
     for (const [filePath, file] of parsedFiles.entries()) {
-      logger.info(`Searching for component instantiations in ${filePath}`);
-      
       for (const component of file.components) {
-        logger.debug(`Checking component: ${component.name}, templateName: ${component.templateName}, hasArgs: ${!!component.arguments}`);
-        
         if (component.templateName === templateName) {
-          logger.info(`Found component matching ${templateName}: ${component.name} in ${filePath} at line ${component.line}`);
-          
           if (!component.arguments || component.arguments.length === 0) {
-            logger.warn(`Component ${component.name} has no arguments`);
             continue;
           }
-          
-          logger.info(`Component arguments: ${JSON.stringify(component.arguments, null, 2)}`);
           
           const paramValues: { name: string; value: number }[] = [];
           
           for (let i = 0; i < component.arguments.length; i++) {
             const arg = component.arguments[i];
-            logger.debug(`Extracting value from arg ${i}: ${JSON.stringify(arg)}`);
             const value = extractLiteralValue(arg);
-            logger.debug(`Extracted value: ${value}`);
             
             if (value !== null) {
               const paramName = templateParams[i] || `param${i}`;
@@ -148,8 +129,6 @@ export async function findTemplateParamsHandler(
 
           const publicSignals = (component as any).publicSignals || [];
 
-          logger.info(`Extracted ${paramValues.length} parameters from component ${component.name}, public signals: ${JSON.stringify(publicSignals)}`);
-          
           if (paramValues.length > 0) {
             candidates.push({
               params: paramValues,
@@ -160,7 +139,6 @@ export async function findTemplateParamsHandler(
                 component: component.name
               }
             });
-            logger.info(`Added candidate: ${JSON.stringify(candidates[candidates.length - 1])}`);
           }
         }
       }
@@ -174,7 +152,7 @@ export async function findTemplateParamsHandler(
       signals: templateSignals
     };
 
-    logger.info(`Found ${candidates.length} parameter candidates for template ${templateName}`);
+    logger.info(`Template parameter search completed: template=${templateName}, files=${parsedFiles.size}, candidates=${candidates.length}, durationMs=${Date.now() - startedAt}`);
     reply.send(response);
 
   } catch (error: any) {
@@ -187,28 +165,20 @@ export async function findTemplateParamsHandler(
 
 function extractLiteralValue(expr: any): number | null {
   if (!expr) {
-    logger.debug(`extractLiteralValue: expr is null/undefined`);
     return null;
   }
   
-  logger.debug(`extractLiteralValue: type=${expr.type}, value=${expr.value}, operator=${expr.operator}`);
-  
   if (expr.type === 'Literal' && typeof expr.value === 'number') {
-    logger.debug(`extractLiteralValue: returning literal value ${expr.value}`);
     return expr.value;
   }
   
   if (expr.type === 'Identifier') {
-    logger.debug(`extractLiteralValue: identifier ${expr.name} - cannot extract value`);
     return null;
   }
   
   if (expr.type === 'BinaryOp') {
-    logger.debug(`extractLiteralValue: BinaryOp ${expr.operator}, left=${JSON.stringify(expr.left)}, right=${JSON.stringify(expr.right)}`);
     const left = extractLiteralValue(expr.left);
     const right = extractLiteralValue(expr.right);
-    
-    logger.debug(`extractLiteralValue: BinaryOp left=${left}, right=${right}`);
     
     if (left !== null && right !== null) {
       let result: number | null = null;
@@ -219,14 +189,11 @@ function extractLiteralValue(expr: any): number | null {
         case '/': result = Math.floor(left / right); break;
         case '%': result = left % right; break;
         default: 
-          logger.debug(`extractLiteralValue: unknown operator ${expr.operator}`);
           result = null;
       }
-      logger.debug(`extractLiteralValue: BinaryOp result ${result}`);
       return result;
     }
   }
   
-  logger.debug(`extractLiteralValue: unknown expression type ${expr.type}`);
   return null;
 }

@@ -29,7 +29,8 @@ export async function generateContractHandler(
       } as GenerateContractResponse);
     }
 
-    logger.info(`Generating contract: template=${templateName}, instance=${instancePath}`);
+    const startedAt = Date.now();
+    logger.info(`Contract generation started: template=${templateName}, instance=${instancePath}`);
 
     const generator = new ContractGenerator();
     const contract = await generator.generate(
@@ -43,7 +44,7 @@ export async function generateContractHandler(
       formalResult
     );
 
-    logger.info(`Contract generated: ${contract.assumptions.length} assumptions, ${contract.guarantees.length} guarantees, ${contract.invariants.length} invariants`);
+    logger.info(`Contract generation completed: template=${templateName}, assumptions=${contract.assumptions.length}, guarantees=${contract.guarantees.length}, invariants=${contract.invariants.length}, durationMs=${Date.now() - startedAt}`);
 
     reply.send({ success: true, contract } as GenerateContractResponse);
   } catch (error: any) {
