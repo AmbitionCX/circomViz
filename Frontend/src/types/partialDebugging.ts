@@ -4,15 +4,24 @@ export type ConstraintRenderMode = 'intuitive' | 'exact'
 export interface SourceSpan { file: string; startLine: number; endLine: number }
 export interface SourceGraphNode {
   id: string
-  kind: 'signal' | 'constant' | 'operation' | 'ternary-condition' | 'ternary-result' | 'assignment' | 'source-constraint' | 'component-group'
+  kind: 'signal' | 'variable' | 'constant' | 'operation' | 'ternary-condition' | 'ternary-result' | 'assignment' | 'source-constraint' | 'component-group'
   label: string
   qualifiedName?: string
   localName?: string
+  arrayDimensions?: string[]
+  arrayBaseQualifiedName?: string
+  initialExpression?: string
+  initialValue?: number
+  loopVariable?: boolean
+  loopId?: string
+  statementId?: string
+  stateVariable?: string
+  statePhase?: 'initial' | 'current' | 'next' | 'final'
   role?: 'input' | 'output' | 'intermediate' | 'mock-input' | 'mock-output'
   templateName?: string
   componentPath?: string
   operation?: string
-  operator?: '<==' | '==>' | '<--' | '-->' | '==='
+  operator?: '<==' | '==>' | '<--' | '-->' | '===' | '='
   generatesWitness?: boolean
   generatesConstraint?: boolean
   dangerLevel?: 'safe' | 'review'
@@ -21,7 +30,13 @@ export interface SourceGraphNode {
   sourceSpan?: SourceSpan
 }
 export interface SourceGraphEdge { id: string; source: string; target: string; kind: string; operandIndex?: number; operator?: string; label?: string }
-export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEdge[]; adjacency: Record<string, string[]> }
+export interface SourceStatementDto {
+  id: string; loopId: string; order: number; kind: 'component' | 'witness' | 'constraint' | 'state-update' | 'other'
+  label: string; nodeIds: string[]; sourceSpan: SourceSpan
+}
+export interface SourceLoopStateDto { variableName: string; initialNodeId: string; currentNodeId: string; nextNodeId: string; finalNodeId: string }
+export interface SourceLoopDto { id: string; header: string; iterator: string; iterationLabel: string; iterationCount?: number; parentLoopId?: string; bodyStatementIds: string[]; stateVariables: SourceLoopStateDto[]; sourceSpan: SourceSpan }
+export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEdge[]; adjacency: Record<string, string[]>; loops: SourceLoopDto[]; statements: SourceStatementDto[] }
 
 export interface LinearCombinationTerm { signalId: number; coefficient: string; displayCoefficient: string }
 export interface LinearCombination { terms: LinearCombinationTerm[] }
@@ -46,9 +61,21 @@ export interface ConstraintSignalNodeDto {
   role?: 'input' | 'output' | 'intermediate' | 'synthetic'
   mockSupplied?: boolean
 }
+export interface ConstraintSignalGroupDto {
+  id: string
+  sourceNodeId: string
+  displayQualifiedName: string
+  arrayDimensions: string[]
+  memberSignalNodeIds: string[]
+  memberSignalIds: number[]
+  role?: 'input' | 'output' | 'intermediate' | 'synthetic'
+  status: 'surviving' | 'substituted' | 'unused-or-unconstrained'
+  mockSupplied?: boolean
+}
 export interface ConstraintEdgeDto { id: string; signalNodeId: string; constraintNodeId: string; port: 'A' | 'B' | 'C'; coefficient: string; displayCoefficient: string }
+export interface ConstraintLoopClusterDto { id: string; sourceLoopId: string; label: string; constraintNodeIds: string[]; confidence: 'high' | 'medium' | 'low' }
 export interface MockBoundaryDto { id: string; outputSignalId: string; label: string }
-export interface ConstraintGraphDto { level: OptimizationLevel; signals: ConstraintSignalNodeDto[]; constraints: ConstraintNodeDto[]; edges: ConstraintEdgeDto[]; adjacency: Record<string, string[]>; mockBoundaries: MockBoundaryDto[] }
+export interface ConstraintGraphDto { level: OptimizationLevel; signals: ConstraintSignalNodeDto[]; constraints: ConstraintNodeDto[]; edges: ConstraintEdgeDto[]; adjacency: Record<string, string[]>; signalGroups: ConstraintSignalGroupDto[]; loopClusters: ConstraintLoopClusterDto[]; mockBoundaries: MockBoundaryDto[] }
 export interface ProvenanceLink { sourceNodeId: string; constraintNodeIds: string[]; confidence: 'exact' | 'high' | 'medium' | 'low'; evidence: string[] }
 export interface GraphDiagnostic { id: string; type: string; severity: 'high' | 'medium' | 'low'; message: string; nodeIds: string[] }
 export interface PartialDebuggingBuildSummary {

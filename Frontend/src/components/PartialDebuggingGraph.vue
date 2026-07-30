@@ -1,10 +1,18 @@
 <template>
   <div class="graph-shell" @mouseleave="clearGraphHover">
 
-    <div v-if="visibleNodes.length === 0" class="graph-empty">No nodes are available for this template.</div>
+    <div v-if="visibleNodes.length === 0 && frameBounds.length === 0" class="graph-empty">No nodes are available for this template.</div>
     <div v-else class="graph-scroll">
-      <span class="figure-title">{{ graphKind === 'source' ? 'Raw Code Graph' : 'Constraint Graph' }}</span>
+      <button
+        type="button"
+        class="figure-title"
+        :aria-label="`Show ${graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement'} view`"
+        @click="emit('activate-view', graphKind)"
+      >
+        {{ graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement' }}
+      </button>
       <div
+        v-if="showLegend"
         class="absolute bottom-3 left-3 z-30 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm px-3 py-2.5 flex flex-col gap-1.5"
       >
         <div class="flex items-center gap-2">
@@ -20,28 +28,117 @@
           <span class="text-gray-600 text-xs">Intermediate signal</span>
         </div>
         <div v-if="graphKind === 'source'" class="flex items-center gap-2">
-          <span class="child-template-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
-          <span class="text-gray-600 text-xs">Child template</span>
-        </div>
-        <div v-if="graphKind === 'source'" class="flex items-center gap-2">
-          <span class="ternary-legend-diamond inline-block flex-shrink-0"></span>
-          <span class="text-gray-600 text-xs">Ternary operator</span>
-        </div>
-        <div v-else class="flex items-center gap-2">
-          <span class="mock-boundary-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
-          <span class="text-gray-600 text-xs">Mock-supplied output</span>
+          <span class="variable-legend-dot w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Variable</span>
         </div>
         <div class="flex items-center gap-2">
           <span class="constant-legend-dot w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Constant</span>
         </div>
+        <div v-if="graphKind === 'source'" class="flex items-center gap-2">
+          <span class="child-template-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Child template</span>
+        </div>
+        <div v-if="graphKind === 'source'" class="flex items-center gap-2">
+          <span class="for-loop-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">For loop</span>
+        </div>
+        <div v-if="graphKind === 'source'" class="flex items-center gap-2">
+          <span class="ternary-legend-diamond inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Ternary operator</span>
+        </div>
+
       </div>
-      <svg ref="svgRef" width="100%" height="100%" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" preserveAspectRatio="xMidYMid meet" class="graph-canvas" role="img" :aria-label="graphKind === 'source' ? 'Source Dataflow Graph' : 'Constraint Graph'">
+      <svg ref="svgRef" width="100%" height="100%" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" preserveAspectRatio="xMidYMid meet" class="graph-canvas" role="img" :aria-label="graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement'">
         <g ref="viewportRef" class="zoom-viewport">
 
         <g v-if="graphKind === 'source'" class="template-boundary">
-          <rect :x="sourceBoundary.x" :y="sourceBoundary.y" :width="sourceBoundary.width" :height="sourceBoundary.height" rx="12" />
+          <rect :x="sourceBoundary.x" :y="sourceBoundary.y" :width="sourceBoundary.width" :height="sourceBoundary.height" rx="10" />
           <text :x="sourceBoundary.x + 14" :y="sourceBoundary.y + 22">{{ sourceTemplateName }}</text>
+        </g>
+
+        <g v-if="graphKind === 'source'" class="source-loop-blocks">
+          <g
+            v-for="frame in sourceLoopFrames"
+            :key="frame.id"
+            :class="['source-loop-frame', { selected: selectedNodeId === frame.id || mirroredNodeIds.has(frame.id), linked: linkedNodeIds.has(frame.id) }]"
+            @click.stop="$emit('select', frame.id)"
+          >
+            <rect class="loop-frame-box" :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height" rx="4" />
+            <path class="loop-header-band" :d="loopHeaderBandPath(frame)" />
+            <line class="loop-section-divider" :x1="frame.x" :x2="frame.x + frame.width" :y1="frame.y + frame.headerHeight" :y2="frame.y + frame.headerHeight" />
+            <line
+              v-for="divider in frame.headerDividers"
+              :key="divider"
+              class="loop-header-divider"
+              :x1="divider"
+              :x2="divider"
+              :y1="frame.y"
+              :y2="frame.y + frame.headerHeight"
+            />
+            <text
+              v-for="(condition, index) in frame.headerParts"
+              :key="condition"
+              class="loop-header-condition"
+              :x="frame.x + frame.width * (index + 0.5) / frame.headerParts.length"
+              :y="frame.y + frame.headerHeight / 2 + 4"
+              text-anchor="middle"
+            >{{ condition }}</text>
+
+            <g
+              v-for="card in frame.cards"
+              :key="card.id"
+              :class="['loop-code-card', card.kind, { selected: selectedNodeId === card.id || mirroredNodeIds.has(card.id), linked: linkedNodeIds.has(card.id) }]"
+              @click.stop="$emit('select', card.id)"
+            >
+              <line v-if="card.order > 0" class="loop-card-divider" :x1="frame.x + 5" :x2="frame.x + frame.width - 5" :y1="card.y" :y2="card.y" />
+              <circle class="statement-index" :cx="frame.x + 10" :cy="card.y + 10" r="6" />
+              <text class="statement-number" :x="frame.x + 10" :y="card.y + 13" text-anchor="middle">{{ card.order + 1 }}</text>
+
+              <line class="assignment-connector" :x1="card.leftX + card.leftWidth" :x2="card.operatorCenterX - card.operatorWidth / 2" :y1="card.centerY" :y2="card.centerY" />
+              <line class="assignment-connector" :x1="card.operatorCenterX + card.operatorWidth / 2" :x2="card.rightX" :y1="card.centerY" :y2="card.centerY" />
+
+              <circle v-if="card.leftShape === 'circle'" :class="['code-operand', 'left', card.leftStyle]" :cx="card.leftX + card.leftWidth / 2" :cy="card.centerY" :r="card.leftHeight / 2" />
+              <rect v-else :class="['code-operand', 'left', card.leftStyle]" :x="card.leftX" :y="card.leftY" :width="card.leftWidth" :height="card.leftHeight" :rx="card.leftRadius" />
+              <text class="code-operand-label" :x="card.leftX + card.leftWidth / 2" :y="card.centerY + 5" text-anchor="middle">{{ truncate(card.left, 16) }}</text>
+
+              <rect class="code-operator" :x="card.operatorCenterX - card.operatorWidth / 2" :y="card.centerY - card.operatorHeight / 2" :width="card.operatorWidth" :height="card.operatorHeight" :rx="card.operatorRadius" />
+              <text class="code-operator-label" :x="card.operatorCenterX" :y="card.centerY + 5" text-anchor="middle">{{ card.operator }}</text>
+
+              <circle v-if="card.rightShape === 'circle'" :class="['code-operand', 'right', card.rightStyle]" :cx="card.rightX + card.rightWidth / 2" :cy="card.centerY" :r="card.rightHeight / 2" />
+              <rect v-else :class="['code-operand', 'right', card.rightStyle]" :x="card.rightX" :y="card.rightY" :width="card.rightWidth" :height="card.rightHeight" :rx="card.rightRadius" />
+              <text :class="['code-operand-label', { 'component-label': card.rightStyle === 'component' }]" :x="card.rightX + card.rightWidth / 2" :y="card.centerY + 5" text-anchor="middle">{{ truncate(card.right, 24) }}</text>
+            </g>
+          </g>
+        </g>
+
+        <g v-if="graphKind === 'source'" class="loop-external-connections">
+          <path
+            v-for="connection in sourceLoopConnections"
+            :key="connection.id"
+            :d="connection.path"
+            :class="['loop-external-connection', connection.kind]"
+          />
+        </g>
+
+        <g v-else class="constraint-loop-clusters">
+          <g
+            v-for="frame in constraintLoopFrames"
+            :key="frame.id"
+            :class="['constraint-loop-frame', { selected: selectedNodeId === frame.id || mirroredNodeIds.has(frame.id), linked: linkedNodeIds.has(frame.id), empty: frame.empty }]"
+            @click.stop="$emit('select', frame.id)"
+          >
+            <rect :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height" rx="10" />
+            <text class="constraint-loop-label" :x="frame.x + 4" :y="frame.y - 8">{{ frame.label }}</text>
+            <text v-if="frame.empty" class="constraint-loop-empty" :x="frame.x + 14" :y="frame.y + 48">No compiled constraint could be mapped to this loop.</text>
+          </g>
+        </g>
+
+        <g v-if="graphKind === 'constraint'" class="constraint-pattern-frames">
+          <g v-for="frame in constraintPatternFrames" :key="frame.id" class="constraint-pattern-frame">
+            <rect :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height" rx="8" />
+            <text :x="frame.x + frame.width + 8" :y="frame.y + frame.height / 2" dominant-baseline="middle">×{{ frame.count }}</text>
+          </g>
         </g>
 
         <g class="edges">
@@ -97,6 +194,7 @@
           @mouseenter="$emit('hover', node.id)"
           @focus="$emit('hover', node.id)"
         >
+          <title v-if="node.tooltip">{{ node.tooltip }}</title>
           <svg v-if="isSvgOperationNode(node)" x="-21" y="-21" width="42" height="42" viewBox="0 0 1024 1024" class="operation-icon" aria-hidden="true">
             <circle cx="512" cy="512" r="512" fill="#ffffff" />
             <path
@@ -144,7 +242,7 @@
             :style="{ fontSize: `${nodeFontSize(node)}px` }"
             :class="{
               'gate-label': node.kind === 'operation',
-              'value-label': isValueNode(node),
+              'value-label': isValueNode(node) || node.kind === 'variable',
               'signal-label': node.kind === 'signal',
             }"
           >{{ displayNodeLabel(node) }}</text>
@@ -174,6 +272,13 @@ interface DisplayNode {
   badge?: string
   constraintIndex?: number
   referenceId?: string
+  aggregate?: boolean
+  initialExpression?: string
+  initialValue?: number
+  tooltip?: string
+  loopId?: string
+  statementId?: string
+  statePhase?: 'initial' | 'current' | 'next' | 'final'
 }
 interface DisplayEdge {
   id: string
@@ -183,9 +288,10 @@ interface DisplayEdge {
   label?: string
   operandIndex?: number
   operandRole?: 'minuend' | 'subtrahend'
+  multiplicity?: number
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   graphKind: 'source' | 'constraint'
   sourceGraph?: SourceGraphDto | null
   constraintGraph?: ConstraintGraphDto | null
@@ -196,12 +302,14 @@ const props = defineProps<{
   linkedNodeIds?: Set<string>
   mirroredNodeIds?: Set<string>
   signalRoleOverrides?: Map<string, string>
-}>()
+  showLegend?: boolean
+}>(), { showLegend: true })
 
 const emit = defineEmits<{
   select: [nodeId: string]
   hover: [nodeId: string | null]
   'navigate-signal': [nodeId: string]
+  'activate-view': [view: 'source' | 'constraint']
 }>()
 
 const hoveredEdgeId = ref<string | null>(null)
@@ -235,6 +343,9 @@ onBeforeUnmount(() => {
 const hiddenWarningIds = computed(() => new Set((props.diagnostics ?? []).flatMap(diagnostic => diagnostic.nodeIds)))
 const warningNodeIds = computed(() => {
   const ids = new Set(hiddenWarningIds.value)
+  for (const group of props.constraintGraph?.signalGroups ?? []) {
+    if (group.memberSignalNodeIds.some(memberId => hiddenWarningIds.value.has(memberId))) ids.add(group.id)
+  }
   if (props.graphKind === 'source') {
     for (const id of hiddenWarningIds.value) (props.sourceGraph?.adjacency[id] ?? []).forEach(neighbor => ids.add(neighbor))
   }
@@ -243,6 +354,185 @@ const warningNodeIds = computed(() => {
 const linkedNodeIds = computed(() => props.linkedNodeIds ?? new Set<string>())
 const mirroredNodeIds = computed(() => props.mirroredNodeIds ?? new Set<string>())
 const sourceTemplateName = computed(() => props.sourceGraph?.nodes.find(node => node.kind === 'component-group' && node.componentPath === 'main')?.templateName ?? 'Selected template')
+
+function loopHeaderBandPath(frame: { x: number; y: number; width: number; headerHeight: number }) {
+  const inset = 1.5
+  const radius = 3
+  const left = frame.x + inset
+  const top = frame.y + inset
+  const right = frame.x + frame.width - inset
+  const bottom = frame.y + frame.headerHeight
+  return `M ${left + radius} ${top} H ${right - radius} Q ${right} ${top} ${right} ${top + radius} V ${bottom} H ${left} V ${top + radius} Q ${left} ${top} ${left + radius} ${top} Z`
+}
+
+function splitLoopHeader(header: string) {
+  const body = header.replace(/^for\s*\(/, '').replace(/\)$/, '')
+  const parts = body.split(';').map(part => part.trim()).filter(Boolean)
+  return parts.length ? parts : [body]
+}
+
+function splitStatementLabel(label: string) {
+  const match = label.match(/^(.*?)\s+(<==|==>|<--|-->|===|=)\s+(.*)$/)
+  return match
+    ? { left: match[1].trim(), operator: match[2], right: match[3].trim() }
+    : { left: label, operator: '', right: '' }
+}
+
+function orientLoopAssignment(parts: ReturnType<typeof splitStatementLabel>) {
+  if (parts.operator === '<--') return { left: parts.right, operator: '-->', right: parts.left }
+  if (parts.operator === '<==') return { left: parts.right, operator: '==>', right: parts.left }
+  return parts
+}
+
+function loopSignalWidth(label: string) {
+  return Math.min(220, Math.max(66, label.length * 16 * 0.62 + 26))
+}
+
+type LoopOperandStyle = 'input' | 'output' | 'variable' | 'constant' | 'intermediate' | 'component-reference' | 'component' | 'expression'
+type LoopOperandShape = 'circle' | 'capsule' | 'component'
+
+function normalizeLoopReference(label: string) {
+  return label.trim().replace(/\s+/g, '').replace(/\[[^\]]*\]/g, '[]').replace(/^main\./, '')
+}
+
+function loopOperandHasOperators(label: string) {
+  const withoutIndexes = label.replace(/\[[^\]]*\]/g, '')
+  return /<<|>>|[+\-*/%&|^~?:<>!]/.test(withoutIndexes) || /[A-Za-z_$][\w$]*\s*\(/.test(withoutIndexes)
+}
+
+function loopReferenceNode(label: string) {
+  const reference = normalizeLoopReference(label)
+  const unindexedReference = reference.replace(/\[\]/g, '')
+  return props.sourceGraph?.nodes.find(node => {
+    if (!['signal', 'variable', 'component-group'].includes(node.kind)) return false
+    return [node.localName, node.label, node.qualifiedName, node.arrayBaseQualifiedName]
+      .filter((name): name is string => Boolean(name))
+      .some(name => {
+        const candidate = normalizeLoopReference(name)
+        const unindexedCandidate = candidate.replace(/\[\]/g, '')
+        return candidate === reference || candidate.endsWith(`.${reference}`) || unindexedCandidate === unindexedReference || unindexedCandidate.endsWith(`.${unindexedReference}`)
+      })
+  })
+}
+
+function loopOperandStyle(label: string): LoopOperandStyle {
+  if (/^[+-]?(?:\d+(?:\.\d+)?|0x[\da-f]+)$/i.test(label.trim())) return 'constant'
+  if (loopOperandHasOperators(label)) return 'expression'
+  const node = loopReferenceNode(label)
+  if (node?.kind === 'variable') return 'variable'
+  if (node?.kind === 'component-group') return 'component-reference'
+  if (node?.kind === 'signal') {
+    if (node.role === 'input' || node.role === 'mock-input') return 'input'
+    if (node.role === 'output' || node.role === 'mock-output') return 'output'
+  }
+  return 'intermediate'
+}
+
+function loopOperandShape(style: LoopOperandStyle, label: string): LoopOperandShape {
+  if (style === 'component') return 'component'
+  if (style === 'variable') return 'circle'
+  if (style === 'constant') return label.trim().length > 4 ? 'capsule' : 'circle'
+  if ((style === 'input' || style === 'output') && label.trim().length <= 4) return 'circle'
+  return 'capsule'
+}
+
+const sourceLoopFrames = computed(() => {
+  let nextY = 82
+  return (props.sourceGraph?.loops ?? []).map(loop => {
+    const statements = (props.sourceGraph?.statements ?? [])
+      .filter(statement => loop.bodyStatementIds.includes(statement.id))
+      .sort((left, right) => left.order - right.order)
+    const preparedCards = statements.map(statement => {
+      const parts = orientLoopAssignment(splitStatementLabel(statement.label))
+      const leftStyle = loopOperandStyle(parts.left)
+      const rightStyle = statement.kind === 'component' ? 'component' : loopOperandStyle(parts.right)
+      const leftShape = loopOperandShape(leftStyle, parts.left)
+      const rightShape = loopOperandShape(rightStyle, parts.right)
+      const leftWidth = leftShape === 'circle' ? 40 : loopSignalWidth(parts.left)
+      const rightWidth = rightStyle === 'component' ? 150 : rightShape === 'circle' ? 40 : loopSignalWidth(parts.right)
+      const leftHeight = 40
+      const rightHeight = rightStyle === 'component' ? 82 : 40
+      const operatorWidth = 40
+      const operatorHeight = 22
+      const connectorLength = 12
+      return {
+        ...statement,
+        ...parts,
+        leftStyle,
+        rightStyle,
+        leftShape,
+        rightShape,
+        leftWidth,
+        rightWidth,
+        leftHeight,
+        rightHeight,
+        leftRadius: 20,
+        rightRadius: rightStyle === 'component' ? 7 : 20,
+        operatorWidth,
+        operatorHeight,
+        operatorRadius: 10,
+        connectorLength,
+        contentWidth: leftWidth + rightWidth + operatorWidth + connectorLength * 2,
+        cardHeight: Math.max(leftHeight, rightHeight) + 20,
+      }
+    })
+    const x = 330
+    const width = Math.max(360, ...preparedCards.map(card => card.contentWidth + 36))
+    const headerHeight = 30
+    const bodyY = nextY + headerHeight
+    let cardY = bodyY
+    const cards = preparedCards.map(card => {
+      const y = cardY
+      const centerY = y + card.cardHeight / 2
+      const contentStart = x + (width - card.contentWidth) / 2
+      const operatorCenterX = contentStart + card.leftWidth + card.connectorLength + card.operatorWidth / 2
+      cardY += card.cardHeight
+      return {
+        ...card,
+        y,
+        centerY,
+        leftY: centerY - card.leftHeight / 2,
+        rightY: centerY - card.rightHeight / 2,
+        leftX: contentStart,
+        operatorCenterX,
+        rightX: operatorCenterX + card.operatorWidth / 2 + card.connectorLength,
+      }
+    })
+    const headerParts = splitLoopHeader(loop.header)
+    const bodyHeight = Math.max(68, preparedCards.reduce((sum, card) => sum + card.cardHeight, 0))
+    const height = headerHeight + bodyHeight
+    const frame = {
+      id: loop.id,
+      x,
+      y: nextY,
+      width,
+      height,
+      headerHeight,
+      headerParts,
+      headerDividers: headerParts.slice(1).map((_, index) => x + width * (index + 1) / headerParts.length),
+      bodyY,
+      bodyHeight,
+      cards,
+    }
+    nextY += height + 12
+    return frame
+  })
+})
+
+const sourceLoopHiddenNodeIds = computed(() => {
+  const graph = props.sourceGraph
+  if (!graph) return new Set<string>()
+  const hidden = new Set<string>()
+  for (const statement of graph.statements ?? []) statement.nodeIds.forEach(nodeId => hidden.add(nodeId))
+  for (const node of graph.nodes) {
+    if (node.loopId && node.statePhase !== 'final') hidden.add(node.id)
+  }
+  for (const nodeId of [...hidden]) {
+    const node = graph.nodes.find(candidate => candidate.id === nodeId)
+    node?.childNodeIds?.forEach(childId => hidden.add(childId))
+  }
+  return hidden
+})
 
 function shortConstraintSignalName(name: string) {
   return name.startsWith('main.') ? name.slice('main.'.length) : name
@@ -273,6 +563,10 @@ const relevantSourceIds = computed(() => {
   for (const edge of graph.edges) {
     if (edge.source.startsWith('assignment:') && relevant.has(edge.source)) relevant.add(edge.target)
   }
+  for (const edge of graph.edges) {
+    if (edge.kind === 'component-input' && relevant.has(edge.source)) relevant.add(edge.target)
+    if (edge.kind === 'component-output' && relevant.has(edge.target)) relevant.add(edge.source)
+  }
   return relevant
 })
 
@@ -285,13 +579,50 @@ function operationLabel(operation?: string, fallback = '') {
   return fallback
 }
 
+function variableInitialText(initialExpression?: string, initialValue?: number) {
+  if (!initialExpression) return '= ?'
+  if (initialValue === undefined || initialExpression === String(initialValue)) return '= ' + initialExpression
+  return '= ' + initialExpression + ' → ' + initialValue
+}
+
+function variableTooltip(name: string, initialExpression?: string, initialValue?: number) {
+  return name + ' ' + variableInitialText(initialExpression, initialValue)
+}
+
 const constraintDisplay = computed(() => {
   const graph = props.constraintGraph
   const nodes: DisplayNode[] = []
   const edges: DisplayEdge[] = []
   if (!graph) return { nodes, edges }
   const signalById = new Map(graph.signals.map(signal => [signal.signalId, signal]))
+  const groupBySignalId = new Map(graph.signalGroups.flatMap(group => group.memberSignalIds.map(signalId => [signalId, group] as const)))
   const displayIdsBySignalNodeId = new Map<string, string[]>()
+  const loopClusterIdByConstraintId = new Map(
+    (graph.loopClusters ?? []).flatMap(cluster => cluster.constraintNodeIds.map(constraintId => [constraintId, cluster.id] as const)),
+  )
+  const expressionPattern = (expression: ConstraintExpressionDto): string => {
+    if (expression.kind === 'constant') return `constant:${expression.value}`
+    if (expression.kind === 'signal') {
+      const group = groupBySignalId.get(expression.signalId)
+      if (group) return `group:${group.id}`
+      const signalName = signalById.get(expression.signalId)?.qualifiedName ?? `s${expression.signalId}`
+      return `signal:${shortConstraintSignalName(signalName).replace(/\[\d+\]/g, '[n]')}`
+    }
+    const operands = expression.operands.map(expressionPattern).sort()
+    return `${expression.kind}(${operands.join(',')})`
+  }
+  const equationPattern = (constraint: (typeof graph.constraints)[number]) => [
+    expressionPattern(constraint.equation.left),
+    expressionPattern(constraint.equation.right),
+  ].sort().join('=')
+  const constraintPatternGroups = new Map<string, typeof graph.constraints>()
+  for (const constraint of graph.constraints) {
+    const clusterId = loopClusterIdByConstraintId.get(constraint.id)
+    const patternKey = clusterId ? `${clusterId}:${equationPattern(constraint)}` : constraint.id
+    const grouped = constraintPatternGroups.get(patternKey) ?? []
+    grouped.push(constraint)
+    constraintPatternGroups.set(patternKey, grouped)
+  }
 
   const addSignalNode = (
     signalId: number,
@@ -300,7 +631,28 @@ const constraintDisplay = computed(() => {
     labelPrefix = '',
   ) => {
     const signal = signalById.get(signalId)
-    const qualifiedName = signal?.qualifiedName ?? `s${signalId}`
+    const qualifiedName = signal?.qualifiedName ?? 's' + signalId
+    const group = groupBySignalId.get(signalId)
+    if (group) {
+      nodes.push({
+        id,
+        referenceId: group.id,
+        label: shortConstraintSignalName(group.displayQualifiedName),
+        kind: 'signal',
+        role: group.role,
+        status: group.status,
+        badge: group.mockSupplied ? 'MOCK OUTPUT' : undefined,
+        constraintIndex,
+        aggregate: true,
+        tooltip: group.displayQualifiedName + ' (' + group.memberSignalIds.length + ' elements)',
+      })
+      for (const memberId of group.memberSignalNodeIds) {
+        const displayIds = displayIdsBySignalNodeId.get(memberId) ?? []
+        displayIds.push(id)
+        displayIdsBySignalNodeId.set(memberId, displayIds)
+      }
+      return id
+    }
     nodes.push({
       id,
       referenceId: signal?.id,
@@ -340,7 +692,7 @@ const constraintDisplay = computed(() => {
         : second.kind === 'signal' && first.kind === 'constant' && first.value === '-1'
           ? second
           : undefined
-      if (negatedSignal) return addSignalNode(negatedSignal.signalId, id, constraintIndex, '-')
+      if (negatedSignal && !groupBySignalId.has(negatedSignal.signalId)) return addSignalNode(negatedSignal.signalId, id, constraintIndex, '-')
     }
     nodes.push({
       id,
@@ -357,7 +709,8 @@ const constraintDisplay = computed(() => {
     return id
   }
 
-  for (const constraint of graph.constraints) {
+  for (const groupedConstraints of constraintPatternGroups.values()) {
+    const constraint = groupedConstraints[0]
     const equation = constraint.equation
     const leftRoot = addExpression(equation.left, constraint.id, constraint.index, 'left')
     const rightRoot = addExpression(equation.right, constraint.id, constraint.index, 'right')
@@ -367,30 +720,22 @@ const constraintDisplay = computed(() => {
       target: rightRoot,
       kind: 'constraint-equality',
       label: '=',
+      multiplicity: groupedConstraints.length,
     })
   }
 
-  for (const boundary of graph.mockBoundaries ?? []) {
-    const output = graph.signals.find(signal => signal.id === boundary.outputSignalId)
-    if (!output) continue
-    const outputNodeIds = displayIdsBySignalNodeId.get(output.id) ?? []
-    outputNodeIds.forEach((outputNodeId, index) => {
-      const outputNode = nodes.find(node => node.id === outputNodeId)
-      const boundaryId = `${boundary.id}:${index}`
-      nodes.push({ id: boundaryId, label: 'mock', kind: 'mock-boundary', role: 'mock-boundary', constraintIndex: outputNode?.constraintIndex })
-      edges.push({ id: `${boundaryId}:edge`, source: boundaryId, target: outputNodeId, kind: 'mock-supplied' })
-    })
-  }
   return { nodes, edges }
 })
 
 const allNodes = computed<DisplayNode[]>(() => {
   if (props.graphKind === 'source') {
     return (props.sourceGraph?.nodes ?? [])
-      .filter(node => relevantSourceIds.value.has(node.id) && node.kind !== 'assignment' && node.kind !== 'source-constraint' && (node.kind !== 'component-group' || node.componentPath !== 'main'))
+      .filter(node => relevantSourceIds.value.has(node.id) && !sourceLoopHiddenNodeIds.value.has(node.id) && node.kind !== 'assignment' && node.kind !== 'source-constraint' && (node.kind !== 'component-group' || node.componentPath !== 'main'))
       .map(node => ({
         id: node.id,
-        label: node.kind === 'signal'
+        label: node.statePhase === 'final' && node.stateVariable
+          ? node.stateVariable
+          : node.kind === 'signal' || node.kind === 'variable'
           ? node.localName ?? node.label
           : node.kind === 'component-group' ? node.templateName ?? node.label
           : node.kind === 'operation' ? operationLabel(node.operation, node.label) : node.label,
@@ -400,6 +745,12 @@ const allNodes = computed<DisplayNode[]>(() => {
         role: node.role,
         status: node.mocked || node.role?.startsWith('mock-') ? 'mocked' : undefined,
         badge: node.role?.startsWith('mock-') ? 'MOCK' : undefined,
+        initialExpression: node.initialExpression,
+        initialValue: node.initialValue,
+        tooltip: node.kind === 'variable' ? variableTooltip(node.localName ?? node.label, node.initialExpression, node.initialValue) : node.qualifiedName,
+        loopId: node.loopId,
+        statementId: node.statementId,
+        statePhase: node.statePhase,
       }))
   }
   return constraintDisplay.value.nodes
@@ -482,6 +833,7 @@ const sourceLayout = computed(() => {
   const operations = visibleNodes.value.filter(node => node.kind === 'operation' || node.kind === 'source-constraint' || node.kind === 'ternary-condition' || node.kind === 'ternary-result')
   const components = visibleNodes.value.filter(node => node.kind === 'component')
   const constants = visibleNodes.value.filter(node => node.kind === 'constant')
+  const variables = visibleNodes.value.filter(node => node.kind === 'variable')
   const componentInputPortIds = new Set(visibleEdges.value.filter(edge => edge.kind === 'component-input').map(edge => edge.source))
   const componentOutputPortIds = new Set(visibleEdges.value.filter(edge => edge.kind === 'component-output').map(edge => edge.target))
   const componentPortIds = new Set([...componentInputPortIds, ...componentOutputPortIds])
@@ -562,6 +914,35 @@ const sourceLayout = computed(() => {
     })
   })
 
+  const loopStateByNodeId = new Map<string, { loopId: string }>()
+  for (const loop of props.sourceGraph?.loops ?? []) {
+    for (const state of loop.stateVariables) {
+      loopStateByNodeId.set(state.initialNodeId, { loopId: loop.id })
+      loopStateByNodeId.set(state.finalNodeId, { loopId: loop.id })
+    }
+  }
+  const visibleLoopVariables = variables.filter(node => loopStateByNodeId.has(node.id))
+
+  variables.forEach((node, index) => {
+    const loopState = loopStateByNodeId.get(node.id)
+    const frame = loopState ? sourceLoopFrames.value.find(candidate => candidate.id === loopState.loopId) : undefined
+    const consumers = visibleEdges.value.filter(edge => edge.source === node.id).map(edge => map.get(edge.target)).filter((position): position is { x: number; y: number } => Boolean(position))
+    const target = consumers[0]
+    if (frame && loopState) {
+      const siblings = visibleLoopVariables.filter(candidate => loopStateByNodeId.get(candidate.id)?.loopId === loopState.loopId)
+      const siblingIndex = siblings.findIndex(candidate => candidate.id === node.id)
+      const minimumY = frame.y + frame.headerHeight + 34
+      const maximumY = frame.y + frame.height - 34
+      const distributedY = minimumY + (maximumY - minimumY) * (siblingIndex + 1) / (siblings.length + 1)
+      const preferredY = target ? Math.min(maximumY, Math.max(minimumY, target.y)) : distributedY
+      placeWithoutOverlap(node, frame.x - 100, preferredY)
+      return
+    }
+    const x = target ? target.x - edgeGap - nodeVisualWidth(node) : firstOperationX - edgeGap - nodeVisualWidth(node)
+    const y = target?.y ?? 110 + index * operationRowGap
+    placeWithoutOverlap(node, x, y)
+  })
+
   constants.forEach((node, index) => {
     const consumer = visibleEdges.value.find(edge => edge.source === node.id)
     const targetNode = consumer ? nodeById.get(consumer.target) : undefined
@@ -589,9 +970,26 @@ const sourceLayout = computed(() => {
   }
   pendingIntermediates.forEach((node, index) => placeWithoutOverlap(node, firstOperationX, 110 + index * operationRowGap))
 
+
   const internalNodes = visibleNodes.value.filter(node => !inputs.includes(node) && !outputs.includes(node))
+  const loopBottom = Math.max(0, ...sourceLoopFrames.value.map(frame => frame.y + frame.height))
+  let displacedNodeIndex = 0
+  for (const node of internalNodes) {
+    const position = map.get(node.id)
+    if (!position) continue
+    const overlapsLoop = sourceLoopFrames.value.some(frame =>
+      position.x + nodeVisualWidth(node) / 2 > frame.x &&
+      position.x - nodeVisualWidth(node) / 2 < frame.x + frame.width &&
+      position.y + nodeHeight(node) / 2 > frame.y &&
+      position.y - nodeHeight(node) / 2 < frame.y + frame.height
+    )
+    if (!overlapsLoop) continue
+    map.set(node.id, { x: position.x, y: loopBottom + 90 + displacedNodeIndex * 120 })
+    displacedNodeIndex += 1
+  }
   const internalRight = Math.max(
     firstOperationX + maxDepth * operationColumnGap,
+    ...sourceLoopFrames.value.map(frame => frame.x + frame.width),
     ...internalNodes.map(node => {
       const position = map.get(node.id)
       return position ? position.x + nodeVisualWidth(node) / 2 : 0
@@ -685,11 +1083,124 @@ const positions = computed(() => {
   return map
 })
 
-const canvasWidth = computed(() => Math.max(760, ...visibleNodes.value.map(node => {
-  const position = positions.value.get(node.id)
-  return (position?.x ?? 0) + nodeVisualWidth(node) / 2 + 70
-})))
-const canvasHeight = computed(() => Math.max(props.graphKind === 'source' ? 560 : 420, ...Array.from(positions.value.values()).map(position => position.y + (props.graphKind === 'source' ? 130 : 90))))
+const sourceLoopConnections = computed(() => {
+  if (props.graphKind !== 'source') return []
+  const connections: Array<{ id: string; kind: 'variable' | 'output'; path: string }> = []
+  const seen = new Set<string>()
+  const referenceKey = (label: string) => normalizeLoopReference(label).replace(/\[\]/g, '')
+  const referencesMatch = (left: string, right: string) => referenceKey(left) === referenceKey(right)
+  const connectorPath = (source: { x: number; y: number }, target: { x: number; y: number }) => {
+    const direction = target.x >= source.x ? 1 : -1
+    const controlOffset = Math.max(28, Math.abs(target.x - source.x) * 0.45)
+    return `M ${source.x} ${source.y} C ${source.x + direction * controlOffset} ${source.y}, ${target.x - direction * controlOffset} ${target.y}, ${target.x} ${target.y}`
+  }
+
+  for (const frame of sourceLoopFrames.value) {
+    for (const card of frame.cards) {
+      const operands = [
+        { side: 'left', label: card.left, style: card.leftStyle, x: card.leftX, width: card.leftWidth },
+        { side: 'right', label: card.right, style: card.rightStyle, x: card.rightX, width: card.rightWidth },
+      ] as const
+      for (const operand of operands) {
+        let kind: 'variable' | 'output' | undefined
+        let externalNode: DisplayNode | undefined
+        if (operand.style === 'variable') {
+          kind = 'variable'
+          externalNode = visibleNodes.value.find(node => node.kind === 'variable' && node.loopId === frame.id && node.statePhase === 'final' && referencesMatch(node.label, operand.label))
+            ?? visibleNodes.value.find(node => node.kind === 'variable' && referencesMatch(node.label, operand.label))
+        } else if (operand.side === 'right' && operand.style === 'output' && ['-->', '==>'].includes(card.operator)) {
+          kind = 'output'
+          externalNode = visibleNodes.value.find(node => node.kind === 'signal' && (node.role === 'output' || node.role === 'mock-output') && referencesMatch(node.label, operand.label))
+        }
+        if (!kind || !externalNode) continue
+        const connectionKey = `${frame.id}:${kind}:${referenceKey(operand.label)}`
+        if (seen.has(connectionKey)) continue
+        const externalPosition = positions.value.get(externalNode.id)
+        if (!externalPosition) continue
+        seen.add(connectionKey)
+        const operandCenterX = operand.x + operand.width / 2
+        const source = {
+          x: externalPosition.x < operandCenterX ? operand.x : operand.x + operand.width,
+          y: card.centerY,
+        }
+        const target = {
+          x: source.x < externalPosition.x
+            ? externalPosition.x - nodeVisualWidth(externalNode) / 2
+            : externalPosition.x + nodeVisualWidth(externalNode) / 2,
+          y: externalPosition.y,
+        }
+        connections.push({ id: connectionKey, kind, path: connectorPath(source, target) })
+      }
+    }
+  }
+  return connections
+})
+
+const constraintPatternFrames = computed(() => {
+  if (props.graphKind !== 'constraint') return []
+  return visibleEdges.value
+    .filter(edge => edge.kind === 'constraint-equality' && (edge.multiplicity ?? 1) > 1)
+    .flatMap(edge => {
+      const root = visibleNodeById.value.get(edge.source)
+      if (root?.constraintIndex === undefined) return []
+      const members = visibleNodes.value
+        .filter(node => node.constraintIndex === root.constraintIndex)
+        .map(node => ({ node, position: positions.value.get(node.id) }))
+        .filter((member): member is { node: DisplayNode; position: { x: number; y: number } } => Boolean(member.position))
+      if (!members.length) return []
+      const minX = Math.min(...members.map(member => member.position.x - nodeVisualWidth(member.node) / 2)) - 28
+      const maxX = Math.max(...members.map(member => member.position.x + nodeVisualWidth(member.node) / 2)) + 28
+      const minY = Math.min(...members.map(member => member.position.y - nodeHeight(member.node) / 2)) - 28
+      const maxY = Math.max(...members.map(member => member.position.y + nodeHeight(member.node) / 2)) + 28
+      return [{ id: `${edge.id}:pattern`, x: minX, y: minY, width: maxX - minX, height: maxY - minY, count: edge.multiplicity ?? 1 }]
+    })
+})
+
+const constraintLoopFrames = computed(() => {
+  if (props.graphKind !== 'constraint') return []
+  const graph = props.constraintGraph
+  if (!graph) return []
+  const baseBottom = Math.max(90, ...Array.from(positions.value.values()).map(position => position.y + 70))
+  let emptyIndex = 0
+  return (graph.loopClusters ?? []).map(cluster => {
+    const constraintIndices = new Set(
+      cluster.constraintNodeIds
+        .map(constraintId => graph.constraints.find(constraint => constraint.id === constraintId)?.index)
+        .filter((index): index is number => index !== undefined),
+    )
+    const members = visibleNodes.value
+      .filter(node => node.constraintIndex !== undefined && constraintIndices.has(node.constraintIndex))
+      .map(node => ({ node, position: positions.value.get(node.id) }))
+      .filter((member): member is { node: DisplayNode; position: { x: number; y: number } } => Boolean(member.position))
+    if (!members.length) {
+      const y = baseBottom + emptyIndex * 92
+      emptyIndex += 1
+      return { id: cluster.id, label: cluster.label, x: 50, y, width: 620, height: 68, empty: true }
+    }
+    const minX = Math.min(...members.map(member => member.position.x - nodeVisualWidth(member.node) / 2)) - 34
+    const maxX = Math.max(...members.map(member => member.position.x + nodeVisualWidth(member.node) / 2)) + 34
+    const minY = Math.min(...members.map(member => member.position.y - nodeHeight(member.node) / 2)) - 34
+    const maxY = Math.max(...members.map(member => member.position.y + nodeHeight(member.node) / 2)) + 34
+    return { id: cluster.id, label: cluster.label, x: minX, y: minY, width: maxX - minX, height: maxY - minY, empty: false }
+  })
+})
+
+const frameBounds = computed(() => props.graphKind === 'source'
+  ? sourceLoopFrames.value
+  : [...constraintLoopFrames.value, ...constraintPatternFrames.value])
+const canvasWidth = computed(() => Math.max(
+  760,
+  ...visibleNodes.value.map(node => {
+    const position = positions.value.get(node.id)
+    return (position?.x ?? 0) + nodeVisualWidth(node) / 2 + 70
+  }),
+  ...frameBounds.value.map(frame => frame.x + frame.width + 50),
+))
+const canvasHeight = computed(() => Math.max(
+  props.graphKind === 'source' ? 560 : 420,
+  ...Array.from(positions.value.values()).map(position => position.y + (props.graphKind === 'source' ? 130 : 90)),
+  ...frameBounds.value.map(frame => frame.y + frame.height + 50),
+))
 const sourceBoundary = computed(() => ({ x: 190, y: 35, width: sourceLayout.value.boundaryRight - 190, height: canvasHeight.value - 70 }))
 watch([canvasWidth, canvasHeight, () => visibleNodes.value.length], async () => {
   await nextTick()
@@ -719,6 +1230,7 @@ function nodeFontSize(node: DisplayNode) {
   if (node.kind === 'operation') return 22
   if (node.kind === 'ternary-condition') return 15
   if (node.kind === 'component') return 16
+  if (node.kind === 'variable') return length > 17 ? 14 : length > 12 ? 16 : 18
   if (node.kind === 'constraint-term') return length > 20 ? 13 : length > 14 ? 14 : 16
   if (node.kind === 'signal' && !isValueNode(node)) return length > 17 ? 13 : length > 12 ? 14 : 16
   if (isValueNode(node)) return length > 17 ? 14 : length > 12 ? 16 : 18
@@ -726,7 +1238,6 @@ function nodeFontSize(node: DisplayNode) {
 }
 function nodeWidth(node: DisplayNode) {
   if (node.kind === 'constraint') return 320
-  if (node.kind === 'mock-boundary') return 72
   if (node.kind === 'component') return Math.min(250, Math.max(190, displayNodeLabel(node).length * 10 + 56))
   if (node.kind === 'ternary-condition') return Math.min(190, Math.max(130, displayNodeLabel(node).length * 10 + 48))
   const labelWidth = displayNodeLabel(node).length * nodeFontSize(node) * 0.62
@@ -735,8 +1246,8 @@ function nodeWidth(node: DisplayNode) {
   return Math.min(280, Math.max(82, labelWidth + 30))
 }
 function nodeHeight(node: DisplayNode) {
-  if (node.kind === 'mock-boundary') return 34
   if (node.kind === 'component') return 110
+  if (node.kind === 'variable') return 48
   if (node.kind === 'ternary-condition') return 82
   return node.kind === 'signal' || valueNeedsRectangle(node) || node.kind === 'constraint-term' ? 48 : 40
 }
@@ -753,10 +1264,11 @@ function isSvgOperationNode(node: DisplayNode) {
   return node.kind === 'operation' && (node.label === '+' || node.label === '-' || node.label === 'x')
 }
 function isCircleNode(node: DisplayNode) {
-  return node.kind === 'operation' || (isValueNode(node) && !valueNeedsRectangle(node))
+  return node.kind === 'operation' || node.kind === 'variable' || (isValueNode(node) && !valueNeedsRectangle(node))
 }
 function nodeCircleRadius(node: DisplayNode) {
   if (node.kind === 'operation') return 25
+  if (node.kind === 'variable') return 24
   return 24
 }
 function nodeVisualWidth(node: DisplayNode) {
@@ -909,7 +1421,8 @@ const edgePath = (edge: DisplayEdge) => {
 const edgeMidpoint = (edge: DisplayEdge) => routePoint(edgeRoute(edge), 0.5)
 const edgeLabelPosition = (edge: DisplayEdge) => {
   const midpoint = edgeMidpoint(edge)
-  return { x: midpoint.x, y: midpoint.y - 7 }
+  const verticalOffset = edge.operandRole ? -1 : -7
+  return { x: midpoint.x, y: midpoint.y + verticalOffset }
 }
 
 const outputOperatorLabel = (operator?: string) => {
@@ -961,10 +1474,22 @@ const outputOperatorLabel = (operator?: string) => {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.92);
   color: #40574f;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .02em;
+  transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+}
+
+.figure-title:hover,
+.figure-title:focus-visible {
+  border-color: #409eff;
+  color: #409eff;
+  background: #fff;
+  outline: none;
 }
 
 .input-legend-dot {
@@ -982,9 +1507,19 @@ const outputOperatorLabel = (operator?: string) => {
   border: 1px solid #6b7280;
 }
 
+.variable-legend-dot {
+  background: rgba(251, 191, 36, 0.34);
+  border: 1px solid #d97706;
+}
+
 .child-template-legend-box {
   background: rgba(255, 255, 255, 0.94);
   border: 2px solid #6b7280;
+}
+
+.for-loop-legend-box {
+  background: rgba(167, 139, 190, 0.12);
+  border: 1.5px solid #a78bbe;
 }
 
 .ternary-legend-diamond {
@@ -996,11 +1531,6 @@ const outputOperatorLabel = (operator?: string) => {
   transform: rotate(45deg);
 }
 
-.mock-boundary-legend-box {
-  background: #6b7280;
-  border: 2px dashed #6b7280;
-  opacity: 0.5;
-}
 
 .constant-legend-dot {
   background: #f8f1df;
@@ -1018,6 +1548,209 @@ const outputOperatorLabel = (operator?: string) => {
   fill: #536d63;
   font-size: 11px;
   font-weight: 700;
+}
+
+.source-loop-frame,
+.loop-code-card,
+.constraint-loop-frame {
+  cursor: pointer;
+}
+
+.source-loop-frame text,
+.loop-code-card text,
+.constraint-loop-frame text {
+  pointer-events: none;
+}
+
+.loop-frame-box {
+  fill: rgba(167, 139, 190, 0.035);
+  stroke: #a78bbe;
+  stroke-width: 1.5;
+}
+
+.loop-header-band {
+  fill: rgba(167, 139, 190, 0.12);
+  pointer-events: none;
+}
+
+.loop-section-divider {
+  stroke: #b9a8cc;
+  stroke-width: 1.5;
+}
+
+.loop-header-divider {
+  stroke: #d8cfe3;
+  stroke-width: 1;
+}
+
+.loop-header-condition {
+  fill: #6f5f82;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.loop-external-connection {
+  fill: none;
+  stroke-width: 1.25;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.loop-external-connection.variable {
+  stroke: #d97706;
+  stroke-dasharray: 6 4;
+}
+
+.loop-external-connection.output {
+  stroke: #16a34a;
+}
+
+.assignment-connector {
+  stroke: #6b7280;
+  stroke-width: 1;
+  opacity: 0.75;
+}
+
+.loop-card-divider {
+  stroke: #9ca3af;
+  stroke-width: 0.6;
+  stroke-dasharray: 6 5;
+  opacity: 0.72;
+}
+
+.statement-index {
+  fill: rgba(107, 114, 128, 0.14);
+  stroke: #6b7280;
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.loop-code-card .statement-number {
+  fill: #111827;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.code-operand {
+  fill: rgba(107, 114, 128, 0.14);
+  stroke: #6b7280;
+  stroke-width: 1.5;
+}
+
+.code-operand.input {
+  fill: rgba(37, 99, 235, 0.14);
+  stroke: #2563eb;
+}
+
+.code-operand.output {
+  fill: rgba(22, 163, 74, 0.14);
+  stroke: #16a34a;
+}
+
+.code-operand.variable {
+  fill: rgba(251, 191, 36, 0.34);
+  stroke: #d97706;
+}
+
+.code-operand.constant {
+  fill: #f8f1df;
+  stroke: #aa823f;
+}
+
+.code-operand.component-reference {
+  fill: rgba(107, 114, 128, 0.14);
+  stroke: #6b7280;
+}
+
+.code-operand.expression {
+  fill: rgba(107, 114, 128, 0.14);
+  stroke: #94a3b8;
+}
+
+.code-operator {
+  fill: #fff;
+  stroke: #64748b;
+  stroke-width: 1.2;
+}
+
+.code-operand.component {
+  fill: rgba(255, 255, 255, 0.94);
+  stroke: #6b7280;
+  stroke-width: 1.5;
+}
+
+.code-operand-label {
+  fill: #111827;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.code-operand-label.component-label {
+  fill: #6b7280;
+  font-size: 16px;
+  font-weight: 500;
+  font-style: italic;
+}
+
+.code-operator-label {
+  fill: #1f2937;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.source-loop-frame.selected > .loop-frame-box,
+.loop-code-card.selected .code-operand,
+.loop-code-card.selected .code-operator,
+.constraint-loop-frame.selected rect {
+  stroke: #dc2626;
+  stroke-width: 3;
+}
+
+.source-loop-frame.linked > .loop-frame-box,
+.loop-code-card.linked .code-operand,
+.loop-code-card.linked .code-operator,
+.constraint-loop-frame.linked rect {
+  stroke: #17806b;
+  stroke-width: 2.5;
+}
+
+.constraint-pattern-frame rect {
+  fill: none;
+  stroke: #64748b;
+  stroke-width: 2.5;
+  stroke-dasharray: 6 3;
+  pointer-events: none;
+}
+
+.constraint-pattern-frame text {
+  fill: #475569;
+  font-size: 18px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.constraint-loop-frame rect {
+  fill: rgba(240, 249, 255, 0.22);
+  stroke: #39748a;
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+}
+
+.constraint-loop-frame.empty rect {
+  fill: rgba(254, 249, 195, 0.34);
+  stroke: #a16207;
+}
+
+.constraint-loop-label {
+  fill: #164e63;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.constraint-loop-empty {
+  fill: #854d0e;
+  font-size: 10px;
 }
 
 .graph-edge-hit {
@@ -1039,12 +1772,6 @@ const outputOperatorLabel = (operator?: string) => {
   stroke-dasharray: 4 3;
 }
 
-.graph-edge.mock-supplied {
-  stroke: #6b7280;
-  stroke-width: 2;
-  stroke-dasharray: 5 3;
-  opacity: 0.5;
-}
 
 .graph-edge.port-A {
   stroke: #3077a8;
@@ -1056,6 +1783,12 @@ const outputOperatorLabel = (operator?: string) => {
 
 .graph-edge.port-C {
   stroke: #368162;
+}
+
+.graph-edge.loop-carried {
+  stroke: #d97706;
+  stroke-width: 2;
+  stroke-dasharray: 7 4;
 }
 
 .graph-edge.witness-assignment {
@@ -1222,6 +1955,12 @@ const outputOperatorLabel = (operator?: string) => {
   stroke-width: 2.5;
 }
 
+.graph-node.variable circle {
+  fill: rgba(251, 191, 36, 0.34);
+  stroke: #d97706;
+  stroke-width: 2.5;
+}
+
 .graph-node .component-instance-label {
   fill: #111827;
   font-size: 24px;
@@ -1275,22 +2014,8 @@ const outputOperatorLabel = (operator?: string) => {
   stroke: #bf7246;
 }
 
-.graph-node.mock-boundary {
-  opacity: 0.5;
-}
 
-.graph-node.mock-boundary rect {
-  fill: #6b7280;
-  stroke: #6b7280;
-  stroke-width: 2.5;
-  stroke-dasharray: 5 3;
-}
 
-.graph-node.mock-boundary text {
-  fill: #374151;
-  font-size: 14px;
-  font-weight: 700;
-}
 
 .graph-node.synthetic rect,
 .graph-node.synthetic circle {

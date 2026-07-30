@@ -68,7 +68,10 @@ function collectReferences(node: unknown, templateNames: Set<string>, functionNa
     const record = value as Record<string, unknown>;
     if (typeof record.templateName === 'string' && templateNames.has(record.templateName)) templates.add(record.templateName);
     if (record.type === 'ComponentCall' && typeof record.template === 'string' && templateNames.has(record.template)) templates.add(record.template);
-    if (record.type === 'FunctionCall' && typeof record.function === 'string' && functionNames.has(record.function)) functions.add(record.function);
+    if (record.type === 'FunctionCall' && typeof record.function === 'string') {
+      if (templateNames.has(record.function)) templates.add(record.function);
+      if (functionNames.has(record.function)) functions.add(record.function);
+    }
     for (const [key, child] of Object.entries(record)) if (key !== 'sourceFile') visit(child);
   };
   visit(node);
