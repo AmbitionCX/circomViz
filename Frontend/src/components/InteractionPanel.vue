@@ -34,7 +34,7 @@
         <div class="intent-row" @click.stop>
           <el-input
             v-model="input"
-            placeholder="What do you want to do in this template?"
+            placeholder="What should this template enforce?"
             @keyup.enter="handleAnalyzeIntent"
           />
           <el-button

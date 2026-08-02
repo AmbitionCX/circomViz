@@ -1,5 +1,5 @@
 export type OptimizationLevel = 'O0'
-export type ConstraintRenderMode = 'intuitive' | 'exact'
+export type ConstraintRenderMode = 'overview' | 'focus' | 'exact'
 
 export interface SourceSpan { file: string; startLine: number; endLine: number }
 export interface SourceGraphNode {
@@ -93,7 +93,7 @@ export interface ConstraintGraphResponse {
 }
 
 export type IssueSeverity = 'high' | 'medium' | 'low'
-export type IssueResolution = 'open' | 'confirmed' | 'intentional' | 'dismissed'
+export type IssueResolution = 'open' | 'confirmed' | 'dismissed'
 export interface IssueAnchor {
   view: 'source' | 'r1cs'
   type: 'node' | 'edge' | 'family' | 'ghost'
@@ -111,7 +111,6 @@ export interface IssueCard {
   observed: string
   expected: string
   evidenceIds: string[]
-  verificationPlan?: string
   followUpQuestion?: string
   resolution: IssueResolution
   source: 'detector' | 'llm' | 'detector+llm'

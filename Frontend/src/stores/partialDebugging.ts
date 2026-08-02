@@ -40,7 +40,7 @@ export const usePartialDebuggingStore = defineStore('partialDebugging', {
     analysisError: null,
     activeIssueId: null,
     lastIntent: '',
-    renderMode: 'exact',
+    renderMode: 'overview',
     selectedNodeId: null,
     hoveredNodeId: null,
     searchTerm: '',
@@ -102,7 +102,10 @@ export const usePartialDebuggingStore = defineStore('partialDebugging', {
     selectIssue(issueId: string | null) {
       this.activeIssueId = issueId
       const issue = this.issues.find(candidate => candidate.id === issueId)
-      const anchor = issue?.anchors[0]
+      const graphVisible = issue
+        && (issue.resolution === 'open' || issue.resolution === 'confirmed')
+      const anchor = graphVisible ? issue.anchors[0] : undefined
+      this.renderMode = graphVisible ? 'focus' : 'overview'
       this.selectedNodeId = anchor
         ? anchor.type === 'node' || anchor.type === 'family'
           ? anchor.id
@@ -111,7 +114,13 @@ export const usePartialDebuggingStore = defineStore('partialDebugging', {
     },
     setIssueResolution(issueId: string, resolution: IssueResolution) {
       const issue = this.issues.find(candidate => candidate.id === issueId)
-      if (issue) issue.resolution = resolution
+      if (!issue) return
+      issue.resolution = resolution
+      if (resolution === 'dismissed' && this.activeIssueId === issueId) {
+        this.selectIssue(null)
+      } else if (this.activeIssueId === issueId) {
+        this.selectIssue(issueId)
+      }
     },
     async loadSourceGraph() {
       if (!this.summary || this.sourceGraph) return

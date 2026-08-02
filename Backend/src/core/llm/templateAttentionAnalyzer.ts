@@ -268,9 +268,15 @@ export function normalizeLlmIssues(
     const evidenceIds = Array.isArray(issue.evidenceIds)
       ? [...new Set(issue.evidenceIds.map((id) => text(id)).filter((id) => allowedEvidenceIds.has(id)))]
       : [];
-    if (!anchors.length || !evidenceIds.length) return [];
+    const sourceAnchors = anchors.filter((anchor) => anchor.view === 'source');
+    if (!sourceAnchors.length || !evidenceIds.length) return [];
 
-    const primary = anchors[0];
+    const orderedAnchors = [
+      ...sourceAnchors,
+      ...anchors.filter((anchor) => anchor.view !== 'source'),
+    ];
+
+    const primary = orderedAnchors[0];
     const digest = createHash('sha256')
       .update(primary.view + ':' + primary.type + ':' + primary.id)
       .digest('hex')
@@ -282,11 +288,10 @@ export function normalizeLlmIssues(
       explanation: text(issue.explanation, 'The available evidence may not match the stated intent.'),
       severity: oneOf(issue.severity, ['high', 'medium', 'low'] as const, 'medium'),
       confidence: oneOf(issue.confidence, ['high', 'medium', 'low'] as const, 'low'),
-      anchors,
+      anchors: orderedAnchors,
       observed: text(issue.observed, 'See the highlighted graph element.'),
       expected: text(issue.expected, 'Confirm the intended behavior.'),
       evidenceIds,
-      verificationPlan: text(issue.verificationPlan) || undefined,
       followUpQuestion: text(issue.followUpQuestion) || undefined,
       resolution: 'open',
       source: 'llm',
@@ -336,37 +341,47 @@ function diagnosticAnchor(
   return undefined;
 }
 
-function deterministicIssues(bundle: PartialDebuggingGraphBundle, catalog: AnchorCatalog): IssueCard[] {
-  const titles: Record<GraphDiagnostic['type'], string> = {
+interface OriginDiagnosticEvidence {
+  diagnostic: GraphDiagnostic;
+  anchor: IssueAnchor;
+}
+
+function originalTemplateDiagnostics(
+  bundle: PartialDebuggingGraphBundle,
+  catalog: AnchorCatalog,
+): OriginDiagnosticEvidence[] {
+  return bundle.summary.diagnostics.flatMap((diagnostic) => {
+    if (diagnostic.type === 'MOCK_LEAKAGE') return [];
+    const anchor = diagnosticAnchor(diagnostic, bundle, catalog);
+    if (!anchor || anchor.view !== 'source') return [];
+    return [{ diagnostic, anchor }];
+  });
+}
+
+function deterministicIssues(evidence: OriginDiagnosticEvidence[]): IssueCard[] {
+  const titles: Partial<Record<GraphDiagnostic['type'], string>> = {
     WITNESS_ONLY_UNVERIFIED: 'Witness assignment is not constrained',
     SOURCE_CONSTRAINT_UNMATCHED: 'Expected enforcement was not found',
     UNUSED_OR_UNCONSTRAINED: 'Signal has no R1CS participation',
-    MOCK_LEAKAGE: 'Mock plumbing escaped its boundary',
   };
-  const expected: Record<GraphDiagnostic['type'], string> = {
+  const expected: Partial<Record<GraphDiagnostic['type'], string>> = {
     WITNESS_ONLY_UNVERIFIED: 'A witness-time value that affects the result should be constrained.',
     SOURCE_CONSTRAINT_UNMATCHED: 'The source relation should map to local O0 enforcement or an explicit boundary assumption.',
     UNUSED_OR_UNCONSTRAINED: 'The signal should participate in enforcement or be documented as intentionally unused.',
-    MOCK_LEAKAGE: 'Synthetic mock plumbing should remain hidden behind the child boundary.',
   };
 
-  return bundle.summary.diagnostics.flatMap((diagnostic, index) => {
-    const anchor = diagnosticAnchor(diagnostic, bundle, catalog);
-    if (!anchor) return [];
+  return evidence.flatMap(({ diagnostic, anchor }, index) => {
     const issue: IssueCard = {
       id: 'issue:detector:' + index + ':' + diagnostic.id,
-      kind: diagnostic.type === 'MOCK_LEAKAGE' ? 'MockBoundaryLeakage' : 'CoverageGap',
-      title: titles[diagnostic.type],
+      kind: 'CoverageGap',
+      title: titles[diagnostic.type] ?? 'Original template behavior needs attention',
       explanation: diagnostic.message,
       severity: diagnostic.severity,
       confidence: 'deterministic',
       anchors: [anchor],
       observed: diagnostic.message,
-      expected: expected[diagnostic.type],
+      expected: expected[diagnostic.type] ?? 'The original template should enforce the stated intent.',
       evidenceIds: [diagnostic.id],
-      verificationPlan: diagnostic.type === 'MOCK_LEAKAGE'
-        ? 'Inspect the generated mock details and provenance.'
-        : 'Inspect the source/R1CS slice, then verify against the complete original R1CS if needed.',
       resolution: 'open',
       source: 'detector',
     };
@@ -396,7 +411,6 @@ function mergeIssues(detected: IssueCard[], triaged: IssueCard[]): IssueCard[] {
       observed: issue.observed,
       expected: issue.expected,
       evidenceIds: [...new Set([...existing.evidenceIds, ...issue.evidenceIds])],
-      verificationPlan: issue.verificationPlan ?? existing.verificationPlan,
       followUpQuestion: issue.followUpQuestion,
       source: 'detector+llm',
     });
@@ -411,13 +425,15 @@ function promptPayload(
   intent: string,
   bundle: PartialDebuggingGraphBundle,
   catalog: AnchorCatalog,
+  diagnosticEvidence: OriginDiagnosticEvidence[],
 ) {
   return {
     intent,
     template: bundle.analysisContext.templateName,
     interpretationRules: {
       origin: 'User-authored semantics and bindings.',
-      mocked: 'Generated local-enforcement view. Synthetic mock inputs are assumptions, not verified child behavior.',
+      mocked: 'Evidence lens for finding concerns in the original template; never an independent issue target.',
+      issueScope: 'Every issue must describe a potential defect or ambiguity in the original template. Ignore generated mocking artifacts.',
       intentAuthority: 'Treat the prose as user-stated intent, but phrase findings as hypotheses until the user confirms them.',
     },
     originTemplate: bundle.analysisContext.originCode.slice(0, MAX_SOURCE_CHARS),
@@ -428,7 +444,7 @@ function promptPayload(
       boundaryInputs: mock.boundaryInputs,
       boundaryOutputs: mock.boundaryOutputs,
     })),
-    deterministicEvidence: bundle.summary.diagnostics.map((diagnostic) => ({
+    deterministicEvidence: diagnosticEvidence.map(({ diagnostic }) => ({
       id: diagnostic.id,
       classification: diagnostic.type,
       severity: diagnostic.severity,
@@ -443,16 +459,15 @@ function promptPayload(
     responseSchema: {
       summary: 'short string',
       issues: [{
-        kind: 'RoleMismatch | DependencyGap | CoverageGap | IndexAnomaly | ConstantAnomaly | MockBoundaryUnknown | IdiomDiff',
+        kind: 'RoleMismatch | DependencyGap | CoverageGap | IndexAnomaly | ConstantAnomaly | IdiomDiff',
         title: 'short string',
         explanation: 'evidence-grounded explanation',
         severity: 'high | medium | low',
         confidence: 'high | medium | low',
-        anchors: [{ view: 'source | r1cs', type: 'node | edge | family', id: 'exact allowed id', relatedNodeIds: [] }],
+        anchors: [{ view: 'source first; optional r1cs evidence after it', type: 'node | edge | family', id: 'exact allowed id', relatedNodeIds: [] }],
         observed: 'what the code/enforcement does',
         expected: 'what the user intent suggests',
         evidenceIds: ['one or more exact diagnostic or anchor ids'],
-        verificationPlan: 'targeted next check',
         followUpQuestion: 'optional intent clarification',
       }],
     },
@@ -461,12 +476,15 @@ function promptPayload(
 
 const SYSTEM_PROMPT = [
   'You are the evidence-grounded semantic triage layer for CircomVis.',
-  'Analyze the user intent against both the original Circom source and the APC-generated mocked source.',
+  'Report only potential issues in the original, user-authored template.',
+  'Use the APC-generated mocked source and its R1CS only as supporting evidence for judging the original template.',
+  'Never create an issue for a generated mock, synthetic signal, mocking-algorithm artifact, or difference caused only by removed child internals.',
+  'Every issue must have an original source node or edge as its first anchor; R1CS anchors may only be supplementary evidence.',
   'Return JSON only, with at most 8 localized issue hypotheses.',
   'Use only exact IDs from allowedAnchors. Every issue must cite at least one exact evidence ID from deterministicEvidence or allowedAnchors.',
   'Never invent a signal, source location, constraint, node, edge, or contract.',
   'Do not call a majority pattern or an LLM inference verified.',
-  'Do not report a missing child dependency through a mock boundary; classify it as MockBoundaryUnknown.',
+  'A missing dependency behind a mock boundary is insufficient evidence; omit it rather than reporting a mock-boundary issue.',
   'Treat synthetic mock values as boundary assumptions, never user-authored semantics.',
   'Prefer the smallest causal node or edge and explain expected versus observed behavior.',
 ].join('\n');
@@ -476,9 +494,10 @@ export async function analyzeTemplateAttention(
   bundle: PartialDebuggingGraphBundle,
 ): Promise<TemplateAttentionAnalysisResponse> {
   const catalog = createAnchorCatalog(bundle);
-  const detected = deterministicIssues(bundle, catalog);
+  const diagnosticEvidence = originalTemplateDiagnostics(bundle, catalog);
+  const detected = deterministicIssues(diagnosticEvidence);
   const allowedEvidenceIds = new Set<string>([
-    ...bundle.summary.diagnostics.map((diagnostic) => diagnostic.id),
+    ...diagnosticEvidence.map(({ diagnostic }) => diagnostic.id),
     ...catalog.sourceNodeIds,
     ...catalog.sourceEdgeIds,
     ...catalog.r1csNodeIds,
@@ -486,7 +505,7 @@ export async function analyzeTemplateAttention(
   const configuration = getLLMConfiguration();
   const result = await callLLMStructured<RawAnalysis>(
     SYSTEM_PROMPT,
-    JSON.stringify(promptPayload(intent, bundle, catalog)),
+    JSON.stringify(promptPayload(intent, bundle, catalog, diagnosticEvidence)),
   );
 
   if (!result.success) {
@@ -508,13 +527,13 @@ export async function analyzeTemplateAttention(
     intent,
     summary: text(result.data.summary)
       || (merged.length
-        ? 'Found ' + merged.length + ' graph-localized area(s) that may require attention.'
+        ? 'Found ' + merged.length + ' original-template area(s) that may require attention.'
         : 'No evidence-grounded attention points were returned for this intent.'),
     issues: merged,
     provider: configuration.provider,
     model: configuration.model,
     ...(triaged.length === 0 && Array.isArray(result.data.issues) && result.data.issues.length
-      ? { warning: 'DeepSeek returned issues, but they were rejected because their anchors or evidence were not valid.' }
+      ? { warning: 'DeepSeek returned issues, but they were rejected because they lacked valid evidence or an original-source anchor.' }
       : {}),
   };
 }

@@ -143,7 +143,7 @@ export interface PartialDebuggingGraphBundle {
 }
 
 export type IssueSeverity = 'high' | 'medium' | 'low';
-export type IssueResolution = 'open' | 'confirmed' | 'intentional' | 'dismissed';
+export type IssueResolution = 'open' | 'confirmed' | 'dismissed';
 export interface IssueAnchor {
   view: 'source' | 'r1cs';
   type: 'node' | 'edge' | 'family' | 'ghost';
@@ -161,7 +161,6 @@ export interface IssueCard {
   observed: string;
   expected: string;
   evidenceIds: string[];
-  verificationPlan?: string;
   followUpQuestion?: string;
   resolution: IssueResolution;
   source: 'detector' | 'llm' | 'detector+llm';

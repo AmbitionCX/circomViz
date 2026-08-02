@@ -58,3 +58,30 @@ test('rejects invented anchors and uncited issue claims', () => {
   assert.deepEqual(uncited, []);
 });
 
+test('rejects issues that target only mocked R1CS evidence', () => {
+  const issues = normalizeLlmIssues({
+    issues: [{
+      title: 'Generated mock plumbing differs',
+      anchors: [{ view: 'r1cs', type: 'node', id: 'constraint:7' }],
+      evidenceIds: ['constraint:7'],
+    }],
+  }, catalog, new Set(['constraint:7']));
+
+  assert.deepEqual(issues, []);
+});
+
+test('keeps R1CS evidence only when an original-source anchor is present', () => {
+  const issues = normalizeLlmIssues({
+    issues: [{
+      title: 'Original binding needs attention',
+      anchors: [
+        { view: 'r1cs', type: 'node', id: 'constraint:7' },
+        { view: 'source', type: 'node', id: 'signal:main.input' },
+      ],
+      evidenceIds: ['constraint:7'],
+    }],
+  }, catalog, new Set(['constraint:7']));
+
+  assert.equal(issues.length, 1);
+  assert.deepEqual(issues[0]?.anchors.map((anchor) => anchor.view), ['source', 'r1cs']);
+});

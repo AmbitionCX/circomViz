@@ -38,7 +38,8 @@
             graph-kind="constraint"
             :show-legend="viewMode !== 'source'"
             :constraint-graph="store.activeConstraintGraph"
-            render-mode="exact"
+            :render-mode="store.renderMode"
+            :focus-node-ids="constraintFocusNodeIds"
             :selected-node-id="store.selectedNodeId"
             :hovered-node-id="store.hoveredNodeId"
             :linked-node-ids="constraintLinkedIds"
@@ -50,6 +51,7 @@
             @hover="store.hoveredNodeId = $event"
             @navigate-signal="navigateToFileStructureSignal"
             @activate-view="emit('select-view', $event)"
+            @change-render-mode="store.renderMode = $event"
           />
         </el-col>
       </el-row>
@@ -84,16 +86,14 @@
           <span class="issue-anchor-label">{{ activeIssue.anchors[0]?.view }} · {{ activeIssue.anchors[0]?.type }}</span>
         </div>
         <h3>{{ activeIssue.title }}</h3>
-        <p>{{ activeIssue.explanation }}</p>
-        <dl>
-          <div><dt>Expected</dt><dd>{{ activeIssue.expected }}</dd></div>
-          <div><dt>Observed</dt><dd>{{ activeIssue.observed }}</dd></div>
+        <dl class="issue-comparison">
+          <div class="expected"><dt>Expected</dt>{{ activeIssue.expected }}</div>
+          <div class="observed"><dt>Observed</dt>{{ activeIssue.observed }}</div>
         </dl>
+        <p class="issue-explanation">{{ activeIssue.explanation }}</p>
         <p v-if="activeIssue.followUpQuestion" class="follow-up">{{ activeIssue.followUpQuestion }}</p>
-        <p v-if="activeIssue.verificationPlan" class="verification-plan"><strong>Next check:</strong> {{ activeIssue.verificationPlan }}</p>
         <div class="issue-actions">
           <el-button size="small" text type="danger" @click.stop="setResolution(activeIssue.id, 'confirmed')">Confirm issue</el-button>
-          <el-button size="small" text @click.stop="setResolution(activeIssue.id, 'intentional')">Intentional</el-button>
           <el-button size="small" text @click.stop="setResolution(activeIssue.id, 'dismissed')">Dismiss</el-button>
         </div>
       </article>
@@ -125,9 +125,12 @@ const activeIssue = computed(() => store.activeIssue)
 const attentionAnchors = (graphView: 'source' | 'r1cs', activeOnly = false) => {
   const nodes = new Set<string>()
   const edges = new Set<string>()
+  const visibleIssues = store.issues.filter(
+    issue => issue.resolution === 'open' || issue.resolution === 'confirmed',
+  )
   const issues = activeOnly
-    ? store.issues.filter(issue => issue.id === store.activeIssueId)
-    : store.issues.filter(issue => issue.resolution === 'open' || issue.resolution === 'confirmed')
+    ? visibleIssues.filter(issue => issue.id === store.activeIssueId)
+    : visibleIssues
   for (const issue of issues) {
     for (const anchor of issue.anchors.filter(candidate => candidate.view === graphView)) {
       if (anchor.type === 'edge') edges.add(anchor.id)
@@ -144,6 +147,10 @@ const constraintIssueNodeIds = computed(() => attentionAnchors('r1cs').nodes)
 const activeSourceIssueNodeIds = computed(() => attentionAnchors('source', true).nodes)
 const activeSourceIssueEdgeIds = computed(() => attentionAnchors('source', true).edges)
 const activeConstraintIssueNodeIds = computed(() => attentionAnchors('r1cs', true).nodes)
+const constraintFocusNodeIds = computed(() => {
+  if (!activeIssue.value) return new Set<string>()
+  return new Set([...activeConstraintIssueNodeIds.value, ...constraintLinkedIds.value])
+})
 
 const issueSeverityType = (severity: IssueCard['severity']) =>
   severity === 'high' ? 'danger' : severity === 'medium' ? 'warning' : 'info'
@@ -335,7 +342,7 @@ const constraintLinkedIds = computed(() => {
 }
 
 .graph-columns.has-expanded-issue {
-  margin-right: 378px !important;
+  margin-right: 408px !important;
 }
 
 .graph-column {
@@ -429,7 +436,6 @@ const constraintLinkedIds = computed(() => {
   transform: scale(1.08);
 }
 
-.issue-dot.intentional,
 .issue-dot.dismissed {
   opacity: 0.42;
 }
@@ -440,9 +446,10 @@ const constraintLinkedIds = computed(() => {
   top: 0;
   right: 60px;
   bottom: 0;
-  width: 310px;
+  width: 340px;
   overflow-y: auto;
-  padding: 12px;
+  padding: 16px;
+  font-size: 13px;
   border: 1px solid #e2e8f0;
   border-left: 4px solid #d97706;
   border-radius: 8px;
@@ -451,7 +458,6 @@ const constraintLinkedIds = computed(() => {
 }
 
 
-.issue-detail.intentional,
 .issue-detail.dismissed {
   border-left-color: #94a3b8;
   opacity: 0.6;
@@ -464,7 +470,7 @@ const constraintLinkedIds = computed(() => {
 .issue-card-heading {
   gap: 6px;
   color: #64748b;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .issue-anchor-label {
@@ -473,52 +479,74 @@ const constraintLinkedIds = computed(() => {
 }
 
 .issue-detail h3 {
-  margin: 7px 0 5px;
+  margin: 10px 0 8px;
   color: #27352f;
-  font-size: 13px;
+  font-size: 16px;
 }
 
-.issue-detail .verification-plan {
-  margin-top: 7px;
+
+.issue-comparison .expected {
+  background: #f0fdf4;
+  border-left-color: #16a34a;
+}
+
+.issue-comparison .observed {
+  background: #fff7ed;
+  border-left-color: #f97316;
+}
+
+.issue-comparison .expected dt {
+  color: #15803d;
+}
+
+.issue-comparison .observed dt {
+  color: #c2410c;
+}
+
+.issue-detail .issue-explanation {
   color: #475569;
-  border-left: 2px solid #cbd5e1;
-  padding-left: 6px;
+  font-weight: 300;
 }
 
 .issue-detail p {
   margin: 0;
   color: #64748b;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .issue-detail dl {
   display: grid;
-  gap: 5px;
-  margin: 8px 0;
+  gap: 9px;
+  margin: 12px 0;
 }
 
 .issue-detail dl > div {
-  padding: 6px;
-  border-radius: 5px;
+  padding: 10px;
+  border-radius: 7px;
+  border-left: 3px solid transparent;
   background: #f8fafc;
 }
 
 .issue-detail dt {
   color: #64748b;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .issue-detail dd {
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   color: #334155;
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .issue-detail .follow-up {
+  margin-top: 12px;
+  padding: 10px;
+  background: #fff7ed;
   color: #9a5d08;
   font-weight: 600;
 }
@@ -526,13 +554,13 @@ const constraintLinkedIds = computed(() => {
 .issue-actions {
   justify-content: flex-end;
   gap: 2px;
-  margin-top: 7px;
+  margin-top: 12px;
 }
 
 .issue-actions :deep(.el-button) {
   margin-left: 0;
-  padding: 4px;
-  font-size: 10px;
+  padding: 6px;
+  font-size: 12px;
 }
 
 @media (max-width: 900px) {
@@ -544,7 +572,7 @@ const constraintLinkedIds = computed(() => {
   }
   .issue-detail {
     right: 52px;
-    width: min(310px, calc(100% - 60px));
+    width: min(340px, calc(100% - 60px));
   }
 }
 </style>

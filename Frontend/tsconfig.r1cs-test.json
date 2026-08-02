@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": ".test-dist"
+  },
+  "include": [
+    "src/types/partialDebugging.ts",
+    "src/utils/r1csProjection.ts",
+    "src/test/r1csProjection.test.ts"
+  ]
+}

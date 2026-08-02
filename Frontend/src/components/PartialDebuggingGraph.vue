@@ -11,6 +11,19 @@
       >
         {{ graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement' }}
       </button>
+      <div v-if="graphKind === 'constraint'" class="constraint-toolbar" aria-label="R1CS display controls">
+        <button type="button" :class="{ active: effectiveConstraintMode === 'overview' }" @click="showConstraintOverview">Overview</button>
+        <button v-if="hasConstraintFocus" type="button" :class="{ active: effectiveConstraintMode === 'focus' }" @click="showConstraintFocus">Issue focus</button>
+        <button v-if="effectiveConstraintMode === 'exact'" type="button" class="active" @click="showConstraintOverview">Overview › Group</button>
+        <span class="constraint-count">{{ projectionVisibleCount }} / {{ projectionTotalCount }} constraints</span>
+        <span v-if="hiddenFamilyCount && effectiveConstraintMode !== 'exact'" class="constraint-hidden">{{ hiddenFamilyCount }} more families</span>
+        <template v-if="effectiveConstraintMode === 'exact' && exactPageCount > 1">
+          <button type="button" :disabled="exactConstraintPage === 0" aria-label="Previous constraint page" @click="changeExactPage(-1)">‹</button>
+          <span class="constraint-page">{{ exactConstraintPage + 1 }} / {{ exactPageCount }}</span>
+          <button type="button" :disabled="exactConstraintPage + 1 >= exactPageCount" aria-label="Next constraint page" @click="changeExactPage(1)">›</button>
+        </template>
+        <button type="button" aria-label="Fit graph at a readable scale" @click="fitReadableView">Fit</button>
+      </div>
       <div
         v-if="showLegend"
         class="absolute bottom-3 left-3 z-30 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm px-3 py-2.5 flex flex-col gap-1.5"
@@ -35,6 +48,10 @@
           <span class="constant-legend-dot w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Constant</span>
         </div>
+        <div v-if="graphKind === 'constraint'" class="flex items-center gap-2">
+          <span class="constraint-group-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
+          <span class="text-gray-600 text-xs">Group</span>
+        </div>
         <div v-if="graphKind === 'source'" class="flex items-center gap-2">
           <span class="child-template-legend-box w-4 h-2.5 rounded-sm inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Child template</span>
@@ -49,7 +66,7 @@
         </div>
 
       </div>
-      <svg ref="svgRef" width="100%" height="100%" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" preserveAspectRatio="xMidYMid meet" class="graph-canvas" role="img" :aria-label="graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement'">
+      <svg ref="svgRef" width="100%" height="100%" :viewBox="`0 0 ${viewportWidth} ${viewportHeight}`" preserveAspectRatio="xMidYMid meet" class="graph-canvas" role="img" :aria-label="graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement'">
         <g ref="viewportRef" class="zoom-viewport">
 
         <g v-if="graphKind === 'source'" class="template-boundary">
@@ -135,7 +152,15 @@
         </g>
 
         <g v-if="graphKind === 'constraint'" class="constraint-pattern-frames">
-          <g v-for="frame in constraintPatternFrames" :key="frame.id" class="constraint-pattern-frame">
+          <g
+            v-for="frame in constraintPatternFrames"
+            :key="frame.id"
+            class="constraint-pattern-frame interactive"
+            role="button"
+            tabindex="0"
+            @click.stop="openConstraintFamily(frame.familyKey)"
+            @keydown.enter.prevent="openConstraintFamily(frame.familyKey)"
+          >
             <rect :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height" rx="8" />
             <text :x="frame.x + frame.width + 8" :y="frame.y + frame.height / 2" dominant-baseline="middle">×{{ frame.count }}</text>
           </g>
@@ -262,6 +287,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as d3 from 'd3'
 import type { ConstraintExpressionDto, ConstraintGraphDto, ConstraintRenderMode, SourceGraphDto } from '@/types/partialDebugging'
+import { buildConstraintFamilies, exactConstraintPage as buildExactConstraintPage, familyMatches, prioritizeConstraintFamilies } from '@/utils/r1csProjection'
+import type { R1csConstraintFamily } from '@/utils/r1csProjection'
 
 interface DisplayNode {
   componentInstanceName?: string
@@ -291,6 +318,7 @@ interface DisplayEdge {
   operandIndex?: number
   operandRole?: 'minuend' | 'subtrahend'
   multiplicity?: number
+  familyKey?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -306,6 +334,7 @@ const props = withDefaults(defineProps<{
   issueEdgeIds?: Set<string>
   activeIssueNodeIds?: Set<string>
   activeIssueEdgeIds?: Set<string>
+  focusNodeIds?: Set<string>
   signalRoleOverrides?: Map<string, string>
   showLegend?: boolean
 }>(), { showLegend: true })
@@ -315,6 +344,7 @@ const emit = defineEmits<{
   hover: [nodeId: string | null]
   'navigate-signal': [nodeId: string]
   'activate-view': [view: 'source' | 'constraint']
+  'change-render-mode': [mode: ConstraintRenderMode]
 }>()
 
 const hoveredEdgeId = ref<string | null>(null)
@@ -325,6 +355,9 @@ const clearGraphHover = () => {
 
 const svgRef = ref<SVGSVGElement | null>(null)
 const viewportRef = ref<SVGGElement | null>(null)
+const viewportWidth = ref(1200)
+const viewportHeight = ref(720)
+let resizeObserver: ResizeObserver | null = null
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null
 let zoomTarget: SVGSVGElement | null = null
 
@@ -333,15 +366,48 @@ const initializeZoom = () => {
   zoomTarget = svgRef.value
   const svg = d3.select(svgRef.value)
   zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.2, 5])
+    .scaleExtent([props.graphKind === 'constraint' ? 0.72 : 0.2, 5])
     .on('zoom', event => {
       d3.select(viewportRef.value).attr('transform', event.transform.toString())
     })
   svg.call(zoomBehavior)
 }
 
-onMounted(() => nextTick(initializeZoom))
+function updateViewportSize() {
+  const rect = svgRef.value?.getBoundingClientRect()
+  if (!rect) return
+  viewportWidth.value = Math.max(320, Math.round(rect.width))
+  viewportHeight.value = Math.max(240, Math.round(rect.height))
+}
+
+function fitReadableView() {
+  if (!svgRef.value || !zoomBehavior) return
+  const padding = 32
+  const availableWidth = Math.max(1, viewportWidth.value - padding * 2)
+  const availableHeight = Math.max(1, viewportHeight.value - padding * 2)
+  const minimumScale = props.graphKind === 'constraint' ? 0.72 : 0.2
+  const scale = Math.max(minimumScale, Math.min(1, availableWidth / canvasWidth.value, availableHeight / canvasHeight.value))
+  const x = canvasWidth.value * scale < availableWidth
+    ? padding + (availableWidth - canvasWidth.value * scale) / 2
+    : padding
+  const y = canvasHeight.value * scale < availableHeight
+    ? padding + (availableHeight - canvasHeight.value * scale) / 2
+    : padding
+  d3.select(svgRef.value).call(zoomBehavior.transform, d3.zoomIdentity.translate(x, y).scale(scale))
+}
+
+onMounted(() => nextTick(() => {
+  updateViewportSize()
+  initializeZoom()
+  resizeObserver = new ResizeObserver(() => {
+    updateViewportSize()
+    nextTick(fitReadableView)
+  })
+  if (svgRef.value) resizeObserver.observe(svgRef.value)
+  fitReadableView()
+}))
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
   if (svgRef.value) d3.select(svgRef.value).on('.zoom', null)
 })
 
@@ -351,6 +417,7 @@ const issueNodeIds = computed(() => props.issueNodeIds ?? new Set<string>())
 const issueEdgeIds = computed(() => props.issueEdgeIds ?? new Set<string>())
 const activeIssueNodeIds = computed(() => props.activeIssueNodeIds ?? new Set<string>())
 const activeIssueEdgeIds = computed(() => props.activeIssueEdgeIds ?? new Set<string>())
+const focusNodeIds = computed(() => props.focusNodeIds ?? new Set<string>())
 const sourceTemplateName = computed(() => props.sourceGraph?.nodes.find(node => node.kind === 'component-group' && node.componentPath === 'main')?.templateName ?? 'Selected template')
 
 function loopHeaderBandPath(frame: { x: number; y: number; width: number; headerHeight: number }) {
@@ -587,6 +654,84 @@ function variableTooltip(name: string, initialExpression?: string, initialValue?
   return name + ' ' + variableInitialText(initialExpression, initialValue)
 }
 
+const OVERVIEW_FAMILY_LIMIT = 60
+const EXACT_PAGE_SIZE = 25
+
+type ConstraintFamilyProjection = R1csConstraintFamily
+
+const selectedConstraintFamilyKey = ref<string | null>(null)
+const exactConstraintPage = ref(0)
+const constraintFamilies = computed<ConstraintFamilyProjection[]>(() =>
+  props.constraintGraph ? buildConstraintFamilies(props.constraintGraph) : [],
+)
+const matchingConstraintFocusFamilies = computed(() =>
+  constraintFamilies.value.filter(family => familyMatches(family, focusNodeIds.value)),
+)
+const effectiveConstraintMode = computed<ConstraintRenderMode>(() => {
+  if (selectedConstraintFamilyKey.value) return 'exact'
+  if (props.renderMode === 'focus' && matchingConstraintFocusFamilies.value.length) return 'focus'
+  return 'overview'
+})
+
+const prioritizedConstraintFamilies = computed(() => prioritizeConstraintFamilies(
+  constraintFamilies.value,
+  focusNodeIds.value,
+  new Set([...issueNodeIds.value, ...activeIssueNodeIds.value]),
+))
+const projectedConstraintFamilies = computed<ConstraintFamilyProjection[]>(() => {
+  if (effectiveConstraintMode.value === 'exact') {
+    const family = constraintFamilies.value.find(candidate => candidate.key === selectedConstraintFamilyKey.value)
+    if (!family) return []
+    return buildExactConstraintPage(family, exactConstraintPage.value, EXACT_PAGE_SIZE)
+  }
+  if (effectiveConstraintMode.value === 'focus') {
+    const matching = prioritizedConstraintFamilies.value.filter(family =>
+      familyMatches(family, focusNodeIds.value),
+    )
+    if (matching.length) return matching.slice(0, OVERVIEW_FAMILY_LIMIT)
+  }
+  return prioritizedConstraintFamilies.value.slice(0, OVERVIEW_FAMILY_LIMIT)
+})
+
+const selectedConstraintFamily = computed(() =>
+  constraintFamilies.value.find(family => family.key === selectedConstraintFamilyKey.value),
+)
+const exactPageCount = computed(() => Math.max(1, Math.ceil((selectedConstraintFamily.value?.constraints.length ?? 0) / EXACT_PAGE_SIZE)))
+const projectionTotalCount = computed(() => props.constraintGraph?.constraints.length ?? 0)
+const projectionVisibleCount = computed(() => projectedConstraintFamilies.value.reduce((total, family) => total + family.constraints.length, 0))
+const hiddenFamilyCount = computed(() => Math.max(0, constraintFamilies.value.length - projectedConstraintFamilies.value.length))
+const hasConstraintFocus = computed(() => matchingConstraintFocusFamilies.value.length > 0)
+
+function showConstraintOverview() {
+  selectedConstraintFamilyKey.value = null
+  exactConstraintPage.value = 0
+  emit('change-render-mode', 'overview')
+}
+function showConstraintFocus() {
+  selectedConstraintFamilyKey.value = null
+  exactConstraintPage.value = 0
+  emit('change-render-mode', 'focus')
+}
+function openConstraintFamily(familyKey?: string) {
+  if (!familyKey) return
+  const normalizedKey = familyKey.replace(/:exact:constraint:\d+$/, '')
+  if (!constraintFamilies.value.some(family => family.key === normalizedKey)) return
+  selectedConstraintFamilyKey.value = normalizedKey
+  exactConstraintPage.value = 0
+}
+function changeExactPage(offset: number) {
+  exactConstraintPage.value = Math.min(exactPageCount.value - 1, Math.max(0, exactConstraintPage.value + offset))
+}
+
+watch(() => props.constraintGraph, () => {
+  selectedConstraintFamilyKey.value = null
+  exactConstraintPage.value = 0
+})
+watch(() => props.renderMode, () => {
+  selectedConstraintFamilyKey.value = null
+  exactConstraintPage.value = 0
+})
+
 const constraintDisplay = computed(() => {
   const graph = props.constraintGraph
   const nodes: DisplayNode[] = []
@@ -595,32 +740,6 @@ const constraintDisplay = computed(() => {
   const signalById = new Map(graph.signals.map(signal => [signal.signalId, signal]))
   const groupBySignalId = new Map(graph.signalGroups.flatMap(group => group.memberSignalIds.map(signalId => [signalId, group] as const)))
   const displayIdsBySignalNodeId = new Map<string, string[]>()
-  const loopClusterIdByConstraintId = new Map(
-    (graph.loopClusters ?? []).flatMap(cluster => cluster.constraintNodeIds.map(constraintId => [constraintId, cluster.id] as const)),
-  )
-  const expressionPattern = (expression: ConstraintExpressionDto): string => {
-    if (expression.kind === 'constant') return `constant:${expression.value}`
-    if (expression.kind === 'signal') {
-      const group = groupBySignalId.get(expression.signalId)
-      if (group) return `group:${group.id}`
-      const signalName = signalById.get(expression.signalId)?.qualifiedName ?? `s${expression.signalId}`
-      return `signal:${shortConstraintSignalName(signalName).replace(/\[\d+\]/g, '[n]')}`
-    }
-    const operands = expression.operands.map(expressionPattern).sort()
-    return `${expression.kind}(${operands.join(',')})`
-  }
-  const equationPattern = (constraint: (typeof graph.constraints)[number]) => [
-    expressionPattern(constraint.equation.left),
-    expressionPattern(constraint.equation.right),
-  ].sort().join('=')
-  const constraintPatternGroups = new Map<string, typeof graph.constraints>()
-  for (const constraint of graph.constraints) {
-    const clusterId = loopClusterIdByConstraintId.get(constraint.id)
-    const patternKey = clusterId ? `${clusterId}:${equationPattern(constraint)}` : constraint.id
-    const grouped = constraintPatternGroups.get(patternKey) ?? []
-    grouped.push(constraint)
-    constraintPatternGroups.set(patternKey, grouped)
-  }
 
   const addSignalNode = (
     signalId: number,
@@ -676,9 +795,7 @@ const constraintDisplay = computed(() => {
     path: string,
   ): string => {
     const id = `${constraintId}:expression:${path}`
-    if (expression.kind === 'signal') {
-      return addSignalNode(expression.signalId, id, constraintIndex)
-    }
+    if (expression.kind === 'signal') return addSignalNode(expression.signalId, id, constraintIndex)
     if (expression.kind === 'constant') {
       nodes.push({ id, label: expression.value, kind: 'constant', constraintIndex })
       return id
@@ -707,8 +824,9 @@ const constraintDisplay = computed(() => {
     return id
   }
 
-  for (const groupedConstraints of constraintPatternGroups.values()) {
-    const constraint = groupedConstraints[0]
+  for (const family of projectedConstraintFamilies.value) {
+    const highlightedIds = new Set([...focusNodeIds.value, ...issueNodeIds.value, ...activeIssueNodeIds.value])
+    const constraint = family.constraints.find(candidate => highlightedIds.has(candidate.id)) ?? family.constraints[0]
     const equation = constraint.equation
     const leftRoot = addExpression(equation.left, constraint.id, constraint.index, 'left')
     const rightRoot = addExpression(equation.right, constraint.id, constraint.index, 'right')
@@ -718,13 +836,13 @@ const constraintDisplay = computed(() => {
       target: rightRoot,
       kind: 'constraint-equality',
       label: '=',
-      multiplicity: groupedConstraints.length,
+      multiplicity: family.constraints.length,
+      familyKey: family.key,
     })
   }
 
   return { nodes, edges }
 })
-
 const allNodes = computed<DisplayNode[]>(() => {
   if (props.graphKind === 'source') {
     return (props.sourceGraph?.nodes ?? [])
@@ -1137,7 +1255,7 @@ const sourceLoopConnections = computed(() => {
 const constraintPatternFrames = computed(() => {
   if (props.graphKind !== 'constraint') return []
   return visibleEdges.value
-    .filter(edge => edge.kind === 'constraint-equality' && (edge.multiplicity ?? 1) > 1)
+    .filter(edge => edge.kind === 'constraint-equality' && effectiveConstraintMode.value !== 'exact')
     .flatMap(edge => {
       const root = visibleNodeById.value.get(edge.source)
       if (root?.constraintIndex === undefined) return []
@@ -1150,7 +1268,15 @@ const constraintPatternFrames = computed(() => {
       const maxX = Math.max(...members.map(member => member.position.x + nodeVisualWidth(member.node) / 2)) + 28
       const minY = Math.min(...members.map(member => member.position.y - nodeHeight(member.node) / 2)) - 28
       const maxY = Math.max(...members.map(member => member.position.y + nodeHeight(member.node) / 2)) + 28
-      return [{ id: `${edge.id}:pattern`, x: minX, y: minY, width: maxX - minX, height: maxY - minY, count: edge.multiplicity ?? 1 }]
+      return [{
+        id: `${edge.id}:pattern`,
+        familyKey: edge.familyKey,
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        count: edge.multiplicity ?? 1,
+      }]
     })
 })
 
@@ -1158,31 +1284,26 @@ const constraintLoopFrames = computed(() => {
   if (props.graphKind !== 'constraint') return []
   const graph = props.constraintGraph
   if (!graph) return []
-  const baseBottom = Math.max(90, ...Array.from(positions.value.values()).map(position => position.y + 70))
-  let emptyIndex = 0
-  return (graph.loopClusters ?? []).map(cluster => {
+  const projectedClusterIds = new Set(projectedConstraintFamilies.value.map(family => family.clusterId).filter(Boolean))
+  const constraintIndexById = new Map(graph.constraints.map(constraint => [constraint.id, constraint.index]))
+  return (graph.loopClusters ?? []).filter(cluster => projectedClusterIds.has(cluster.id)).flatMap(cluster => {
     const constraintIndices = new Set(
       cluster.constraintNodeIds
-        .map(constraintId => graph.constraints.find(constraint => constraint.id === constraintId)?.index)
+        .map(constraintId => constraintIndexById.get(constraintId))
         .filter((index): index is number => index !== undefined),
     )
     const members = visibleNodes.value
       .filter(node => node.constraintIndex !== undefined && constraintIndices.has(node.constraintIndex))
       .map(node => ({ node, position: positions.value.get(node.id) }))
       .filter((member): member is { node: DisplayNode; position: { x: number; y: number } } => Boolean(member.position))
-    if (!members.length) {
-      const y = baseBottom + emptyIndex * 92
-      emptyIndex += 1
-      return { id: cluster.id, label: cluster.label, x: 50, y, width: 620, height: 68, empty: true }
-    }
+    if (!members.length) return []
     const minX = Math.min(...members.map(member => member.position.x - nodeVisualWidth(member.node) / 2)) - 34
     const maxX = Math.max(...members.map(member => member.position.x + nodeVisualWidth(member.node) / 2)) + 34
     const minY = Math.min(...members.map(member => member.position.y - nodeHeight(member.node) / 2)) - 34
     const maxY = Math.max(...members.map(member => member.position.y + nodeHeight(member.node) / 2)) + 34
-    return { id: cluster.id, label: cluster.label, x: minX, y: minY, width: maxX - minX, height: maxY - minY, empty: false }
+    return [{ id: cluster.id, label: cluster.label, x: minX, y: minY, width: maxX - minX, height: maxY - minY, empty: false }]
   })
 })
-
 const frameBounds = computed(() => props.graphKind === 'source'
   ? sourceLoopFrames.value
   : [...constraintLoopFrames.value, ...constraintPatternFrames.value])
@@ -1200,14 +1321,11 @@ const canvasHeight = computed(() => Math.max(
   ...frameBounds.value.map(frame => frame.y + frame.height + 50),
 ))
 const sourceBoundary = computed(() => ({ x: 190, y: 35, width: sourceLayout.value.boundaryRight - 190, height: canvasHeight.value - 70 }))
-watch([canvasWidth, canvasHeight, () => visibleNodes.value.length], async () => {
+watch([canvasWidth, canvasHeight, () => visibleNodes.value.length, exactConstraintPage], async () => {
   await nextTick()
   if (!svgRef.value) return
-  if (!zoomBehavior || zoomTarget !== svgRef.value) {
-    initializeZoom()
-    return
-  }
-  d3.select(svgRef.value).call(zoomBehavior.transform, d3.zoomIdentity)
+  if (!zoomBehavior || zoomTarget !== svgRef.value) initializeZoom()
+  fitReadableView()
 }, { flush: 'post' })
 function isValueNode(node: DisplayNode) {
   return node.kind === 'constant' || node.kind === 'ternary-result' || (
@@ -1490,6 +1608,65 @@ const outputOperatorLabel = (operator?: string) => {
   outline: none;
 }
 
+.constraint-toolbar {
+  position: absolute;
+  top: 7px;
+  left: 158px;
+  right: 10px;
+  z-index: 3;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.constraint-toolbar button,
+.constraint-toolbar span {
+  pointer-events: auto;
+}
+
+.constraint-toolbar button {
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid #d7dee7;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #52616f;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.constraint-toolbar button:hover,
+.constraint-toolbar button:focus-visible,
+.constraint-toolbar button.active {
+  border-color: #409eff;
+  color: #1677c8;
+  outline: none;
+}
+
+.constraint-toolbar button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.constraint-count,
+.constraint-hidden,
+.constraint-page {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #52616f;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.constraint-hidden {
+  color: #b45309;
+}
+
 .input-legend-dot {
   background: rgba(37, 99, 235, 0.14);
   border: 1px solid #2563eb;
@@ -1508,6 +1685,11 @@ const outputOperatorLabel = (operator?: string) => {
 .variable-legend-dot {
   background: rgba(251, 191, 36, 0.34);
   border: 1px solid #d97706;
+}
+
+.constraint-group-legend-box {
+  background: transparent;
+  border: 2px dashed #64748b;
 }
 
 .child-template-legend-box {
@@ -1730,11 +1912,22 @@ const outputOperatorLabel = (operator?: string) => {
 }
 
 .constraint-pattern-frame rect {
-  fill: none;
+  fill: rgba(255, 255, 255, 0.01);
   stroke: #64748b;
   stroke-width: 2.5;
   stroke-dasharray: 6 3;
-  pointer-events: none;
+  pointer-events: all;
+}
+
+.constraint-pattern-frame.interactive {
+  cursor: pointer;
+}
+
+.constraint-pattern-frame.interactive:hover rect,
+.constraint-pattern-frame.interactive:focus-visible rect {
+  fill: rgba(64, 158, 255, 0.05);
+  stroke: #409eff;
+  outline: none;
 }
 
 .constraint-pattern-frame text {
