@@ -91,3 +91,36 @@ export interface ConstraintGraphResponse {
   mappings: { sourceToO0: ProvenanceLink[] }
   diagnostics: GraphDiagnostic[]
 }
+
+export type IssueSeverity = 'high' | 'medium' | 'low'
+export type IssueResolution = 'open' | 'confirmed' | 'intentional' | 'dismissed'
+export interface IssueAnchor {
+  view: 'source' | 'r1cs'
+  type: 'node' | 'edge' | 'family' | 'ghost'
+  id: string
+  relatedNodeIds?: string[]
+}
+export interface IssueCard {
+  id: string
+  kind: string
+  title: string
+  explanation: string
+  severity: IssueSeverity
+  confidence: 'deterministic' | 'high' | 'medium' | 'low'
+  anchors: IssueAnchor[]
+  observed: string
+  expected: string
+  evidenceIds: string[]
+  verificationPlan?: string
+  followUpQuestion?: string
+  resolution: IssueResolution
+  source: 'detector' | 'llm' | 'detector+llm'
+}
+export interface TemplateAttentionAnalysisResponse {
+  intent: string
+  summary: string
+  issues: IssueCard[]
+  provider: 'deepseek'
+  model: string
+  warning?: string
+}

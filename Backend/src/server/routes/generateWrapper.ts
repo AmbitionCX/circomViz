@@ -241,6 +241,11 @@ export async function generateWrapperHandler(
           artifacts: {
             O0: getCircomArtifactPaths(primaryWrapperPath, primaryDir),
           },
+          analysisContext: {
+            templateName,
+            originCode,
+            mockedCode,
+          },
         });
         savePartialDebuggingBuild(bundle);
         partialDebugging = bundle.summary;

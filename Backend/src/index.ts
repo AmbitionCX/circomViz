@@ -13,7 +13,7 @@ import { findTemplateParamsHandler } from './server/routes/findTemplateParams.js
 import { generateWrapperHandler } from './server/routes/generateWrapper.js';
 import { fileContentHandler } from './server/routes/fileContent.js';
 import { generateContractHandler } from './server/routes/generateContract.js';
-import { partialDebuggingConstraintGraphHandler, partialDebuggingSliceHandler, partialDebuggingSourceGraphHandler } from './server/routes/partialDebugging.js';
+import { partialDebuggingAnalyzeHandler, partialDebuggingConstraintGraphHandler, partialDebuggingSliceHandler, partialDebuggingSourceGraphHandler } from './server/routes/partialDebugging.js';
 import { Logger } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -100,6 +100,7 @@ server.post('/generate_wrapper', generateWrapperHandler);
 server.get('/partial-debugging/builds/:buildId/source-graph', partialDebuggingSourceGraphHandler);
 server.get('/partial-debugging/builds/:buildId/constraint-graph', partialDebuggingConstraintGraphHandler);
 server.get('/partial-debugging/builds/:buildId/slice', partialDebuggingSliceHandler);
+server.post('/partial-debugging/builds/:buildId/analyze', partialDebuggingAnalyzeHandler);
 
 // file content viewer
 server.post('/file_content', fileContentHandler);

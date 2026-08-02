@@ -8,9 +8,9 @@ const __dirname = path.dirname(__filename);
 const __rootname = path.dirname(path.dirname(path.dirname(__dirname)));
 dotenv.config({ path: __rootname + '/.env' });
 
-const LLM_API_URL = process.env.LLM_API_URL || '';
-const LLM_API_TOKEN = process.env.LLM_API_TOKEN || '';
-const LLM_MODEL = process.env.LLM_MODEL || 'glm-5-turbo';
+const LLM_API_URL = process.env.DEEPSEEK_API_URL || process.env.LLM_API_URL || 'https://api.deepseek.com/chat/completions';
+const LLM_API_TOKEN = process.env.DEEPSEEK_API_KEY || process.env.LLM_API_TOKEN || '';
+const LLM_MODEL = process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || 'deepseek-v4-flash';
 const logger = new Logger('LLM');
 
 interface LLMMessage {
@@ -35,12 +35,21 @@ interface LLMErrorResponse {
 
 export type LLMResult = LLMSuccessResponse | LLMErrorResponse;
 
-export async function callLLM(systemPrompt: string, userMessage: string): Promise<LLMResult> {
-  if (!LLM_API_URL) {
-    return { success: false, error: 'LLM_API_URL is not configured in .env' };
-  }
-  if (!LLM_API_TOKEN || LLM_API_TOKEN === 'your_token_here') {
-    return { success: false, error: 'LLM_API_TOKEN is not configured in .env' };
+export interface LLMCallOptions {
+  json?: boolean;
+  temperature?: number;
+  thinking?: 'enabled' | 'disabled';
+}
+
+export const getLLMConfiguration = () => ({ provider: 'deepseek' as const, model: LLM_MODEL });
+
+export async function callLLM(
+  systemPrompt: string,
+  userMessage: string,
+  options: LLMCallOptions = {},
+): Promise<LLMResult> {
+  if (!LLM_API_TOKEN) {
+    return { success: false, error: 'No DEEPSEEK_API_KEY provided in .env' };
   }
 
   const messages: LLMMessage[] = [
@@ -52,7 +61,9 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
     model: LLM_MODEL,
     messages,
     stream: false,
-    temperature: 0.3,
+    temperature: options.temperature ?? 0.3,
+    ...(options.thinking ? { thinking: { type: options.thinking } } : {}),
+    ...(options.json ? { response_format: { type: 'json_object' } } : {}),
   };
 
   const startTime = Date.now();
@@ -83,12 +94,17 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
 
     const data = await response.json() as any;
 
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) {
-      logger.error(`Malformed response: model=${LLM_MODEL}, durationMs=${elapsed}`);
+    const choice = data?.choices?.[0];
+    const content = choice?.message?.content;
+    if (typeof content !== 'string' || !content.trim()) {
+      const choiceCount = Array.isArray(data?.choices) ? data.choices.length : 0;
+      const finishReason = typeof choice?.finish_reason === 'string' ? choice.finish_reason : 'missing';
+      const responseId = typeof data?.id === 'string' ? data.id : 'missing';
+      const details = `choices=${choiceCount}, finishReason=${finishReason}, responseId=${responseId}`;
+      logger.error(`Malformed response: model=${LLM_MODEL}, durationMs=${elapsed}, ${details}`);
       return {
         success: false,
-        error: 'LLM API returned empty or malformed response',
+        error: `LLM API returned empty or malformed response (${details})`,
       };
     }
 
@@ -114,11 +130,18 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
   }
 }
 
+export function buildStructuredLLMOptions(
+  options: Omit<LLMCallOptions, 'json'> = {},
+): LLMCallOptions {
+  return { json: true, thinking: 'enabled', ...options };
+}
+
 export async function callLLMStructured<T>(
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  options: Omit<LLMCallOptions, 'json'> = {},
 ): Promise<{ success: true; data: T; raw: string } | { success: false; error: string; raw?: string }> {
-  const result = await callLLM(systemPrompt, userMessage);
+  const result = await callLLM(systemPrompt, userMessage, buildStructuredLLMOptions(options));
   if (!result.success) return result;
 
   const raw = result.content;

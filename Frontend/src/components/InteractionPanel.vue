@@ -1,6 +1,14 @@
 <template>
   <div class="interaction-panel-container h-full flex flex-col overflow-hidden">
     <div class="mb-3 flex-shrink-0">
+      <el-alert
+        v-if="partialDebuggingStore.analysisError"
+        class="analysis-error"
+        :title="partialDebuggingStore.analysisError"
+        type="error"
+        :closable="false"
+        show-icon
+      />
       <div class="title-row">
         <div class="title-context">
           <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
@@ -21,6 +29,24 @@
               {{ selectedTemplate.templateName }}
             </span>
           </span>
+        </div>
+
+        <div class="intent-row" @click.stop>
+          <el-input
+            v-model="input"
+            placeholder="What do you want to do in this template?"
+            @keyup.enter="handleAnalyzeIntent"
+          />
+          <el-button
+            type="primary"
+            circle
+            :icon="ArrowRight"
+            :loading="partialDebuggingStore.analysisLoading"
+            :disabled="!partialDebuggingStore.summary || !input.trim()"
+            aria-label="Analyze attention"
+            title="Analyze attention"
+            @click.stop="handleAnalyzeIntent"
+          />
         </div>
 
         <div class="graph-view-switch">
@@ -64,19 +90,23 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { QuestionFilled } from '@element-plus/icons-vue'
+import { ArrowRight, QuestionFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import PartialDebuggingWorkspace from './PartialDebuggingWorkspace.vue'
 import { useCircuitStore } from '@/stores/circuit'
+import { usePartialDebuggingStore } from '@/stores/partialDebugging'
 import { hexToRgba } from '@/composables/colors'
 
 type GraphViewMode = 'source' | 'compare' | 'constraint'
 
 const circuitStore = useCircuitStore()
+const partialDebuggingStore = usePartialDebuggingStore()
+const input = ref('')
 const graphViewMode = ref<GraphViewMode>('compare')
 const graphViewModeOptions: Array<{ label: string; value: GraphViewMode }> = [
-  { label: 'Source Semantics Graph', value: 'source' },
+  { label: 'Source', value: 'source' },
   { label: 'Compare', value: 'compare' },
-  { label: 'R1CS Enforcement', value: 'constraint' },
+  { label: 'R1CS', value: 'constraint' },
 ]
 
 const selectedTemplate = computed(() => circuitStore.selectedTemplate)
@@ -105,6 +135,25 @@ const templateColorStyle = (templateName: string) => {
 
 const emit = defineEmits<{ confirmed: [] }>()
 
+const handleAnalyzeIntent = async () => {
+  if (!input.value.trim()) {
+    ElMessage.warning('Describe what you want this template to do first.')
+    return
+  }
+  const succeeded = await partialDebuggingStore.analyzeIntent(input.value.trim())
+  if (!succeeded) {
+    ElMessage.error(partialDebuggingStore.analysisError ?? 'Unable to analyze template intent')
+    return
+  }
+  if (partialDebuggingStore.analysisWarning) {
+    ElMessage.warning(partialDebuggingStore.analysisWarning)
+  } else if (partialDebuggingStore.issues.length) {
+    ElMessage.success('Attention points are now linked to the graph.')
+  } else {
+    ElMessage.info('No evidence-grounded attention points were returned.')
+  }
+}
+
 const handleConfirmTemplate = () => {
   if (!selectedTemplate.value) return
   if (!isSelectedTemplateConfirmed.value) {
@@ -126,9 +175,24 @@ const handleVulnerableTemplate = () => {
   border-radius: 8px;
 }
 
+.intent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.intent-row :deep(.el-input__wrapper) {
+  background: #f8fafc;
+}
+
+.analysis-error {
+  margin-bottom: 8px;
+}
+
 .title-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(180px, 1fr) auto auto;
   align-items: center;
   gap: 12px;
 }
@@ -154,7 +218,7 @@ const handleVulnerableTemplate = () => {
 .graph-view-switch {
   display: flex;
   align-items: center;
-  justify-self: center;
+  justify-self: end;
 }
 
 .graph-view-switch :deep(.el-segmented) {
@@ -183,6 +247,11 @@ const handleVulnerableTemplate = () => {
 }
 
 @media (max-width: 760px) {
+  .intent-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
   .title-row {
     display: flex;
     align-items: flex-start;
@@ -191,7 +260,7 @@ const handleVulnerableTemplate = () => {
 
   .graph-view-switch {
     width: 100%;
-    justify-content: center;
+    justify-content: flex-end;
   }
 
   .title-context {

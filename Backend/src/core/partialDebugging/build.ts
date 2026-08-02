@@ -108,7 +108,7 @@ export function addConstraintLoopClusters(
     return {
       id: `constraint-loop:${loop.id}`,
       sourceLoopId: loop.id,
-      label: `${loop.header}`,
+      label: loop.header + ' · unordered constraints',
       constraintNodeIds: [...constraintNodeIds],
       confidence: constraintNodeIds.size ? 'medium' as const : 'low' as const,
     };
@@ -121,6 +121,7 @@ export async function buildPartialDebuggingBundle(options: {
   params: Array<{ name: string; value: number }>; selectedComponentPath: string; mockedTemplateNames: string[];
   mockedChildren?: string[]; boundaryInputs: Array<{ instance: string; signal: string; isArray: boolean }>;
   mockManifest: MockManifest; artifacts: { O0: GraphArtifactSet };
+  analysisContext: { templateName: string; originCode: string; mockedCode: string };
 }): Promise<PartialDebuggingGraphBundle> {
   const sourceGraph = buildSourceGraph(options.parsedFiles, options.rootTemplate, options.params, options.mockedTemplateNames);
   const artifact = options.artifacts.O0;
@@ -164,5 +165,6 @@ export async function buildPartialDebuggingBundle(options: {
     sourceGraph,
     constraintGraph,
     mappings: { sourceToO0 },
+    analysisContext: options.analysisContext,
   };
 }

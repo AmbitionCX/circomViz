@@ -61,7 +61,7 @@
           <g
             v-for="frame in sourceLoopFrames"
             :key="frame.id"
-            :class="['source-loop-frame', { selected: selectedNodeId === frame.id || mirroredNodeIds.has(frame.id), linked: linkedNodeIds.has(frame.id) }]"
+            :class="['source-loop-frame', { selected: selectedNodeId === frame.id || mirroredNodeIds.has(frame.id), linked: linkedNodeIds.has(frame.id), 'issue-attention': issueNodeIds.has(frame.id), 'issue-active': activeIssueNodeIds.has(frame.id) }]"
             @click.stop="$emit('select', frame.id)"
           >
             <rect class="loop-frame-box" :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height" rx="4" />
@@ -88,7 +88,7 @@
             <g
               v-for="card in frame.cards"
               :key="card.id"
-              :class="['loop-code-card', card.kind, { selected: selectedNodeId === card.id || mirroredNodeIds.has(card.id), linked: linkedNodeIds.has(card.id) }]"
+              :class="['loop-code-card', card.kind, { selected: selectedNodeId === card.id || mirroredNodeIds.has(card.id), linked: linkedNodeIds.has(card.id), 'issue-attention': issueNodeIds.has(card.id), 'issue-active': activeIssueNodeIds.has(card.id) }]"
               @click.stop="$emit('select', card.id)"
             >
               <line v-if="card.order > 0" class="loop-card-divider" :x1="frame.x + 5" :x2="frame.x + frame.width - 5" :y1="card.y" :y2="card.y" />
@@ -125,7 +125,7 @@
           <g
             v-for="frame in constraintLoopFrames"
             :key="frame.id"
-            :class="['constraint-loop-frame', { selected: selectedNodeId === frame.id || mirroredNodeIds.has(frame.id), linked: linkedNodeIds.has(frame.id), empty: frame.empty }]"
+            :class="['constraint-loop-frame', { selected: selectedNodeId === frame.id || mirroredNodeIds.has(frame.id), linked: linkedNodeIds.has(frame.id), empty: frame.empty, 'issue-attention': issueNodeIds.has(frame.id), 'issue-active': activeIssueNodeIds.has(frame.id) }]"
             @click.stop="$emit('select', frame.id)"
           >
             <rect :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height" rx="10" />
@@ -153,7 +153,7 @@
             <path
               :d="edgePath(edge)"
               fill="none"
-              :class="['graph-edge', edge.kind, { active: hoveredEdgeId === edge.id }]"
+              :class="['graph-edge', edge.kind, { active: hoveredEdgeId === edge.id, 'issue-attention': issueEdgeIds.has(edge.id), 'issue-active': activeIssueEdgeIds.has(edge.id) }]"
             />
           </g>
           <text
@@ -186,7 +186,7 @@
           v-for="node in visibleNodes"
           :key="node.id"
           :transform="`translate(${positions.get(node.id)?.x ?? 0},${positions.get(node.id)?.y ?? 0})`"
-          :class="['graph-node', node.kind, node.status, node.role, { selected: selectedNodeId === nodeReferenceId(node) || mirroredNodeIds.has(nodeReferenceId(node)), linked: linkedNodeIds.has(nodeReferenceId(node)) && !mirroredNodeIds.has(nodeReferenceId(node)), warning: warningNodeIds.has(nodeReferenceId(node)) }]"
+          :class="['graph-node', node.kind, node.status, node.role, { selected: selectedNodeId === nodeReferenceId(node) || mirroredNodeIds.has(nodeReferenceId(node)), linked: linkedNodeIds.has(nodeReferenceId(node)) && !mirroredNodeIds.has(nodeReferenceId(node)), 'issue-attention': issueNodeIds.has(nodeReferenceId(node)) || issueNodeIds.has(node.id), 'issue-active': activeIssueNodeIds.has(nodeReferenceId(node)) || activeIssueNodeIds.has(node.id) }]"
           tabindex="0"
           role="button"
           @click.stop="$emit('select', nodeReferenceId(node))"
@@ -246,8 +246,10 @@
               'signal-label': node.kind === 'signal',
             }"
           >{{ displayNodeLabel(node) }}</text>
-          <text v-if="node.badge || warningNodeIds.has(nodeReferenceId(node))" text-anchor="middle" dy="37" class="node-badge">
-            {{ warningNodeIds.has(nodeReferenceId(node)) ? 'WARNING' : node.badge }}
+          <text v-if="node.badge || issueNodeIds.has(nodeReferenceId(node)) || issueNodeIds.has(node.id)" text-anchor="middle" dy="37" :class="['node-badge', { 'issue-badge': issueNodeIds.has(nodeReferenceId(node)) || issueNodeIds.has(node.id) }]">
+            {{ activeIssueNodeIds.has(nodeReferenceId(node)) || activeIssueNodeIds.has(node.id)
+              ? 'ISSUE'
+              : issueNodeIds.has(nodeReferenceId(node)) || issueNodeIds.has(node.id) ? 'ATTENTION' : node.badge }}
           </text>
         </g>
         </g>
@@ -259,7 +261,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as d3 from 'd3'
-import type { ConstraintExpressionDto, ConstraintGraphDto, ConstraintRenderMode, GraphDiagnostic, SourceGraphDto } from '@/types/partialDebugging'
+import type { ConstraintExpressionDto, ConstraintGraphDto, ConstraintRenderMode, SourceGraphDto } from '@/types/partialDebugging'
 
 interface DisplayNode {
   componentInstanceName?: string
@@ -298,9 +300,12 @@ const props = withDefaults(defineProps<{
   renderMode?: ConstraintRenderMode
   selectedNodeId?: string | null
   hoveredNodeId?: string | null
-  diagnostics?: GraphDiagnostic[]
   linkedNodeIds?: Set<string>
   mirroredNodeIds?: Set<string>
+  issueNodeIds?: Set<string>
+  issueEdgeIds?: Set<string>
+  activeIssueNodeIds?: Set<string>
+  activeIssueEdgeIds?: Set<string>
   signalRoleOverrides?: Map<string, string>
   showLegend?: boolean
 }>(), { showLegend: true })
@@ -340,19 +345,12 @@ onBeforeUnmount(() => {
   if (svgRef.value) d3.select(svgRef.value).on('.zoom', null)
 })
 
-const hiddenWarningIds = computed(() => new Set((props.diagnostics ?? []).flatMap(diagnostic => diagnostic.nodeIds)))
-const warningNodeIds = computed(() => {
-  const ids = new Set(hiddenWarningIds.value)
-  for (const group of props.constraintGraph?.signalGroups ?? []) {
-    if (group.memberSignalNodeIds.some(memberId => hiddenWarningIds.value.has(memberId))) ids.add(group.id)
-  }
-  if (props.graphKind === 'source') {
-    for (const id of hiddenWarningIds.value) (props.sourceGraph?.adjacency[id] ?? []).forEach(neighbor => ids.add(neighbor))
-  }
-  return ids
-})
 const linkedNodeIds = computed(() => props.linkedNodeIds ?? new Set<string>())
 const mirroredNodeIds = computed(() => props.mirroredNodeIds ?? new Set<string>())
+const issueNodeIds = computed(() => props.issueNodeIds ?? new Set<string>())
+const issueEdgeIds = computed(() => props.issueEdgeIds ?? new Set<string>())
+const activeIssueNodeIds = computed(() => props.activeIssueNodeIds ?? new Set<string>())
+const activeIssueEdgeIds = computed(() => props.activeIssueEdgeIds ?? new Set<string>())
 const sourceTemplateName = computed(() => props.sourceGraph?.nodes.find(node => node.kind === 'component-group' && node.componentPath === 'main')?.templateName ?? 'Selected template')
 
 function loopHeaderBandPath(frame: { x: number; y: number; width: number; headerHeight: number }) {
@@ -1707,6 +1705,22 @@ const outputOperatorLabel = (operator?: string) => {
   stroke-width: 3;
 }
 
+.source-loop-frame.issue-attention > .loop-frame-box,
+.loop-code-card.issue-attention .code-operand,
+.loop-code-card.issue-attention .code-operator,
+.constraint-loop-frame.issue-attention rect {
+  stroke: #d97706;
+  stroke-width: 3;
+}
+
+.source-loop-frame.issue-active > .loop-frame-box,
+.loop-code-card.issue-active .code-operand,
+.loop-code-card.issue-active .code-operator,
+.constraint-loop-frame.issue-active rect {
+  stroke: #dc2626;
+  stroke-width: 3.5;
+}
+
 .source-loop-frame.linked > .loop-frame-box,
 .loop-code-card.linked .code-operand,
 .loop-code-card.linked .code-operator,
@@ -1779,6 +1793,18 @@ const outputOperatorLabel = (operator?: string) => {
 
 .graph-edge.port-B {
   stroke: #aa6c2e;
+}
+
+.graph-edge.issue-attention {
+  stroke: #d97706 !important;
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.graph-edge.issue-active {
+  stroke: #dc2626 !important;
+  stroke-width: 4;
+  opacity: 1;
 }
 
 .graph-edge.port-C {
@@ -2036,12 +2062,29 @@ const outputOperatorLabel = (operator?: string) => {
   opacity: .82;
 }
 
-.graph-node.unused-or-unconstrained rect,
-.graph-node.warning rect,
-.graph-node.warning circle {
-  stroke: #c84d3d;
-  stroke-dasharray: 5 3;
+.graph-node.issue-attention rect,
+.graph-node.issue-attention circle,
+.graph-node.issue-attention polygon {
+  stroke: #d97706;
+  stroke-width: 3;
 }
+
+.graph-node.issue-active rect,
+.graph-node.issue-active circle,
+.graph-node.issue-active polygon {
+  fill: rgba(220, 38, 38, 0.14);
+  stroke: #dc2626;
+  stroke-width: 3.5;
+}
+
+.node-badge.issue-badge {
+  fill: #b45309 !important;
+}
+
+.graph-node.issue-active .node-badge.issue-badge {
+  fill: #dc2626 !important;
+}
+
 
 .graph-node.selected rect,
 .graph-node.selected circle,

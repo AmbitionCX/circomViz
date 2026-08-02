@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { getPartialDebuggingBuild } from '../../core/partialDebugging/store.js';
+import { analyzeTemplateAttention } from '../../core/llm/templateAttentionAnalyzer.js';
 
 const resolveBuild = (request: FastifyRequest, reply: FastifyReply) => {
   const build = getPartialDebuggingBuild((request.params as { buildId: string }).buildId);
@@ -25,4 +26,20 @@ export const partialDebuggingSliceHandler = (request: FastifyRequest, reply: Fas
   }
   if ('nodes' in graph) return reply.send({ ...graph, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: graph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)) });
   return reply.send({ ...graph, signals: graph.signals.filter((node) => ids.has(node.id)), constraints: graph.constraints.filter((node) => ids.has(node.id)), edges: graph.edges.filter((edge) => ids.has(edge.signalNodeId) && ids.has(edge.constraintNodeId)) });
+};
+
+export const partialDebuggingAnalyzeHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+  const build = resolveBuild(request, reply);
+  if (!build) return;
+  const body = request.body as { intent?: unknown } | undefined;
+  const intent = typeof body?.intent === 'string' ? body.intent.trim() : '';
+  if (!intent) {
+    return reply.code(400).send({ error: 'intent is required' });
+  }
+  if (intent.length > 4_000) {
+    return reply.code(400).send({ error: 'intent must be 4000 characters or fewer' });
+  }
+
+  const result = await analyzeTemplateAttention(intent, build);
+  return reply.send(result);
 };
