@@ -16,7 +16,7 @@
         <button v-if="hasConstraintFocus" type="button" :class="{ active: effectiveConstraintMode === 'focus' }" @click="showConstraintFocus">Issue focus</button>
         <button v-if="effectiveConstraintMode === 'exact'" type="button" class="active" @click="showConstraintOverview">Overview › Group</button>
         <span class="constraint-count">{{ projectionVisibleCount }} / {{ projectionTotalCount }} constraints</span>
-        <span v-if="hiddenFamilyCount && effectiveConstraintMode !== 'exact'" class="constraint-hidden">{{ hiddenFamilyCount }} more families</span>
+        <span v-if="hiddenEntryCount && effectiveConstraintMode !== 'exact'" class="constraint-hidden">{{ hiddenEntryCount }} more entries</span>
         <template v-if="effectiveConstraintMode === 'exact' && exactPageCount > 1">
           <button type="button" :disabled="exactConstraintPage === 0" aria-label="Previous constraint page" @click="changeExactPage(-1)">‹</button>
           <span class="constraint-page">{{ exactConstraintPage + 1 }} / {{ exactPageCount }}</span>
@@ -106,8 +106,13 @@
               v-for="card in frame.cards"
               :key="card.id"
               :class="['loop-code-card', card.kind, { selected: selectedNodeId === card.id || mirroredNodeIds.has(card.id), linked: linkedNodeIds.has(card.id), 'issue-attention': issueNodeIds.has(card.id), 'issue-active': activeIssueNodeIds.has(card.id) }]"
+              tabindex="0"
+              role="button"
+              :aria-label="card.label"
               @click.stop="$emit('select', card.id)"
+              @keydown.enter.prevent="$emit('select', card.id)"
             >
+              <title>{{ card.label }}</title>
               <line v-if="card.order > 0" class="loop-card-divider" :x1="frame.x + 5" :x2="frame.x + frame.width - 5" :y1="card.y" :y2="card.y" />
               <circle class="statement-index" :cx="frame.x + 10" :cy="card.y + 10" r="6" />
               <text class="statement-number" :x="frame.x + 10" :y="card.y + 13" text-anchor="middle">{{ card.order + 1 }}</text>
@@ -117,14 +122,14 @@
 
               <circle v-if="card.leftShape === 'circle'" :class="['code-operand', 'left', card.leftStyle]" :cx="card.leftX + card.leftWidth / 2" :cy="card.centerY" :r="card.leftHeight / 2" />
               <rect v-else :class="['code-operand', 'left', card.leftStyle]" :x="card.leftX" :y="card.leftY" :width="card.leftWidth" :height="card.leftHeight" :rx="card.leftRadius" />
-              <text class="code-operand-label" :x="card.leftX + card.leftWidth / 2" :y="card.centerY + 5" text-anchor="middle">{{ truncate(card.left, 16) }}</text>
+              <text class="code-operand-label" :x="card.leftX + card.leftWidth / 2" :y="card.centerY + 5" text-anchor="middle">{{ card.leftDisplayLabel }}</text>
 
               <rect class="code-operator" :x="card.operatorCenterX - card.operatorWidth / 2" :y="card.centerY - card.operatorHeight / 2" :width="card.operatorWidth" :height="card.operatorHeight" :rx="card.operatorRadius" />
               <text class="code-operator-label" :x="card.operatorCenterX" :y="card.centerY + 5" text-anchor="middle">{{ card.operator }}</text>
 
               <circle v-if="card.rightShape === 'circle'" :class="['code-operand', 'right', card.rightStyle]" :cx="card.rightX + card.rightWidth / 2" :cy="card.centerY" :r="card.rightHeight / 2" />
               <rect v-else :class="['code-operand', 'right', card.rightStyle]" :x="card.rightX" :y="card.rightY" :width="card.rightWidth" :height="card.rightHeight" :rx="card.rightRadius" />
-              <text :class="['code-operand-label', { 'component-label': card.rightStyle === 'component' }]" :x="card.rightX + card.rightWidth / 2" :y="card.centerY + 5" text-anchor="middle">{{ truncate(card.right, 24) }}</text>
+              <text :class="['code-operand-label', { 'component-label': card.rightStyle === 'component' }]" :x="card.rightX + card.rightWidth / 2" :y="card.centerY + 5" text-anchor="middle">{{ card.rightDisplayLabel }}</text>
             </g>
           </g>
         </g>
@@ -289,6 +294,7 @@ import * as d3 from 'd3'
 import type { ConstraintExpressionDto, ConstraintGraphDto, ConstraintRenderMode, SourceGraphDto } from '@/types/partialDebugging'
 import { buildConstraintFamilies, exactConstraintPage as buildExactConstraintPage, familyMatches, prioritizeConstraintFamilies } from '@/utils/r1csProjection'
 import type { R1csConstraintFamily } from '@/utils/r1csProjection'
+import { loopOperandPresentation } from '@/utils/loopOperandPresentation'
 
 interface DisplayNode {
   componentInstanceName?: string
@@ -449,10 +455,6 @@ function orientLoopAssignment(parts: ReturnType<typeof splitStatementLabel>) {
   return parts
 }
 
-function loopSignalWidth(label: string) {
-  return Math.min(220, Math.max(66, label.length * 16 * 0.62 + 26))
-}
-
 type LoopOperandStyle = 'input' | 'output' | 'variable' | 'constant' | 'intermediate' | 'component-reference' | 'component' | 'expression'
 type LoopOperandShape = 'circle' | 'capsule' | 'component'
 
@@ -513,8 +515,10 @@ const sourceLoopFrames = computed(() => {
       const rightStyle = statement.kind === 'component' ? 'component' : loopOperandStyle(parts.right)
       const leftShape = loopOperandShape(leftStyle, parts.left)
       const rightShape = loopOperandShape(rightStyle, parts.right)
-      const leftWidth = leftShape === 'circle' ? 40 : loopSignalWidth(parts.left)
-      const rightWidth = rightStyle === 'component' ? 150 : rightShape === 'circle' ? 40 : loopSignalWidth(parts.right)
+      const leftPresentation = loopOperandPresentation(parts.left, leftStyle, leftShape)
+      const rightPresentation = loopOperandPresentation(parts.right, rightStyle, rightShape)
+      const leftWidth = leftPresentation.width
+      const rightWidth = rightPresentation.width
       const leftHeight = 40
       const rightHeight = rightStyle === 'component' ? 82 : 40
       const operatorWidth = 40
@@ -529,6 +533,8 @@ const sourceLoopFrames = computed(() => {
         rightShape,
         leftWidth,
         rightWidth,
+        leftDisplayLabel: leftPresentation.displayLabel,
+        rightDisplayLabel: rightPresentation.displayLabel,
         leftHeight,
         rightHeight,
         leftRadius: 20,
@@ -699,7 +705,7 @@ const selectedConstraintFamily = computed(() =>
 const exactPageCount = computed(() => Math.max(1, Math.ceil((selectedConstraintFamily.value?.constraints.length ?? 0) / EXACT_PAGE_SIZE)))
 const projectionTotalCount = computed(() => props.constraintGraph?.constraints.length ?? 0)
 const projectionVisibleCount = computed(() => projectedConstraintFamilies.value.reduce((total, family) => total + family.constraints.length, 0))
-const hiddenFamilyCount = computed(() => Math.max(0, constraintFamilies.value.length - projectedConstraintFamilies.value.length))
+const hiddenEntryCount = computed(() => Math.max(0, constraintFamilies.value.length - projectedConstraintFamilies.value.length))
 const hasConstraintFocus = computed(() => matchingConstraintFocusFamilies.value.length > 0)
 
 function showConstraintOverview() {
@@ -1255,7 +1261,7 @@ const sourceLoopConnections = computed(() => {
 const constraintPatternFrames = computed(() => {
   if (props.graphKind !== 'constraint') return []
   return visibleEdges.value
-    .filter(edge => edge.kind === 'constraint-equality' && effectiveConstraintMode.value !== 'exact')
+    .filter(edge => edge.kind === 'constraint-equality' && effectiveConstraintMode.value !== 'exact' && (edge.multiplicity ?? 1) > 1)
     .flatMap(edge => {
       const root = visibleNodeById.value.get(edge.source)
       if (root?.constraintIndex === undefined) return []

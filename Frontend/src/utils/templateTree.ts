@@ -1,4 +1,4 @@
-import type { TemplateInfo, TemplateParameter, ComponentInstance } from '@/types/circuitTypes';
+import type { TemplateInfo, TemplateParameter, ComponentInstance } from '../types/circuitTypes.js';
 
 export interface PathEntry {
   instanceName: string;
@@ -149,9 +149,10 @@ export function isAllChildrenConfirmed(node: TreeNodeData, confirmedNames: Set<s
 }
 
 export function isNodeSelectable(node: TreeNodeData, confirmedNames: Set<string>): boolean {
-  if (node.isExternal || node.isRecursiveReference) return false;
-  if (node.isLeaf && node.templateInfo) return true;
-  return confirmedNames.has(node.templateName) ? false : isAllChildrenConfirmed(node, confirmedNames);
+  if (node.isExternal || node.isRecursiveReference || !node.templateInfo) return false;
+  if (confirmedNames.has(node.templateName)) return true;
+  if (node.isLeaf) return true;
+  return isAllChildrenConfirmed(node, confirmedNames);
 }
 
 export function isNodeConfirmable(node: TreeNodeData): boolean {

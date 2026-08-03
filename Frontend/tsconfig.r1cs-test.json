@@ -11,7 +11,12 @@
   },
   "include": [
     "src/types/partialDebugging.ts",
+    "src/types/circuitTypes.ts",
+    "src/utils/templateTree.ts",
     "src/utils/r1csProjection.ts",
-    "src/test/r1csProjection.test.ts"
+    "src/utils/loopOperandPresentation.ts",
+    "src/test/r1csProjection.test.ts",
+    "src/test/loopOperandPresentation.test.ts",
+    "src/test/templateTreeSelection.test.ts"
   ]
 }
