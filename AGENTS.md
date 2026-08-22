@@ -6,7 +6,7 @@
 
 ## Build, Test, and Development Commands
 
-Use Node `v18.20.4` and pnpm `9.5.0`.
+Use Node `v24.19.0` and pnpm `11.22.0`.
 
 - `cd Frontend && pnpm install`: install UI dependencies.
 - `cd Frontend && pnpm run dev`: start the Vite dev server.

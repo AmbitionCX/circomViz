@@ -2,6 +2,11 @@
   "name": "backend",
   "version": "1.0.0",
   "main": "index.js",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": "24.19.0",
+    "pnpm": "11.22.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node ./dist/index.js",
@@ -21,7 +26,7 @@
     "fastify": "^5.8.2"
   },
   "devDependencies": {
-    "@types/node": "^20.19.37",
+    "@types/node": "^24.0.0",
     "typescript": "5.6.0-dev.20240730"
   },
   "type": "module"
