@@ -2,7 +2,7 @@
   <section class="debug-workspace">
     <el-alert v-if="store.error" :title="store.error" type="error" :closable="false" show-icon />
     <div v-if="store.loading && !store.sourceGraph" class="workspace-loading"><el-icon class="is-loading"><Loading /></el-icon><span>Building linked graph views...</span></div>
-    <el-empty v-else-if="!store.summary" description="Confirm a template to build the Source Semantics Graph and R1CS Enforcement" :image-size="70" />
+    <el-empty v-else-if="!store.summary" description="Confirm a template to build the Source Semantics Graph and Constraint Enforcement" :image-size="70" />
 
     <template v-else>
       <el-row :class="['graph-columns', { 'has-issues': store.analysisLoading || store.lastIntent, 'has-expanded-issue': activeIssue }]" :gutter="8">

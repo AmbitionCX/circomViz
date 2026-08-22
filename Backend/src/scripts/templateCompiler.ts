@@ -4,6 +4,7 @@ import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import * as dotenv from 'dotenv';
+import { resolveCompilerIncludePaths } from '../core/resolver/compilerIncludePaths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,6 +49,8 @@ export interface CompilationResult {
 export interface TemplateCompileRequest {
   repo: string;
   entry: string;
+  repoPath: string;
+  sourceFilePath: string;
   templatePath: string[];
   templateName: string;
   templateCode: string;
@@ -108,11 +111,22 @@ function readableCoefficient(input: string): string {
   }
 }
 
-async function compileCircomCode(folderPath: string, filePath: string): Promise<{ symbolFilePath: string, constraintFilePath: string, substitutionFilePath: string }> {
-  const libraryPath = path.join(__dirname, '..', '..');
-
+async function compileCircomCode(
+  folderPath: string,
+  filePath: string,
+  includePaths: string[],
+): Promise<{ symbolFilePath: string, constraintFilePath: string, substitutionFilePath: string }> {
   try {
-    const args = ['-l', libraryPath, '-o', folderPath, filePath, '--sym', '--json', '--simplification_substitution', '--O2'];
+    const args = [
+      ...includePaths.flatMap((includePath) => ['-l', includePath]),
+      '-o',
+      folderPath,
+      filePath,
+      '--sym',
+      '--json',
+      '--simplification_substitution',
+      '--O2',
+    ];
     const { stdout, stderr } = await runCommand('circom', args, folderPath);
     const stdoutLines = stdout.split('\n');
 
@@ -255,7 +269,8 @@ export async function compileTemplate(request: TemplateCompileRequest): Promise<
   const startTime = Date.now();
   
   try {
-    const result = await compileCircomCode(folderPath, mainFilePath);
+    const includePaths = resolveCompilerIncludePaths(request.repoPath, request.sourceFilePath);
+    const result = await compileCircomCode(folderPath, mainFilePath, includePaths);
     const { symbolFilePath, constraintFilePath, substitutionFilePath } = result;
 
     const symbolFile = fs.readFileSync(symbolFilePath, 'utf-8');

@@ -332,6 +332,8 @@ export async function compileTemplateHandler(
     const compileRequest = {
       repo,
       entry,
+      repoPath: repoPath!,
+      sourceFilePath: selectedTemplate.sourceFile || entryFile.path,
       templatePath,
       templateName,
       templateCode,

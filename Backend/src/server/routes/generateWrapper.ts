@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ProjectLoader } from '../../core/project/loadProject.js';
 import { IncludeResolver } from '../../core/resolver/includeResolver.js';
 import { DependencyGraph } from '../../core/resolver/dependencyGraph.js';
+import { resolveCompilerIncludePaths } from '../../core/resolver/compilerIncludePaths.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import type { generate_wrapper_request, generate_wrapper_response } from '../../types/circuitParser.js';
@@ -13,7 +14,7 @@ import { AbstractWrapperGenerator } from '../../core/abstractCompile/index.js';
 import { PathGuard } from '../../core/project/pathGuard.js';
 import { promises as fs } from 'fs';
 import type { MockManifest } from '../../types/partialDebugging.js';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import {
   parseSymFile,
   parseConstraintsFile,
@@ -131,14 +132,10 @@ export async function generateWrapperHandler(
       });
     }
 
-    const templateDir = templateDef.filePath ? dirname(templateDef.filePath) : '';
-    const includePaths: string[] = [];
-    if (repoPath && !includePaths.includes(`${repoPath}/node_modules`)) {
-      includePaths.push(`${repoPath}/node_modules`);
-    }
-    if (templateDir && !includePaths.includes(templateDir)) {
-      includePaths.push(templateDir);
-    }
+    const includePaths = resolveCompilerIncludePaths(
+      repoPath,
+      templateDef.filePath || entryFile.path,
+    );
     // --- Generate standalone origin and effective mocked source ---
 
     const standaloneSource = buildStandaloneTemplateSource(parsedFiles, templateDef.template);

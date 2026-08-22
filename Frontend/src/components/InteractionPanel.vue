@@ -13,7 +13,7 @@
         <div class="title-context">
           <h2 class="view-title text-base font-bold text-gray-800">Partial Debugging</h2>
           <el-tooltip
-            content="Compare the selected template's Source Semantics Graph with its unoptimized R1CS Enforcement."
+            content="Compare the selected template's Source Semantics Graph with its unoptimized Constraint Enforcement."
             placement="top"
           >
             <el-icon class="text-gray-400 cursor-help">

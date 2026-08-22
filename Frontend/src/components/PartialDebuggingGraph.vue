@@ -6,10 +6,10 @@
       <button
         type="button"
         class="figure-title"
-        :aria-label="`Show ${graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement'} view`"
+        :aria-label="`Show ${graphKind === 'source' ? 'Source Semantics Graph' : 'Constraint Enforcement'} view`"
         @click="emit('activate-view', graphKind)"
       >
-        {{ graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement' }}
+        {{ graphKind === 'source' ? 'Source Semantics Graph' : 'Constraint Enforcement' }}
       </button>
       <div v-if="graphKind === 'constraint'" class="constraint-toolbar" aria-label="R1CS display controls">
         <button type="button" :class="{ active: effectiveConstraintMode === 'overview' }" @click="showConstraintOverview">Overview</button>
@@ -66,7 +66,7 @@
         </div>
 
       </div>
-      <svg ref="svgRef" width="100%" height="100%" :viewBox="`0 0 ${viewportWidth} ${viewportHeight}`" preserveAspectRatio="xMidYMid meet" class="graph-canvas" role="img" :aria-label="graphKind === 'source' ? 'Source Semantics Graph' : 'R1CS Enforcement'">
+      <svg ref="svgRef" width="100%" height="100%" :viewBox="`0 0 ${viewportWidth} ${viewportHeight}`" preserveAspectRatio="xMidYMid meet" class="graph-canvas" role="img" :aria-label="graphKind === 'source' ? 'Source Semantics Graph' : 'Constraint Enforcement'">
         <g ref="viewportRef" class="zoom-viewport">
 
         <g v-if="graphKind === 'source'" class="template-boundary">

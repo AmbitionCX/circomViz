@@ -7,6 +7,7 @@ import { FsUtils } from '../../utils/fs.js';
 import { ErrorCollector } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import * as fs from 'fs';
+import { resolveCircomkitIncludePaths } from './compilerIncludePaths.js';
 
 export interface IncludePath {
   original: string;
@@ -146,24 +147,10 @@ export class IncludeResolver {
       return null;
     }
 
-    const circomkitConfigs = this.getCircomkitConfigs();
-    if (circomkitConfigs.length === 0) {
-      return null;
-    }
-
-    for (const { configPath, includeDirs } of circomkitConfigs) {
-      const configDir = path.dirname(configPath);
-
-      for (const includeDir of includeDirs) {
-        const candidate = path.resolve(configDir, includeDir, includePath);
-        const normalized = path.normalize(candidate);
-        if (!this.isWithinRepo(normalized, path.normalize(this.currentRepoPath))) {
-          continue;
-        }
-
-        if (await FsUtils.fileExists(normalized)) {
-          return normalized;
-        }
+    for (const includeDir of resolveCircomkitIncludePaths(this.currentRepoPath, this.currentFile)) {
+      const candidate = path.resolve(includeDir, includePath);
+      if (await FsUtils.fileExists(candidate)) {
+        return candidate;
       }
     }
 
@@ -171,98 +158,6 @@ export class IncludeResolver {
   }
 
 
-  private getCircomkitConfigs(): Array<{ configPath: string; includeDirs: string[] }> {
-    const nearest = this.findNearestCircomkitConfig();
-    if (nearest) {
-      return [nearest];
-    }
-
-    return this.findRepoCircomkitConfigs();
-  }
-
-  private findRepoCircomkitConfigs(): Array<{ configPath: string; includeDirs: string[] }> {
-    if (!this.currentRepoPath) {
-      return [];
-    }
-
-    const configs: Array<{ configPath: string; includeDirs: string[] }> = [];
-    const repoPath = path.normalize(path.resolve(this.currentRepoPath));
-    const pending = [repoPath];
-
-    while (pending.length > 0) {
-      const currentDir = pending.pop()!;
-      let entries: fs.Dirent[] = [];
-      try {
-        entries = fs.readdirSync(currentDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        if (entry.name === 'node_modules' || entry.name === '.git') continue;
-        pending.push(path.join(currentDir, entry.name));
-      }
-
-      const configPath = path.join(currentDir, 'circomkit.json');
-      if (!fs.existsSync(configPath)) continue;
-
-      const config = this.readCircomkitConfig(configPath);
-      if (config) {
-        configs.push(config);
-      }
-    }
-
-    return configs;
-  }
-
-  private readCircomkitConfig(configPath: string): { configPath: string; includeDirs: string[] } | null {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const includeDirs = Array.isArray(config.include)
-        ? config.include.filter((entry: unknown): entry is string => typeof entry === 'string')
-        : [];
-      if (includeDirs.length > 0) {
-        return { configPath, includeDirs };
-      }
-    } catch {
-      // Ignore invalid CircomKit config files while resolving includes.
-    }
-
-    return null;
-  }
-
-  private findNearestCircomkitConfig(): { configPath: string; includeDirs: string[] } | null {
-    if (!this.currentFile || !this.currentRepoPath) {
-      return null;
-    }
-
-    const repoPath = path.resolve(this.currentRepoPath);
-    const normalizedRepo = path.normalize(repoPath);
-    let currentDir = path.dirname(path.normalize(this.currentFile));
-
-    while (this.isWithinRepo(currentDir, normalizedRepo)) {
-      const configPath = path.join(currentDir, 'circomkit.json');
-      if (fs.existsSync(configPath)) {
-        const config = this.readCircomkitConfig(configPath);
-        if (config) {
-          return config;
-        }
-      }
-
-      if (currentDir === normalizedRepo) {
-        break;
-      }
-
-      const parentDir = path.dirname(currentDir);
-      if (parentDir === currentDir) {
-        break;
-      }
-      currentDir = parentDir;
-    }
-
-    return null;
-  }
 
   private async resolveNpmPath(pkgPath: string): Promise<string | null> {
     const parts = pkgPath.split('/');

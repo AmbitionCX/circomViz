@@ -13,3 +13,9 @@
 [submodule "submodules/zk-franchise-proof-circuit"]
 	path = submodules/zk-franchise-proof-circuit
 	url = https://github.com/vocdoni/zk-franchise-proof-circuit.git
+[submodule "Dataset/zk-bug-tracker"]
+	path = Dataset/zk-bug-tracker
+	url = https://github.com/0xPARC/zk-bug-tracker.git
+[submodule "Dataset/zkbugs"]
+	path = Dataset/zkbugs
+	url = https://github.com/zksecurity/zkbugs.git
