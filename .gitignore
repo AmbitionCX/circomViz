@@ -1,7 +1,7 @@
 .aider*
 Backend/compilations/
 logs
-compilations
+/compilations/
 toy-demos-analysis
 
 .DS_Store
