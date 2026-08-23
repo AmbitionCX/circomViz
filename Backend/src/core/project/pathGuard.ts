@@ -35,6 +35,9 @@ export class PathGuard {
   private backendRoot: string;
   private submodulesRoot: string;
   private toyDemosRoot: string;
+  private expertStudyExamplesRoot: string;
+  private expertStudyToyExamplesRoot: string;
+  private expertStudyRealWorldExamplesRoot: string;
   private compilationsRoot: string;
   private mockedFilesRoot: string;
   private artifactRoots: string[];
@@ -45,11 +48,17 @@ export class PathGuard {
     this.backendRoot = getBackendRoot();
     this.submodulesRoot = path.resolve(this.backendRoot, '..', 'submodules');
     this.toyDemosRoot = path.resolve(this.backendRoot, '..', 'toy-demos');
+    this.expertStudyExamplesRoot = path.resolve(this.backendRoot, '..', 'ExpertStudy', 'Examples');
+    this.expertStudyToyExamplesRoot = path.join(this.expertStudyExamplesRoot, 'Toy-Examples');
+    this.expertStudyRealWorldExamplesRoot = path.join(this.expertStudyExamplesRoot, 'Real-World-Examples');
     this.compilationsRoot = path.resolve(this.backendRoot, 'compilations');
     this.mockedFilesRoot = path.resolve(this.backendRoot, 'mockedFiles');
     this.artifactRoots = [this.compilationsRoot, this.mockedFilesRoot];
 
-    logger.debug(`PathGuard initialized: backendRoot=${this.backendRoot}, submodulesRoot=${this.submodulesRoot}, toyDemosRoot=${this.toyDemosRoot}`);
+    logger.debug('PathGuard initialized: backendRoot=' + this.backendRoot
+      + ', submodulesRoot=' + this.submodulesRoot
+      + ', toyDemosRoot=' + this.toyDemosRoot
+      + ', expertStudyExamplesRoot=' + this.expertStudyExamplesRoot);
   }
 
   private isSubPath(candidate: string, base: string): boolean {
@@ -120,46 +129,53 @@ export class PathGuard {
     }
 
     if (repoName.includes('\u0000') || !this.repoNamePattern.test(repoName) || repoName === '.' || repoName === '..') {
-      return { valid: false, error: `Invalid repository name: ${repoName}` };
+      return { valid: false, error: 'Invalid repository name: ' + repoName };
     }
 
-    const isToyDemosRepo = repoName === 'toy-demos';
-    const repoRoot = isToyDemosRepo ? path.dirname(this.toyDemosRoot) : this.submodulesRoot;
-    const repoPathCandidate = isToyDemosRepo ? this.toyDemosRoot : path.join(this.submodulesRoot, repoName);
+    const fixedRepos: Record<string, { path: string; boundary: string; location: string }> = {
+      'toy-demos': {
+        path: this.toyDemosRoot,
+        boundary: path.dirname(this.toyDemosRoot),
+        location: 'workspace demos',
+      },
+      'expert-study-toy-examples': {
+        path: this.expertStudyToyExamplesRoot,
+        boundary: this.expertStudyExamplesRoot,
+        location: 'ExpertStudy examples',
+      },
+      'expert-study-real-world-examples': {
+        path: this.expertStudyRealWorldExamplesRoot,
+        boundary: this.expertStudyExamplesRoot,
+        location: 'ExpertStudy examples',
+      },
+    };
+    const fixedRepo = fixedRepos[repoName];
+    const repoRoot = fixedRepo?.boundary ?? this.submodulesRoot;
+    const repoPathCandidate = fixedRepo?.path ?? path.join(this.submodulesRoot, repoName);
+    const location = fixedRepo?.location ?? 'submodules';
+
     let repoPath = '';
     try {
       repoPath = this.toCanonicalPath(this.resolveAndNormalize(repoPathCandidate));
     } catch {
-      return {
-        valid: false,
-        error: isToyDemosRepo ? `Repository '${repoName}' not found` : `Repository '${repoName}' not found in submodules`,
-      };
+      return { valid: false, error: "Repository '" + repoName + "' not found in " + location };
     }
 
     if (!this.isSubPath(repoPath, repoRoot)) {
-      return {
-        valid: false,
-        error: isToyDemosRepo ? `Repository path escapes workspace demos directory` : `Repository path escapes submodules directory`,
-      };
+      return { valid: false, error: 'Repository path escapes ' + location };
     }
 
     try {
       const stat = fs.statSync(repoPath);
       if (!stat.isDirectory()) {
-        return { valid: false, error: `Repository '${repoName}' is not a directory` };
+        return { valid: false, error: "Repository '" + repoName + "' is not a directory" };
       }
     } catch {
-      return {
-        valid: false,
-        error: isToyDemosRepo ? `Repository '${repoName}' not found` : `Repository '${repoName}' not found in submodules`,
-      };
+      return { valid: false, error: "Repository '" + repoName + "' not found in " + location };
     }
 
-    logger.debug(`Validated repository path: repoName=${repoName}, repoPath=${repoPath}`);
-    return {
-      valid: true,
-      path: repoPath,
-    };
+    logger.debug('Validated repository path: repoName=' + repoName + ', repoPath=' + repoPath);
+    return { valid: true, path: repoPath };
   }
 
   validateEntryPath(repoPath: string, entryPath: string): { valid: boolean; path?: string; error?: string } {
@@ -283,7 +299,13 @@ export class PathGuard {
       return { valid: false, error: 'Only .circom files can be requested' };
     }
 
-    if (!this.isSubPath(canonical, this.submodulesRoot) && !this.isSubPath(canonical, this.toyDemosRoot)) {
+    const allowedCircuitRoots = [
+      this.submodulesRoot,
+      this.toyDemosRoot,
+      this.expertStudyToyExamplesRoot,
+      this.expertStudyRealWorldExamplesRoot,
+    ];
+    if (!allowedCircuitRoots.some((root) => this.isSubPath(canonical, root))) {
       return {
         valid: false,
         error: `File is outside allowed circuit roots: ${canonical}`,

@@ -1,27 +1,39 @@
 <template>
-  <footer class="study-navigation">
-    <el-button v-if="showBack" size="large" plain @click="$emit('back')">
-      上一步
+  <nav class="study-navigation" :aria-label="t('nav.label')">
+    <el-button
+      v-if="showBack"
+      class="navigation-arrow navigation-arrow--back"
+      size="large"
+      circle
+      plain
+      :aria-label="t(`nav.back`)"
+      :title="t(`nav.back`)"
+      @click="back"
+    >
+      <el-icon><ArrowLeft /></el-icon>
     </el-button>
-    <span v-else />
-    <span class="autosave-note">答案会自动保存在本机</span>
     <el-button
       v-if="showNext"
+      class="navigation-arrow navigation-arrow--next"
       type="primary"
       size="large"
+      circle
       :disabled="nextDisabled"
-      @click="$emit('next')"
+      :aria-label="nextLabel"
+      :title="nextLabel"
+      @click="next"
     >
-      {{ nextLabel }}
-      <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+      <el-icon><ArrowRight /></el-icon>
     </el-button>
-  </footer>
+  </nav>
 </template>
 
 <script setup lang="ts">
-import { ArrowRight } from '@element-plus/icons-vue'
+import { computed } from "vue"
+import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue"
+import { useLocale } from "@/composables/useLocale"
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     showBack?: boolean
     showNext?: boolean
@@ -32,12 +44,21 @@ withDefaults(
     showBack: true,
     showNext: true,
     nextDisabled: false,
-    nextLabel: '下一步',
   },
 )
 
-defineEmits<{
+const emit = defineEmits<{
   back: []
   next: []
 }>()
+const { t } = useLocale()
+const nextLabel = computed(() => props.nextLabel ?? t("nav.next"))
+
+function back() {
+  emit("back")
+}
+
+function next() {
+  emit("next")
+}
 </script>

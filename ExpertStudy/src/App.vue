@@ -1,8 +1,5 @@
 <template>
-  <StudyShell
-    :expert-id="store.session?.expertId"
-    :progress="progress"
-  >
+  <StudyShell :progress="progress">
     <ResearcherSetupStep
       v-if="!store.session"
       :initial-expert-id="queryExpertId"
@@ -19,7 +16,10 @@
         v-else-if="currentStep.kind === 'background'"
         :background="store.session.background"
       />
-      <EnvironmentStep v-else-if="currentStep.kind === 'environment'" />
+      <CaseFamiliarityStep
+        v-else-if="currentStep.kind === 'case-familiarity'"
+        :tasks="store.session.tasks"
+      />
       <TrainingStep v-else-if="currentStep.kind === 'training'" />
       <PracticeStep v-else-if="currentStep.kind === 'practice'" />
       <ComprehensionStep
@@ -82,7 +82,7 @@ import ResearcherSetupStep from '@/steps/ResearcherSetupStep.vue'
 import WelcomeStep from '@/steps/WelcomeStep.vue'
 import ConsentStep from '@/steps/ConsentStep.vue'
 import BackgroundStep from '@/steps/BackgroundStep.vue'
-import EnvironmentStep from '@/steps/EnvironmentStep.vue'
+import CaseFamiliarityStep from '@/steps/CaseFamiliarityStep.vue'
 import TrainingStep from '@/steps/TrainingStep.vue'
 import PracticeStep from '@/steps/PracticeStep.vue'
 import ComprehensionStep from '@/steps/ComprehensionStep.vue'
@@ -98,9 +98,11 @@ import { useStudyStore } from '@/stores/study'
 import { buildStudyFlow } from '@/utils/buildStudyFlow'
 import { clearStudyState, loadStudyState, saveStudyState } from '@/utils/persistence'
 import { downloadMarkdown } from '@/utils/markdownExport'
+import { useLocale } from '@/composables/useLocale'
 import { expertIds, type ExpertId, type TaskResponse } from '@/types/study'
 
 const store = useStudyStore()
+const { t } = useLocale()
 const steps = buildStudyFlow()
 const exportConfirmed = ref(false)
 
@@ -114,13 +116,50 @@ const currentTask = computed<TaskResponse | undefined>(() => {
   const taskIndex = currentStep.value?.taskIndex
   return taskIndex === undefined ? undefined : store.session?.tasks[taskIndex]
 })
+function localizedSection(section: string): string {
+  switch (section) {
+    case "Introduction": return t("progress.introduction")
+    case "Background": return t("progress.background")
+    case "Training": return t("progress.training")
+    case "Tasks": return t("progress.tasks")
+    case "Questionnaires": return t("progress.questionnaires")
+    case "Interview": return t("progress.interview")
+    case "Completion": return t("progress.completion")
+    default: return section
+  }
+}
+
+function localizedStepLabel(): string {
+  const step = currentStep.value
+  if (!step) return ""
+  const order = (step.taskIndex ?? 0) + 1
+  switch (step.kind) {
+    case "welcome": return t("progress.welcome")
+    case "consent": return t("progress.consent")
+    case "background": return t("progress.backgroundInfo")
+    case "case-familiarity": return t("progress.caseFamiliarity")
+    case "training": return t("progress.systemTraining")
+    case "practice": return t("progress.practice")
+    case "comprehension": return t("progress.comprehension")
+    case "task-brief": return t("progress.task", { order })
+    case "task-response": return t("progress.taskResponse", { order })
+    case "break": return t("progress.break")
+    case "sus": return "SUS"
+    case "contribution": return t("progress.designFeedback")
+    case "interview": return t("interview.title")
+    case "review": return t("progress.review")
+    case "completion": return t("progress.complete")
+    default: return step.shortLabel
+  }
+}
+
 const progress = computed(() => {
   if (!store.session || !currentStep.value) return undefined
   return {
     current: store.currentStepIndex + 1,
     total: steps.length,
-    section: currentStep.value.section,
-    label: currentStep.value.shortLabel,
+    section: localizedSection(currentStep.value.section),
+    label: localizedStepLabel(),
   }
 })
 
@@ -130,6 +169,7 @@ const canGoBack = computed(() => {
     'welcome',
     'consent',
     'background',
+    'case-familiarity',
     'environment',
     'training',
     'practice',
@@ -145,16 +185,7 @@ function hasText(value: string): boolean {
 
 function isTaskComplete(task?: TaskResponse): boolean {
   if (!task) return false
-  return (
-    hasText(task.suspectedComponent) &&
-    hasText(task.sourceOrConstraint) &&
-    hasText(task.rootCause) &&
-    hasText(task.violatedProperty) &&
-    hasText(task.supportingEvidence) &&
-    hasText(task.primaryEvidence) &&
-    task.confidence > 0 &&
-    task.mentalDemand > 0
-  )
+  return task.confidence > 0 && task.mentalDemand > 0
 }
 
 const canContinue = computed(() => {
@@ -170,9 +201,11 @@ const canContinue = computed(() => {
       Boolean(background.productionCircuit) &&
       Boolean(background.securityAudit) &&
       background.r1csFamiliarity > 0 &&
-      hasText(background.debuggingTools) &&
-      hasText(background.knownCases)
+      hasText(background.debuggingTools)
     )
+  }
+  if (kind === 'case-familiarity') {
+    return session.tasks.every((task) => Boolean(task.priorFamiliarity))
   }
   if (kind === 'comprehension') {
     return Boolean(
@@ -191,25 +224,27 @@ const canContinue = computed(() => {
 const nextLabel = computed(() => {
   switch (currentStep.value?.kind) {
     case 'consent':
-      return '同意并继续'
+      return t('app.consentNext')
+    case 'case-familiarity':
+      return t('app.caseNext')
     case 'comprehension':
-      return '提交检查'
+      return t('app.checkNext')
     case 'task-brief':
-      return '开始任务'
+      return t('app.startTask')
     case 'task-response':
-      return '提交并锁定答案'
+      return t('app.submitTask')
     case 'break':
-      return '继续实验'
+      return t('app.continueStudy')
     case 'review':
-      return '完成实验'
+      return t('app.finishStudy')
     default:
-      return '下一步'
+      return t('nav.next')
   }
 })
 
 function startSession(expertId: ExpertId, researcherNote: string) {
   store.startSession(expertId, researcherNote)
-  ElMessage.success(`已载入 ${expertId} 的实验顺序`)
+  ElMessage.success(t("app.orderLoaded", { expertId }))
 }
 
 function handleNext() {
@@ -227,10 +262,10 @@ function handleNext() {
       session.comprehension.provenanceAnswer === 'provenance-links'
     store.recordComprehensionAttempt(passed)
     if (!passed) {
-      ElMessage.warning('至少有一个答案不正确，请回顾培训内容后重试。')
+      ElMessage.warning(t("app.checkFailed"))
       return
     }
-    ElMessage.success('理解检查通过')
+    ElMessage.success(t("app.checkPassed"))
   }
 
   if (step.kind === 'task-brief' && step.taskIndex !== undefined) {
@@ -239,7 +274,7 @@ function handleNext() {
 
   if (step.kind === 'task-response' && step.taskIndex !== undefined) {
     store.submitTask(step.taskIndex)
-    ElMessage.success('任务答案已提交并锁定')
+    ElMessage.success(t("app.taskSubmitted"))
   }
 
   if (step.kind === 'review') {
@@ -254,24 +289,24 @@ function downloadResult() {
   if (!store.session) return
   store.completeSession()
   downloadMarkdown(store.session)
-  ElMessage.success('Markdown 文件已生成')
+  ElMessage.success(t("app.markdownGenerated"))
 }
 
 async function clearSession() {
   try {
     await ElMessageBox.confirm(
-      '这会永久删除当前浏览器中的实验进度。请先确认 Markdown 文件已经安全保存。',
-      '清除本机实验数据',
+      t("app.clearMessage"),
+      t("app.clearTitle"),
       {
         type: 'warning',
-        confirmButtonText: '确认清除',
-        cancelButtonText: '取消',
+        confirmButtonText: t("app.confirmClear"),
+        cancelButtonText: t("app.cancel"),
       },
     )
     clearStudyState()
     store.$reset()
     exportConfirmed.value = false
-    ElMessage.success('本机实验数据已清除')
+    ElMessage.success(t("app.dataCleared"))
   } catch {
     // The participant or researcher cancelled the destructive action.
   }
@@ -287,7 +322,7 @@ onMounted(() => {
   const persisted = loadStudyState()
   if (persisted) {
     store.restore(persisted)
-    ElMessage.info('已恢复当前浏览器中未清除的实验进度')
+    ElMessage.info(t("app.restored"))
   }
   window.addEventListener('beforeunload', warnBeforeClose)
 })

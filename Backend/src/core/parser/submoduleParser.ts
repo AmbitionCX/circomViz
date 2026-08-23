@@ -62,6 +62,60 @@ export class CircomParser {
     }
   ] as const;
 
+  private static readonly EXPERT_STUDY_TOY_EXAMPLES: readonly SubmoduleInfo[] = [
+    {
+      id: 'DonationMatch',
+      name: 'Donation Match',
+      entry: 'DonationMatch.circom',
+      rootComponent: 'DonationMatch',
+      description: 'Verified practice circuit'
+    },
+    {
+      id: 'GoldDiscount',
+      name: 'Gold Discount',
+      entry: 'GoldDiscount.circom',
+      rootComponent: 'GoldDiscount',
+      description: 'Verified practice circuit'
+    },
+    {
+      id: 'LoyaltyReward',
+      name: 'Loyalty Reward',
+      entry: 'LoyaltyReward.circom',
+      rootComponent: 'LoyaltyReward',
+      description: 'Verified practice circuit'
+    },
+    {
+      id: 'MerkleRoot2',
+      name: 'Merkle Root 2',
+      entry: 'MerkleRoot2.circom',
+      rootComponent: 'MerkleRoot2',
+      description: 'Verified practice circuit'
+    },
+    {
+      id: 'Payroll',
+      name: 'Payroll',
+      entry: 'Payroll.circom',
+      rootComponent: 'Payroll',
+      description: 'Verified practice circuit'
+    },
+    {
+      id: 'TwoFactorLogin',
+      name: 'Two Factor Login',
+      entry: 'TwoFactorLogin.circom',
+      rootComponent: 'TwoFactorLogin',
+      description: 'Verified practice circuit'
+    },
+    {
+      id: 'WithdrawalLimit',
+      name: 'Withdrawal Limit',
+      entry: 'WithdrawalLimit.circom',
+      rootComponent: 'WithdrawalLimit',
+      description: 'Verified practice circuit'
+    }
+  ];
+
+  private static readonly EXPERT_STUDY_REAL_WORLD_EXAMPLES: readonly SubmoduleInfo[] = [];
+
   private static readonly SUBMODULES = [
     {
       id: 'zk-email-verify',
@@ -102,6 +156,22 @@ export class CircomParser {
       description: 'Anonymous group membership circuit'
     }
   ] as const;
+
+  static getExpertStudyToyExampleById(id: string): SubmoduleInfo | null {
+    return this.EXPERT_STUDY_TOY_EXAMPLES.find(example => example.id === id) || null;
+  }
+
+  static getAllExpertStudyToyExamples(): readonly SubmoduleInfo[] {
+    return this.EXPERT_STUDY_TOY_EXAMPLES;
+  }
+
+  static getExpertStudyRealWorldExampleById(id: string): SubmoduleInfo | null {
+    return this.EXPERT_STUDY_REAL_WORLD_EXAMPLES.find(example => example.id === id) || null;
+  }
+
+  static getAllExpertStudyRealWorldExamples(): readonly SubmoduleInfo[] {
+    return this.EXPERT_STUDY_REAL_WORLD_EXAMPLES;
+  }
 
   static getSubmoduleById(id: string): SubmoduleInfo | null {
     return this.SUBMODULES.find(s => s.id === id) || null;

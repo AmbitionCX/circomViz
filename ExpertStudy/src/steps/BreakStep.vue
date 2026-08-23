@@ -1,13 +1,19 @@
 <template>
   <div class="hero-step break-step">
-    <span class="slide-kicker">HALFWAY POINT</span>
+    <span class="slide-kicker">{{ t("break.kicker") }}</span>
     <div class="break-number">05:00</div>
-    <h1>休息一下</h1>
-    <p class="hero-lead">你已经完成前两个正式任务。建议离开屏幕活动一下，五分钟后继续。</p>
+    <h1>{{ t("break.title") }}</h1>
+    <p class="hero-lead">{{ t("break.lead") }}</p>
     <div class="break-reminders">
-      <span>放松眼睛</span><i />
-      <span>适当活动</span><i />
-      <span>准备好后继续</span>
+      <span>{{ t("break.reminder1") }}</span><i />
+      <span>{{ t("break.reminder2") }}</span><i />
+      <span>{{ t("break.reminder3") }}</span>
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { useLocale } from "@/composables/useLocale"
+
+const { t } = useLocale()
+</script>

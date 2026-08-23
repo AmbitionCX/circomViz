@@ -6,6 +6,10 @@ export type TaskId = (typeof taskIds)[number]
 export type ExampleId = 'A' | 'B'
 export type StudyCondition = 'baseline' | 'circomvis'
 export type YesNoPrefer = 'yes' | 'no' | 'prefer-not'
+export type CaseFamiliarity =
+  | 'unfamiliar'
+  | 'project-familiar'
+  | 'vulnerability-familiar'
 
 export interface TaskAssignment {
   example: ExampleId
@@ -19,10 +23,14 @@ export interface ExpertPlan {
 
 export interface TaskStimulus {
   publicCaseId: string
+  sourceProject: string
   title: string
   functionDescription: string
+  functionDescriptionEn: string
   inputOutputSemantics: string
+  inputOutputSemanticsEn: string
   intendedProperties: string[]
+  intendedPropertiesEn: string[]
   materialsNote: string
 }
 
@@ -57,6 +65,7 @@ export interface TaskResponse {
   example: ExampleId
   condition: StudyCondition
   publicCaseId: string
+  priorFamiliarity: CaseFamiliarity | ''
   startedAt?: string
   submittedAt?: string
   durationSeconds?: number
@@ -94,7 +103,7 @@ export type StepKind =
   | 'welcome'
   | 'consent'
   | 'background'
-  | 'environment'
+  | 'case-familiarity'
   | 'training'
   | 'practice'
   | 'comprehension'

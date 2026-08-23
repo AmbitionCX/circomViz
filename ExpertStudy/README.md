@@ -24,6 +24,7 @@ pnpm run preview
 ## 正式实验前必须配置
 
 1. 在 `src/config/tasks.ts` 中用最终的 participant-visible intent cards 替换占位说明。此文件不得出现 ground truth、bug 类型、正确位置、审计报告或评分答案。
+   同时核对每个 A/B 案例的 `sourceProject`，该字段只允许包含上游仓库名。
 2. 用经过所在机构伦理审查的正式文本替换 `ConsentStep.vue` 中的 consent 草案，并更新 `src/config/study.ts` 的 `CONSENT_VERSION`。
 3. 核对 `src/config/experts.ts` 的 E1–E8 顺序和 A/B、BL/CV 分配。
 4. 在正式设备上验证 Markdown 下载、中文字符、刷新恢复以及浏览器的下载权限。
@@ -31,7 +32,7 @@ pnpm run preview
 
 ## Session 流程
 
-研究人员设置 → 欢迎 → Consent → 专业背景 → 环境说明 → 培训 → 练习 → 理解检查 → 四个正式任务（中途休息）→ SUS → 设计反馈 → 访谈 → 检查与导出 → 完成。
+研究人员设置 → 欢迎 → Consent → 专业背景 → 案例来源与熟悉度确认 → 培训 → 操作熟悉 → 理解检查 → 四个正式任务（中途休息）→ SUS → 设计反馈 → 访谈 → 检查与导出 → 完成。
 
 正式任务点击“开始任务”后计时；提交时记录耗时并锁定该任务。理解检查必须全部正确。Consent、背景信息、任务回答和问卷存在必填门槛，参与者不能通过进度条跳页。
 

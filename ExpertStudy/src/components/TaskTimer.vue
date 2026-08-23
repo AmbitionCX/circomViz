@@ -1,7 +1,7 @@
 <template>
   <div class="task-timer" :class="{ warning: remainingSeconds <= 120, overtime: remainingSeconds <= 0 }">
     <div>
-      <span class="timer-label">{{ remainingSeconds > 0 ? '剩余时间' : '已超时' }}</span>
+      <span class="timer-label">{{ remainingSeconds > 0 ? t("timer.remaining") : t("timer.overtime") }}</span>
       <strong>{{ formattedTime }}</strong>
     </div>
     <el-progress
@@ -18,8 +18,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { TASK_TIME_LIMIT_SECONDS } from '@/config/study'
+import { useLocale } from '@/composables/useLocale'
 
 const props = defineProps<{ startedAt?: string }>()
+const { t } = useLocale()
 const now = ref(Date.now())
 const interval = window.setInterval(() => {
   now.value = Date.now()

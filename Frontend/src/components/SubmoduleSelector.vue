@@ -59,7 +59,7 @@
         <div class="mb-1"><span class="font-semibold">Type:</span> {{ selectionModeLabel }}</div>
         <div class="mb-1"><span class="font-semibold">Entry:</span> {{ selectedCircuitConfig.entry }}</div>
         <div class="mb-1"><span class="font-semibold">Root Component:</span> {{ selectedCircuitConfig.rootComponent }}</div>
-        <div v-if="selectionMode === 'example'" class="mb-1"><span class="font-semibold">Bug family:</span> {{ selectedCircuitConfig.description }}</div>
+        <div v-if="selectionMode === 'example'" class="mb-1"><span class="font-semibold">{{ props.expertStudy ? 'Purpose:' : 'Bug family:' }}</span> {{ selectedCircuitConfig.description }}</div>
       </div>
     </div>
     
@@ -89,15 +89,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Tools, QuestionFilled, FolderOpened, Document } from '@element-plus/icons-vue';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
 import { getExamples, getSubmodules, parseCircuitRequest, parse_circuit_request } from '@/apis/index.js';
 import { ElMessage } from 'element-plus';
 
-defineProps<{
+const props = withDefaults(defineProps<{
   compact?: boolean;
-}>();
+  expertStudy?: boolean;
+}>(), {
+  compact: false,
+  expertStudy: false,
+});
 
 const emit = defineEmits<{
   'circuit-selected': [data: SubmoduleInfo];
@@ -113,6 +117,7 @@ const isParsing = ref<boolean>(false);
 const parseError = ref<string>('');
 const submodules = ref<SubmoduleInfo[]>([]);
 const examples = ref<SubmoduleInfo[]>([]);
+let loadRequestId = 0;
 
 const selectionModeOptions = [
   { label: 'Example', value: 'example', icon: Document },
@@ -120,6 +125,7 @@ const selectionModeOptions = [
 ];
 
 const selectionModeLabel = computed(() => selectionMode.value === 'example' ? 'Example' : 'Project');
+const circuitCatalog = computed(() => props.expertStudy ? 'expert-study' as const : 'default' as const);
 
 const availableCircuits = computed(() => {
   return selectionMode.value === 'example' ? examples.value : submodules.value;
@@ -144,24 +150,28 @@ const handleSelectionModeChange = () => {
 };
 
 const loadCircuits = async () => {
+  const requestId = ++loadRequestId;
   isLoading.value = true;
   try {
     const [submodulesResponse, examplesResponse] = await Promise.all([
-      getSubmodules() as any,
-      getExamples() as any
+      getSubmodules(circuitCatalog.value) as any,
+      getExamples(circuitCatalog.value) as any
     ]);
+    if (requestId !== loadRequestId) return;
+
     console.log('Fetch submodules: ', submodulesResponse);
     console.log('Fetch examples: ', examplesResponse);
-    
     submodules.value = submodulesResponse.submodules;
     examples.value = examplesResponse.examples;
     ElMessage.success('Successfully loaded circuit list');
   } catch (error: any) {
+    if (requestId !== loadRequestId) return;
+
     console.error('Failed to load circuits:', error);
     ElMessage.error('Failed to load circuit list');
     parseError.value = error.response?.data?.error || 'Failed to load circuit list';
   } finally {
-    isLoading.value = false;
+    if (requestId === loadRequestId) isLoading.value = false;
   }
 };
 
@@ -176,7 +186,11 @@ const parseCircuit = async () => {
 
   try {
     const request: parse_circuit_request = {
-      repo: selectionMode.value === 'example' ? 'toy-demos' : selectedCircuitConfig.value.id,
+      repo: props.expertStudy
+        ? (selectionMode.value === 'example'
+          ? 'expert-study-toy-examples'
+          : 'expert-study-real-world-examples')
+        : (selectionMode.value === 'example' ? 'toy-demos' : selectedCircuitConfig.value.id),
       entry: selectedCircuitConfig.value.entry,
       rootComponent: selectedCircuitConfig.value.rootComponent,
       rootArguments: selectedCircuitConfig.value.rootArguments
@@ -195,8 +209,16 @@ const parseCircuit = async () => {
   }
 };
 
+watch(() => props.expertStudy, () => {
+  selectedCircuitId.value = '';
+  parseError.value = '';
+  submodules.value = [];
+  examples.value = [];
+  void loadCircuits();
+});
+
 onMounted(() => {
-  loadCircuits();
+  void loadCircuits();
 });
 </script>
 

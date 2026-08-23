@@ -1,0 +1,61 @@
+# Missing boolean constraints in the Merkle tree path leads to an attacker being able to craft a fake Merkle proof for an arbitrary leaf
+
+* Id: selfxyz/self/zksecurity_missing_boolean_constraints_in_the_merkle_tree_path_leads_to_an_attacker_being_able_to_craft_a_fake_merkle_proof_for_an_arbitrary_leaf
+* Project: https://github.com/selfxyz/self
+* Commit: 4f18c75041bb47c1862169eef82c22067642a83a
+* Fix Commit: 8801c6c1d793896a778c4b597531bc710995d30c
+* DSL: Circom
+* Vulnerability: Under-Constrained
+* Impact: Soundness
+* Root Cause: Wrong Translation of Logic into Constraints
+* Reproduced: False
+* Codebase: dataset/codebases/circom/selfxyz/self/4f18c75041bb47c1862169eef82c22067642a83a
+* Original Entrypoint: circuits/circuits/register_id/instances/register_id_sha256_sha256_sha256_rsa_65537_4096.circom
+* Direct Entrypoint: circuit.circom
+* Location
+  - Path: circuits/circuits/utils/crypto/merkle-trees/smt.circom
+  - Function: BinaryMerkleRoot
+  - Line: 57-59
+* Source: Audit Report
+  - Source Link: https://github.com/zksecurity/zkbugs/blob/main/reports/documents/zksecurity-celo-self-audit-2.pdf
+  - Bug ID: #02 - Missing boolean constraints in the Merkle tree path leads to an attacker being able to craft a fake Merkle proof for an arbitrary leaf
+* Input
+  - Original: input.json
+  - Direct: direct_input.json
+* Commands
+  - Setup Environment: `./zkbugs_setup.sh`
+  - Compile and Preprocess: `./zkbugs_compile_setup.sh`
+  - Positive Test: `./zkbugs_positive_test.sh`
+  - Clean: `./zkbugs_clean.sh`
+  - Compile: `./zkbugs_compile.sh`
+
+## Running
+
+Scripts support two modes controlled by the `ZKBUGS_MODE` environment variable:
+
+- **`original`** (default): compiles the project's main circuit from the full codebase.
+- **`direct`**: compiles an isolated wrapper (`circuit.circom`) that only instantiates the vulnerable template.
+
+```bash
+# Setup (run once)
+./zkbugs_setup.sh
+
+# Compile only (no zkey ceremony)
+./zkbugs_compile.sh                        # original mode
+ZKBUGS_MODE=direct ./zkbugs_compile.sh     # direct mode
+
+# Full setup with zkey ceremony + positive test (direct mode)
+ZKBUGS_MODE=direct ./zkbugs_compile_setup.sh
+ZKBUGS_MODE=direct ./zkbugs_positive_test.sh
+
+# Clean build artifacts
+./zkbugs_clean.sh
+```
+
+## Short Description of the Vulnerability
+
+The `BinaryMerkleRoot` template is used in multiple places in the circuits to recover the root of a binary Merkle tree. Notice that this template does not enforce any boolean constraints on the `indices` array. As a result of this issue, an attacker can craft a fake Merkle proof for any leaf value of their choosing. Since the Merkle tree is used to perform multiple checks throughout the circuits, this means that the attacker can bypass any check that relies on a Merkle proof, for example the inclusion of the CSCA and DSC certificates in the certificates trees.
+
+## Proposed Mitigation
+
+We recommend adding boolean constraints to the `indices` array in the `BinaryMerkleRoot` template.

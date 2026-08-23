@@ -2,6 +2,8 @@ import request from './request';
 import type { SubmoduleInfo } from '@/types/parseTypes.js';
 import type { ParseCircuitResponse, ParseCompilationStatus, FindTemplateParamsResponse, HumanReadableConstraint } from '@/types/circuitTypes.js';
 
+export type CircuitCatalog = 'default' | 'expert-study';
+
 const enum API {
   parse_circuit = '/parse_circuit',
   parse_compilation = '/parse_compilation',
@@ -57,17 +59,20 @@ export interface compile_template_response {
   error?: string;
 }
 
-export const getSubmodules = () =>
-  request.get<getSubmodules_response>(API.submodules);
+const catalogConfig = (catalog: CircuitCatalog) =>
+  catalog === 'expert-study' ? { params: { catalog } } : undefined;
 
-export const getSubmoduleById = (id: string) =>
-  request.get<getSubmoduleById_response>(`${API.submodules}/${id}`);
+export const getSubmodules = (catalog: CircuitCatalog = 'default') =>
+  request.get<getSubmodules_response>(API.submodules, catalogConfig(catalog));
 
-export const getExamples = () =>
-  request.get<getExamples_response>(API.examples);
+export const getSubmoduleById = (id: string, catalog: CircuitCatalog = 'default') =>
+  request.get<getSubmoduleById_response>(API.submodules + '/' + id, catalogConfig(catalog));
 
-export const getExampleById = (id: string) =>
-  request.get<getExampleById_response>(`${API.examples}/${id}`);
+export const getExamples = (catalog: CircuitCatalog = 'default') =>
+  request.get<getExamples_response>(API.examples, catalogConfig(catalog));
+
+export const getExampleById = (id: string, catalog: CircuitCatalog = 'default') =>
+  request.get<getExampleById_response>(API.examples + '/' + id, catalogConfig(catalog));
 
 export const parseCircuitRequest = (data: parse_circuit_request) =>
   request.post<any, ParseCircuitResponse>(API.parse_circuit, data, {

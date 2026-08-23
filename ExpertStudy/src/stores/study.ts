@@ -16,6 +16,7 @@ function emptyTask(
     example: assignment.example,
     condition: assignment.condition,
     publicCaseId: taskStimuli[taskId][assignment.example].publicCaseId,
+    priorFamiliarity: '',
     timedOut: false,
     suspectedComponent: '',
     sourceOrConstraint: '',

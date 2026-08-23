@@ -22,6 +22,9 @@ const repoRoot = path.resolve(__dirname, '../..');
 const frontendDist = path.join(repoRoot, 'Frontend/dist');
 const logger = new Logger('Server');
 
+const usesExpertStudyCatalog = (request: { query?: unknown }): boolean =>
+  (request.query as { catalog?: string } | undefined)?.catalog === 'expert-study';
+
 const server = fastify();
 server.register(cors, {
   origin: '*',
@@ -48,14 +51,18 @@ server.setErrorHandler((error, request, reply) => {
   reply.status(500).send({ error: message });
 });
 
-server.get('/submodules', (_, reply) => {
-  const submodules = SubmoduleParser.getAllSubmodules();
+server.get('/submodules', (request, reply) => {
+  const submodules = usesExpertStudyCatalog(request)
+    ? SubmoduleParser.getAllExpertStudyRealWorldExamples()
+    : SubmoduleParser.getAllSubmodules();
   reply.send({ submodules });
 });
 
 server.get('/submodules/:id', (request, reply) => {
   const { id } = request.params as { id: string };
-  const submodule = SubmoduleParser.getSubmoduleById(id);
+  const submodule = usesExpertStudyCatalog(request)
+    ? SubmoduleParser.getExpertStudyRealWorldExampleById(id)
+    : SubmoduleParser.getSubmoduleById(id);
 
   if (!submodule) {
     return reply.code(404).send({ error: 'Submodule not found' });
@@ -64,14 +71,18 @@ server.get('/submodules/:id', (request, reply) => {
   reply.send({ submodule });
 });
 
-server.get('/examples', (_, reply) => {
-  const examples = SubmoduleParser.getAllExamples();
+server.get('/examples', (request, reply) => {
+  const examples = usesExpertStudyCatalog(request)
+    ? SubmoduleParser.getAllExpertStudyToyExamples()
+    : SubmoduleParser.getAllExamples();
   reply.send({ examples });
 });
 
 server.get('/examples/:id', (request, reply) => {
   const { id } = request.params as { id: string };
-  const example = SubmoduleParser.getExampleById(id);
+  const example = usesExpertStudyCatalog(request)
+    ? SubmoduleParser.getExpertStudyToyExampleById(id)
+    : SubmoduleParser.getExampleById(id);
 
   if (!example) {
     return reply.code(404).send({ error: 'Example not found' });

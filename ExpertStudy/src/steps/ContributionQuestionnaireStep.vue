@@ -1,30 +1,34 @@
 <template>
   <div class="content-step questionnaire-step">
-    <span class="slide-kicker">DESIGN CONTRIBUTIONS</span>
-    <h1>视觉调试功能反馈</h1>
-    <p class="step-intro">以下是本研究专用的 7 点量表，不属于标准化可用性量表。</p>
+    <span class="slide-kicker">{{ t("contribution.kicker") }}</span>
+    <h1>{{ t("contribution.title") }}</h1>
 
-    <div v-for="(question, index) in contributionQuestions" :key="question" class="contribution-row">
-      <div class="survey-question"><span>{{ String(index + 1).padStart(2, '0') }}</span>{{ question }}</div>
-      <LikertScale
-        v-model="ratings[index]"
-        :max="7"
-        low-label="Strongly disagree"
-        high-label="Strongly agree"
-        compact
-      />
+    <div class="scale-legend">
+      <span>1 · {{ t("scale.stronglyDisagree") }}</span>
+      <span>2 · {{ t("scale.disagree") }}</span>
+      <span>3 · {{ t("scale.somewhatDisagree") }}</span>
+      <span>4 · {{ t("scale.neutral") }}</span>
+      <span>5 · {{ t("scale.somewhatAgree") }}</span>
+      <span>6 · {{ t("scale.agree") }}</span>
+      <span>7 · {{ t("scale.stronglyAgree") }}</span>
     </div>
 
-    <el-form-item label="其他整体反馈（可选）" class="feedback-field">
-      <el-input v-model="overallFeedback" type="textarea" :rows="3" placeholder="哪些设计最有帮助？哪些地方需要改进？" />
-    </el-form-item>
+    <div v-for="(question, index) in questions" :key="question" class="contribution-row">
+      <div class="survey-question"><span>{{ String(index + 1).padStart(2, "0") }}</span>{{ question }}</div>
+      <el-radio-group v-model="ratings[index]" size="small">
+        <el-radio-button v-for="value in 7" :key="value" :value="value">{{ value }}</el-radio-button>
+      </el-radio-group>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import LikertScale from '@/components/LikertScale.vue'
-import { contributionQuestions } from '@/config/questionnaires'
+import { computed } from "vue"
+import { useLocale } from "@/composables/useLocale"
+import { contributionQuestions, contributionQuestionsZh } from "@/config/questionnaires"
+
+const { locale, t } = useLocale()
+const questions = computed(() => locale.value === "zh" ? contributionQuestionsZh : contributionQuestions)
 
 defineProps<{ ratings: number[] }>()
-const overallFeedback = defineModel<string>('overallFeedback', { required: true })
 </script>

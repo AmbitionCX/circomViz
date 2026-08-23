@@ -4,6 +4,12 @@
        <div class="flex items-center justify-between h-full px-4">
          <div class="flex items-center gap-3">
            <h1 class="text-lg text-white font-bold">Visual Assistance System for Circom</h1>
+           <el-checkbox
+             v-model="expertStudyMode"
+             class="expert-study-toggle"
+             label="Expert Study"
+             size="small"
+           />
            <el-tag v-if="circuitStore.parseData.repo" size="small" type="info">
              {{ circuitStore.parseData.repo }}
            </el-tag>
@@ -23,6 +29,7 @@
                >
                 <SubmoduleSelector
                   :compact="isCircuitSelectionCompact"
+                  :expert-study="expertStudyMode"
                   @circuit-selected="handleCircuitSelected"
                   @parse-complete="handleParseComplete"
                 />
@@ -77,6 +84,7 @@ type LeftPanelMode = 'initial' | 'selection' | 'signal';
 
 const activePanel = ref<PanelState>('circuit');
 const leftPanelMode = ref<LeftPanelMode>('initial');
+const expertStudyMode = ref(false);
 
 const circuitViewHeightClass = computed(() => {
   return activePanel.value === 'circuit' ? 'h-4/5' : 'h-1/5';
@@ -234,6 +242,10 @@ const handleWrapTemplate = async (data: any) => {
 
 .el-main {
   padding: 8px;
+}
+
+.expert-study-toggle :deep(.el-checkbox__label) {
+  color: #e0e7ff;
 }
 
 .shadow-custom {

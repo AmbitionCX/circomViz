@@ -1,4 +1,5 @@
 import { contributionQuestions, interviewQuestions, susQuestions } from '@/config/questionnaires'
+import { taskStimuli } from '@/config/tasks'
 import { calculateSusScore } from '@/utils/susScore'
 import type { StudySession, TaskResponse } from '@/types/study'
 
@@ -17,6 +18,15 @@ function yesNoPrefer(value: string): string {
 
 function conditionLabel(value: string): string {
   return value === 'circomvis' ? 'CircomVis' : 'Baseline'
+}
+
+function familiarityLabel(value: TaskResponse['priorFamiliarity']): string {
+  const labels: Record<string, string> = {
+    unfamiliar: 'Unfamiliar with the project',
+    'project-familiar': 'Familiar with the project, but not the related vulnerability',
+    'vulnerability-familiar': 'Has seen or may have seen the related public vulnerability',
+  }
+  return labels[value] ?? 'Not provided'
 }
 
 function taskMarkdown(task: TaskResponse): string {
@@ -63,6 +73,28 @@ ${textBlock(task.possibleRepair)}
 
 export function createMarkdown(session: StudySession): string {
   const susScore = calculateSusScore(session.susResponses)
+  const familiarityLines = session.tasks
+    .map((task) => {
+      const stimulus = taskStimuli[task.taskId][task.example]
+      return [
+        '| ',
+        task.publicCaseId,
+        ' | ',
+        task.taskId,
+        '-',
+        task.example,
+        ' | ',
+        stimulus.sourceProject,
+        ' | ',
+        familiarityLabel(task.priorFamiliarity),
+        ' |',
+      ].join('')
+    })
+    .join('\n')
+  const legacyKnownCases = session.background.knownCases.trim()
+  const legacyKnownCasesSection = legacyKnownCases
+    ? ['### Legacy prior-familiarity note', legacyKnownCases].join('\n\n')
+    : ''
   const susLines = susQuestions
     .map((question, index) => `${index + 1}. ${question}\n   - Response: ${session.susResponses[index] ?? 'Not provided'}`)
     .join('\n')
@@ -110,9 +142,13 @@ export function createMarkdown(session: StudySession): string {
 
 ${textBlock(session.background.debuggingTools)}
 
-### Prior familiarity with candidate cases
+### Assigned case familiarity
 
-${textBlock(session.background.knownCases)}
+| Case | Internal assignment | Source project | Familiarity |
+|---|---|---|---|
+${familiarityLines}
+
+${legacyKnownCasesSection}
 
 ### Additional background notes
 

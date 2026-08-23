@@ -1,19 +1,8 @@
 <template>
   <div class="study-app">
-    <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark">CV</div>
-        <div>
-          <div class="eyebrow">EXPERT STUDY</div>
-          <div class="brand-title">CircomVis</div>
-        </div>
-      </div>
-      <div v-if="expertId" class="participant-badge">
-        <span>Participant</span>
-        <strong>{{ expertId }}</strong>
-      </div>
-    </header>
-
+    <div class="language-switcher" :aria-label="t('language.label')">
+      <el-segmented v-model="locale" :options="languageOptions" size="small" />
+    </div>
     <main class="study-main">
       <StudyProgress
         v-if="progress"
@@ -33,10 +22,11 @@
 
 <script setup lang="ts">
 import StudyProgress from './StudyProgress.vue'
-import type { ExpertId } from '@/types/study'
+import { languageOptions, useLocale } from '@/composables/useLocale'
+
+const { locale, t } = useLocale()
 
 defineProps<{
-  expertId?: ExpertId
   progress?: {
     current: number
     total: number
