@@ -1,0 +1,88 @@
+circomspect: analyzing template 'DateEncoder'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:32:5
+   │
+32 │     signal yearRest <-- year % 10;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `yearRest` is not constrained here.
+33 │     yearDecimals * 10 + yearRest === year;
+   │     -------------------------------------- The signal `yearRest` is constrained here.
+   ·
+37 │     encoded[2] <== yearDecimals * 256 + yearRest + 12336;
+   │     ---------------------------------------------------- The signal `yearRest` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:28:5
+   │
+28 │     signal monthRest <-- month % 10;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `monthRest` is not constrained here.
+29 │     monthDecimals * 10 + monthRest === month;
+   │     ----------------------------------------- The signal `monthRest` is constrained here.
+   ·
+36 │     encoded[1] <== monthDecimals * 256 + monthRest + 12336;
+   │     ------------------------------------------------------ The signal `monthRest` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:23:5
+   │
+23 │     signal dayDecimals <-- day \ 10;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `dayDecimals` is not constrained here.
+24 │     signal dayRest <-- day % 10;
+25 │     dayDecimals * 10 + dayRest === day;
+   │     ----------------------------------- The signal `dayDecimals` is constrained here.
+   ·
+35 │     encoded[0] <== dayDecimals * 256 + dayRest + 12336;
+   │     -------------------------------------------------- The signal `dayDecimals` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:31:5
+   │
+31 │     signal yearDecimals <-- year \ 10;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `yearDecimals` is not constrained here.
+32 │     signal yearRest <-- year % 10;
+33 │     yearDecimals * 10 + yearRest === year;
+   │     -------------------------------------- The signal `yearDecimals` is constrained here.
+   ·
+37 │     encoded[2] <== yearDecimals * 256 + yearRest + 12336;
+   │     ---------------------------------------------------- The signal `yearDecimals` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:27:5
+   │
+27 │     signal monthDecimals <-- month \ 10;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `monthDecimals` is not constrained here.
+28 │     signal monthRest <-- month % 10;
+29 │     monthDecimals * 10 + monthRest === month;
+   │     ----------------------------------------- The signal `monthDecimals` is constrained here.
+   ·
+36 │     encoded[1] <== monthDecimals * 256 + monthRest + 12336;
+   │     ------------------------------------------------------ The signal `monthDecimals` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:24:5
+   │
+24 │     signal dayRest <-- day % 10;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `dayRest` is not constrained here.
+25 │     dayDecimals * 10 + dayRest === day;
+   │     ----------------------------------- The signal `dayRest` is constrained here.
+   ·
+35 │     encoded[0] <== dayDecimals * 256 + dayRest + 12336;
+   │     -------------------------------------------------- The signal `dayRest` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+circomspect: analyzing template 'DateCircuit'
+circomspect: analyzing template 'IdentityQuery'
+circomspect: analyzing template 'DateDigest'
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'PassportRecord'
+circomspect: 6 issues found.

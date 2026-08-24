@@ -1,0 +1,6 @@
+circomspect: analyzing template 'ZAccountRenewalV1'
+circomspect: analyzing template 'RenewalTransaction'
+circomspect: analyzing template 'NullifierHasher'
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'NoteHasher'
+circomspect: No issues found.

@@ -188,6 +188,18 @@ textarea {
   max-width: 860px;
 }
 
+.questionnaire-intro {
+  max-width: 900px;
+  color: #354b5d;
+  font-size: clamp(20px, 2vw, 24px);
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.questionnaire-intro--standalone {
+  margin-top: 0;
+}
+
 .hero-step {
   position: relative;
   min-height: calc(100vh - 236px);
@@ -993,33 +1005,43 @@ textarea {
   margin-top: 25px;
 }
 
-.interview-list {
-  margin: 30px 0 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--line);
-}
-
-.interview-list-item {
-  min-height: 64px;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+.interview-step--concealed {
+  min-height: calc(100vh - 236px);
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 5px;
-  border-bottom: 1px solid var(--line);
+  justify-content: center;
+  background:
+    radial-gradient(circle at 76% 24%, rgba(53, 182, 164, 0.1), transparent 15rem),
+    linear-gradient(145deg, rgba(248, 245, 237, 0.36), rgba(255, 255, 255, 0));
+  text-align: center;
 }
 
-.interview-number {
-  width: auto;
-  color: var(--teal-dark);
-  font-size: 10px;
-  font-weight: 800;
+.interview-placeholder {
+  position: relative;
+  width: min(620px, 100%);
+  padding: clamp(52px, 8vw, 78px) 32px;
+  border: 1px solid rgba(177, 194, 200, 0.72);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 44px rgba(28, 48, 67, 0.1);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(50px, 7vw, 86px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1;
 }
 
-.interview-question {
-  white-space: normal;
-  line-height: 1.45;
+.interview-placeholder::before {
+  position: absolute;
+  top: 27px;
+  left: 50%;
+  width: 48px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--teal);
+  content: "";
+  transform: translateX(-50%);
 }
 
 .review-summary {

@@ -1,0 +1,5 @@
+template instances: 6
+warning[CA02]: In template "PrivateOverride()": Array of subcomponent input/output signals extractor.extracted contains a total of 8 signals that do not appear in any constraint of the father component
+ = For example: extractor.extracted[0], extractor.extracted[1].
+
+Everything went okay

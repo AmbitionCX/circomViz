@@ -144,8 +144,8 @@ function localizedStepLabel(): string {
     case "task-brief": return t("progress.task", { order })
     case "task-response": return t("progress.taskResponse", { order })
     case "break": return t("progress.break")
-    case "sus": return "SUS"
-    case "contribution": return t("progress.designFeedback")
+    case "sus": return t("progress.experienceQuestionnaire")
+    case "contribution": return t("progress.experienceQuestionnaire")
     case "interview": return t("interview.title")
     case "review": return t("progress.review")
     case "completion": return t("progress.complete")

@@ -1,0 +1,31 @@
+circomspect: analyzing template 'ZoneListDigest'
+circomspect: analyzing template 'PrivateTransaction'
+circomspect: analyzing template 'IsEqual'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+  ┌─ aligned-code/main.circom:8:5
+  │
+8 │     signal inverse <-- diff != 0 ? 1 / diff : 0;
+  │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `inverse` is not constrained here.
+9 │     out <== 1 - diff * inverse;
+  │     -------------------------- The signal `inverse` is constrained here.
+  │
+  = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+circomspect: analyzing template 'ForceEqualIfEnabled'
+warning: The signal `out` is not constrained by the template.
+   ┌─ aligned-code/main.circom:16:5
+   │
+16 │     signal output out;
+   │     ^^^^^^^^^^^^^^^^^ This signal does not occur in a constraint.
+
+circomspect: analyzing template 'ZoneIdInclusionProver'
+warning: The output signal `out` defined by the template `ForceEqualIfEnabled` is not constrained in `ZoneIdInclusionProver`.
+   ┌─ aligned-code/main.circom:38:29
+   │
+38 │         equalityChecks[i] = ForceEqualIfEnabled();
+   │                             ^^^^^^^^^^^^^^^^^^^^^ The template `ForceEqualIfEnabled` is instantiated here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unused-output-signal.
+
+circomspect: analyzing template 'ZoneCircuit'
+circomspect: 3 issues found.

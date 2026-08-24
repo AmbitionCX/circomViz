@@ -1,0 +1,5 @@
+template instances: 6
+warning[CA02]: In template "LessThan(8)": Array of subcomponent input/output signals bits.out contains a total of 8 signals that do not appear in any constraint of the father component
+ = For example: bits.out[0], bits.out[1].
+
+Everything went okay

@@ -1,0 +1,14 @@
+circomspect: analyzing template 'PointAdd'
+circomspect: analyzing template 'DataEscrowElGamalEncryption'
+circomspect: analyzing template 'SegmentDigest'
+circomspect: analyzing template 'EscrowCircuit'
+circomspect: analyzing template 'EscrowRecord'
+warning: The output signal `encryptedMessage` defined by the template `DataEscrowElGamalEncryption` is not constrained in `EscrowRecord`.
+   ┌─ aligned-code/main.circom:76:28
+   │
+76 │     component encryption = DataEscrowElGamalEncryption();
+   │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The template `DataEscrowElGamalEncryption` is instantiated here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unused-output-signal.
+
+circomspect: 1 issue found.

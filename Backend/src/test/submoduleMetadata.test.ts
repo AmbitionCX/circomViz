@@ -12,12 +12,24 @@ describe('submodule metadata', () => {
     assert.equal(submodule.rootComponent, 'ZkFranchiseProofCircuit');
   });
 
-  it('exposes the Expert Study toy catalog and an empty real-world catalog', () => {
+  it('exposes the Expert Study toy and real-world catalogs', () => {
     const examples = CircomParser.getAllExpertStudyToyExamples();
+    const projects = CircomParser.getAllExpertStudyRealWorldExamples();
+    const projectIds = Array.from({ length: 4 }, (_, taskIndex) =>
+      Array.from({ length: 3 }, (_, exampleIndex) =>
+        'Task' + (taskIndex + 1) + '-Example' + (exampleIndex + 1)
+      )
+    ).flat();
 
     assert.equal(examples.length, 7);
     assert.equal(examples.find((example) => example.id === 'LoyaltyReward')?.entry, 'LoyaltyReward.circom');
-    assert.deepEqual(CircomParser.getAllExpertStudyRealWorldExamples(), []);
+    assert.deepEqual(projects.map((project) => project.id), projectIds);
+    assert.deepEqual(projects.map((project) => project.name), projectIds);
+    for (const project of projects) {
+      assert.equal(project.entry, project.id + '/aligned-code/main.circom');
+      assert.equal(project.rootComponent, 'main');
+      assert.equal(CircomParser.getExpertStudyRealWorldExampleById(project.id), project);
+    }
   });
 
   it('resolves Expert Study aliases without changing the compilation root', () => {
@@ -28,6 +40,9 @@ describe('submodule metadata', () => {
     assert.ok(toyRepo.valid && toyRepo.path);
     assert.ok(realWorldRepo.valid && realWorldRepo.path);
     assert.ok(pathGuard.validateEntryPath(toyRepo.path, 'LoyaltyReward.circom').valid);
+    for (const project of CircomParser.getAllExpertStudyRealWorldExamples()) {
+      assert.ok(pathGuard.validateEntryPath(realWorldRepo.path, project.entry).valid, project.entry);
+    }
     assert.equal(pathGuard.validateEntryPath(toyRepo.path, '../toy-demos/LoyaltyReward_Bug.circom').valid, false);
     assert.equal(pathGuard.getCompilationsRoot().replace(/\\/g, '/').endsWith('/Backend/compilations'), true);
   });

@@ -1,0 +1,6 @@
+template instances: 6
+warning[CA01]: In template "Base64DecodedLength()": Local signal decoded_len does not appear in any constraint
+
+warning[CA02]: In template "KeylessMessage()": Subcomponent input/output signal payloadCommitment.payloadDigest does not appear in any constraint of the father component
+
+Everything went okay

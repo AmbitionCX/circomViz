@@ -1,0 +1,58 @@
+circomspect: analyzing template 'PlanetLocation'
+circomspect: analyzing template 'Num2Bits'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:9:9
+   │
+ 9 │         out[i] <-- (in >> i) & 1;
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `out[i]` is not constrained here.
+10 │         out[i] * (out[i] - 1) === 0;
+   │         ---------------------------- The signal `out[i]` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+circomspect: analyzing template 'RangeProof'
+warning: Inputs to `LessThan` need to be constrained to ensure that they are non-negative
+   ┌─ aligned-code/main.circom:35:26
+   │
+35 │     upperBound.in[0] <== in + max_abs_value;
+   │                          ^^^^^^^^^^^^^^^^^^ `(in + max_abs_value)` needs to be constrained to ensure that it is <= p/2.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unconstrained-less-than.
+
+warning: Inputs to `LessThan` need to be constrained to ensure that they are non-negative
+   ┌─ aligned-code/main.circom:36:26
+   │
+36 │     upperBound.in[1] <== 2 * max_abs_value + 1;
+   │                          ^^^^^^^^^^^^^^^^^^^^^ `((2 * max_abs_value) + 1)` needs to be constrained to ensure that it is <= p/2.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unconstrained-less-than.
+
+warning: Inputs to `LessThan` need to be constrained to ensure that they are non-negative
+   ┌─ aligned-code/main.circom:31:26
+   │
+31 │     lowerBound.in[0] <== 0;
+   │                          ^ `0` needs to be constrained to ensure that it is <= p/2.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unconstrained-less-than.
+
+warning: Inputs to `LessThan` need to be constrained to ensure that they are non-negative
+   ┌─ aligned-code/main.circom:32:26
+   │
+32 │     lowerBound.in[1] <== in + max_abs_value + 1;
+   │                          ^^^^^^^^^^^^^^^^^^^^^^ `((in + max_abs_value) + 1)` needs to be constrained to ensure that it is <= p/2.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unconstrained-less-than.
+
+circomspect: analyzing template 'LessThan'
+warning: Using `Num2Bits` to convert field elements to bits may lead to aliasing issues.
+   ┌─ aligned-code/main.circom:20:22
+   │
+20 │     component bits = Num2Bits(N + 1);
+   │                      ^^^^^^^^^^^^^^^ Circomlib template `Num2Bits` instantiated here.
+   │
+   = Consider using `Num2Bits_strict` if the input size may be >= than the prime size.
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#non-strict-binary-conversion.
+
+circomspect: analyzing template 'ContextDigest'
+circomspect: analyzing template 'InitCircuit'
+circomspect: 6 issues found.

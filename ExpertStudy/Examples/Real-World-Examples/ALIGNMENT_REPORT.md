@@ -21,7 +21,7 @@ Exact R1CS equality was not forced with meaningless padding constraints. Constra
 
 ## Final metrics
 
-Metrics were collected with Circom compiler 2.2.3 using its default optimization mode.
+Metrics were collected with Circom compiler 2.2.3 using explicit O1 optimization.
 
 | Example | LOC | Nonblank LOC | Template types | Constraints | Wires | Labels |
 |---|---:|---:|---:|---:|---:|---:|
@@ -57,14 +57,46 @@ Observed ranges are 94--109 physical LOC, 77--91 nonblank LOC, 5--6 template typ
 | Task4-Example2 | Decimal remainder witnesses are constrained by reconstruction equations but not to the range zero through nine. |
 | Task4-Example3 | `LessThan` is used without enforcing the required bit-length bounds on its caller inputs. |
 
-## Verification command
+## Baseline build
+
+Each example retains the same seven participant-visible baseline artifacts under `build/`:
+
+- `main.r1cs`
+- `main_constraints.json`
+- `main.sym`
+- `main_substitutions.json`
+- `compile.log`
+- `inspect.log`
+- `circomspect.log`
+
+The four compiler artifacts and the plain-text compile log are generated from inside each `TaskN-ExampleN` directory with:
 
 ```bash
-npm exec --yes --cache=/tmp/circomvis-npm-cache \
-  --package=circom2 -- circom2 aligned-code/main.circom --r1cs --sym -o build
+circom aligned-code/main.circom \
+  --r1cs \
+  --json \
+  --sym \
+  --simplification_substitution \
+  --O1 \
+  -o build
 ```
 
-All twelve aligned entrypoints compiled successfully during preparation.
+The inspection log is generated with the same compiler and O1 setting:
+
+```bash
+circom aligned-code/main.circom \
+  --inspect \
+  --O1 \
+  -o build
+```
+
+The static-analysis log is generated at Circomspect's default WARNING level:
+
+```bash
+circomspect aligned-code/main.circom > build/circomspect.log 2>&1
+```
+
+All twelve aligned entrypoints compiled successfully with Circom 2.2.3. The JSON files were parsed, the R1CS files were checked with snarkjs 0.7.5, and the source files were analyzed with Circomspect 0.9.0 during baseline preparation.
 
 ## Study-use note
 

@@ -114,7 +114,92 @@ export class CircomParser {
     }
   ];
 
-  private static readonly EXPERT_STUDY_REAL_WORLD_EXAMPLES: readonly SubmoduleInfo[] = [];
+  private static readonly EXPERT_STUDY_REAL_WORLD_EXAMPLES: readonly SubmoduleInfo[] = [
+    {
+      id: 'Task1-Example1',
+      name: 'Task1-Example1',
+      entry: 'Task1-Example1/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task1-Example2',
+      name: 'Task1-Example2',
+      entry: 'Task1-Example2/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task1-Example3',
+      name: 'Task1-Example3',
+      entry: 'Task1-Example3/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task2-Example1',
+      name: 'Task2-Example1',
+      entry: 'Task2-Example1/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task2-Example2',
+      name: 'Task2-Example2',
+      entry: 'Task2-Example2/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task2-Example3',
+      name: 'Task2-Example3',
+      entry: 'Task2-Example3/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task3-Example1',
+      name: 'Task3-Example1',
+      entry: 'Task3-Example1/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task3-Example2',
+      name: 'Task3-Example2',
+      entry: 'Task3-Example2/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task3-Example3',
+      name: 'Task3-Example3',
+      entry: 'Task3-Example3/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task4-Example1',
+      name: 'Task4-Example1',
+      entry: 'Task4-Example1/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task4-Example2',
+      name: 'Task4-Example2',
+      entry: 'Task4-Example2/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    },
+    {
+      id: 'Task4-Example3',
+      name: 'Task4-Example3',
+      entry: 'Task4-Example3/aligned-code/main.circom',
+      rootComponent: 'main',
+      description: 'Expert Study'
+    }
+  ];
 
   private static readonly SUBMODULES = [
     {

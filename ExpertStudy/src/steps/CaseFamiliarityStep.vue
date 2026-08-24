@@ -1,6 +1,5 @@
 <template>
   <div class="content-step case-familiarity-step">
-    <span class="slide-kicker">{{ t("case.kicker") }}</span>
     <h1>{{ t("case.title") }}</h1>
     <p class="step-intro wide">{{ t("case.intro") }}</p>
 

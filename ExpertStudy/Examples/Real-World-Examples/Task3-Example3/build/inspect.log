@@ -1,0 +1,9 @@
+template instances: 5
+warning[CA02]: In template "DataEscrowElGamalEncryption()": Subcomponent input/output signal drv_mGrY_final[3].xout does not appear in any constraint of the father component
+
+warning[CA02]: In template "DataEscrowElGamalEncryption()": Subcomponent input/output signal drv_mGrY_final[3].yout does not appear in any constraint of the father component
+
+warning[CA02]: In template "EscrowRecord()": Array of subcomponent input/output signals encryption.encryptedMessage contains a total of 12 signals that do not appear in any constraint of the father component
+ = For example: encryption.encryptedMessage[0][0], encryption.encryptedMessage[0][1].
+
+Everything went okay

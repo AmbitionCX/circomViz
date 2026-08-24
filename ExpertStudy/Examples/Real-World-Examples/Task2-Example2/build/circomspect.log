@@ -1,0 +1,35 @@
+circomspect: analyzing template 'VoteEnvelope'
+circomspect: analyzing template 'OverrideCircuit'
+circomspect: analyzing template 'PrivateOverride'
+warning: The output signal `extracted` defined by the template `ExtractStringFromPoint` is not constrained in `PrivateOverride`.
+   ┌─ aligned-code/main.circom:54:27
+   │
+54 │     component extractor = ExtractStringFromPoint();
+   │                           ^^^^^^^^^^^^^^^^^^^^^^^^ The template `ExtractStringFromPoint` is instantiated here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unused-output-signal.
+
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'ExtractStringFromPoint'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:31:5
+   │
+31 │     signal shiftedFirstByte <-- (pointAsBytes[0] >> 1);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `shiftedFirstByte` is not constrained here.
+32 │     length <== shiftedFirstByte;
+   │     --------------------------- The signal `shiftedFirstByte` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Intermediate signals should typically occur in at least two separate constraints.
+   ┌─ aligned-code/main.circom:31:5
+   │
+31 │     signal shiftedFirstByte <-- (pointAsBytes[0] >> 1);
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The intermediate signal `shiftedFirstByte` is declared here.
+32 │     length <== shiftedFirstByte;
+   │     --------------------------- The intermediate signal `shiftedFirstByte` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#under-constrained-signal.
+
+circomspect: analyzing template 'EmitIfSelected'
+circomspect: 3 issues found.

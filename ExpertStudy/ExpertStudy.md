@@ -123,24 +123,33 @@
 
 ## Baseline
 
-“传统方式”必须标准化，不能让每位专家自由选择完全不同的环境。建议提供：
+“传统方式”必须标准化，不能让每位专家自由选择完全不同的环境。所有参与者统一使用：
 
-- VS Code 或统一代码编辑器；
-- Circom source files；
-- compiler output；
-- `--inspect`；
-- `.sym`；
-- R1CS information；
-- 允许使用的命令和工具列表。
+- 研究环境中固定版本的 VS Code；
+- Circom 2.2.3；
+- Node 24.19.0、pnpm 11.22.0、snarkjs 0.7.5 和 Circomspect 0.9.0；
+- `aligned-code/main.circom` 源码；
+- 预先生成的 O1 compiler output、`.sym`、constraints JSON、substitutions JSON 和 R1CS；
+- O1 编译日志和 `--inspect` 日志。
 
-是否允许 Circomspect，应根据 formative interview 中的真实工作流决定。一旦决定，所有参与者必须一致。
+Baseline 允许参与者使用 VS Code、`circom`、`snarkjs r1cs info/print` 和 `circomspect`。参与者可以用 O0、O1 或 O2 在临时目录中重新编译，也可以重新运行 Circomspect，但不能使用 CircomVis 或其他未列入白名单的静态分析插件。命令白名单和工具版本在所有 session 中保持一致。
+
+每个案例的 `build/` 是启动时提供的标准材料包，包含：
+
+- `main.r1cs`；
+- `main_constraints.json`；
+- `main.sym`；
+- `main_substitutions.json`；
+- `compile.log`；
+- `inspect.log`；
+- `circomspect.log`。
 
 两种条件都应获得完全相同的：
 
 - intent description；
 - source code；
 - compiler version；
-- optimization setting；
+- 初始 O1 编译产物；
 - time limit（10min）；
 - task prompt。
 
@@ -160,9 +169,11 @@
 
 因此实验比较的是：
 
-> CircomVis as an integrated visual debugging system versus the conventional workflow.
+> CircomVis as an integrated visual debugging system versus a standardized conventional workflow.
 
-它不能单独证明某个 visual encoding 的因果效果；各视觉设计的作用需要通过日志和访谈解释。
+CircomVis 内部使用 O2 parsing 和 O0 partial compilation，这些自动化能力属于 CircomVis treatment；Baseline 专家仍可通过统一 CLI 自行选择 O0、O1 或 O2。实验测量的是整个集成工作流带来的效果，包括减少手工编译和关联证据的成本。
+
+它不能单独证明某个 visual encoding 的因果效果；各视觉设计的作用需要通过交互日志、访谈或后续 ablation study 解释。由于样本为8名专家，结果应报告效应量、置信区间和定性证据，不应表述为对所有 Circom 开发者的普适性证明。
 
 ---
 

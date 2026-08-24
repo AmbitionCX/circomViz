@@ -1,0 +1,14 @@
+template instances: 6
+warning[CA02]: In template "ZoneIdInclusionProver()": Subcomponent input/output signal equalityChecks[1].out does not appear in any constraint of the father component
+
+warning[CA02]: In template "ZoneIdInclusionProver()": Subcomponent input/output signal equalityChecks[2].out does not appear in any constraint of the father component
+
+warning[CA02]: In template "ZoneIdInclusionProver()": Subcomponent input/output signal equalityChecks[3].out does not appear in any constraint of the father component
+
+warning[CA02]: In template "ZoneIdInclusionProver()": Subcomponent input/output signal equalityChecks[4].out does not appear in any constraint of the father component
+
+warning[CA01]: In template "ZoneIdInclusionProver()": Local signal allowedZoneIds[5] does not appear in any constraint
+
+warning[CA02]: In template "ZoneIdInclusionProver()": Subcomponent input/output signal equalityChecks[0].out does not appear in any constraint of the father component
+
+Everything went okay

@@ -1,0 +1,34 @@
+circomspect: analyzing template 'TelepathyCircuit'
+circomspect: analyzing template 'ColumnMixer'
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'HashToField'
+circomspect: analyzing template 'BeaconStep'
+circomspect: analyzing template 'ArrayXOR'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:21:9
+   │
+21 │         out[i] <-- a[i] ^ b[i];
+   │         ^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `out[i]` is not constrained here.
+   │
+   = Consider if it is possible to rewrite the statement using `<==` instead.
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: The signals `a[N]` are not constrained by the template.
+   ┌─ aligned-code/main.circom:16:5
+   │
+16 │     signal input a[N];
+   │     ^^^^^^^^^^^^^^^^^ These signals do not occur in a constraint.
+
+warning: The signals `out[N]` are not constrained by the template.
+   ┌─ aligned-code/main.circom:18:5
+   │
+18 │     signal output out[N];
+   │     ^^^^^^^^^^^^^^^^^^^^ These signals do not occur in a constraint.
+
+warning: The signals `b[N]` are not constrained by the template.
+   ┌─ aligned-code/main.circom:17:5
+   │
+17 │     signal input b[N];
+   │     ^^^^^^^^^^^^^^^^^ These signals do not occur in a constraint.
+
+circomspect: 4 issues found.

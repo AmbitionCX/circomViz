@@ -1,0 +1,7 @@
+circomspect: analyzing template 'ContextDigest'
+circomspect: analyzing template 'NodeHasher'
+circomspect: analyzing template 'MultiMux1'
+circomspect: analyzing template 'PassportRegistry'
+circomspect: analyzing template 'BinaryMerkleRoot'
+circomspect: analyzing template 'RegistrationCircuit'
+circomspect: No issues found.

@@ -1,0 +1,13 @@
+template instances: 6
+Written successfully: build/main_substitutions.json
+non-linear constraints: 8
+linear constraints: 17
+public inputs: 0
+private inputs: 13
+public outputs: 1
+wires: 41
+labels: 86
+Written successfully: build/main.r1cs
+Written successfully: build/main.sym
+Constraints written in: build/main_constraints.json
+Everything went okay

@@ -1,0 +1,104 @@
+circomspect: analyzing template 'KeylessMessage'
+warning: The output signal `payloadDigest` defined by the template `PayloadCommitment` is not constrained in `KeylessMessage`.
+   ┌─ aligned-code/main.circom:65:35
+   │
+65 │     component payloadCommitment = PayloadCommitment();
+   │                                   ^^^^^^^^^^^^^^^^^^^ The template `PayloadCommitment` is instantiated here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unused-output-signal.
+
+circomspect: analyzing template 'KeylessProof'
+circomspect: analyzing template 'KeylessCircuit'
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'Base64DecodedLength'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:21:5
+   │  
+21 │       signal remainderBit0 <-- remainder & 1;
+   │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `remainderBit0` is not constrained here.
+   ·  
+24 │       remainderBit0 * (remainderBit0 - 1) === 0;
+   │       ------------------------------------------ The signal `remainderBit0` is constrained here.
+25 │       remainderBit1 * (remainderBit1 - 1) === 0;
+26 │       remainder === remainderBit0 + 2 * remainderBit1;
+   │       ------------------------------------------------ The signal `remainderBit0` is constrained here.
+   ·  
+29 │ ╭     signal hasRemainder <== remainderBit0 + remainderBit1
+30 │ │                           - remainderBit0 * remainderBit1;
+   │ ╰─────────────────────────────────────────────────────────' The signal `remainderBit0` is constrained here.
+   │  
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:19:5
+   │
+19 │     signal q <-- encoded_len \ 4;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `q` is not constrained here.
+   ·
+27 │     encoded_len === q * 4 + remainder;
+   │     ---------------------------------- The signal `q` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:22:5
+   │  
+22 │       signal remainderBit1 <-- (remainder >> 1) & 1;
+   │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `remainderBit1` is not constrained here.
+   ·  
+25 │       remainderBit1 * (remainderBit1 - 1) === 0;
+   │       ------------------------------------------ The signal `remainderBit1` is constrained here.
+26 │       remainder === remainderBit0 + 2 * remainderBit1;
+   │       ------------------------------------------------ The signal `remainderBit1` is constrained here.
+   ·  
+29 │ ╭     signal hasRemainder <== remainderBit0 + remainderBit1
+30 │ │                           - remainderBit0 * remainderBit1;
+   │ ╰─────────────────────────────────────────────────────────' The signal `remainderBit1` is constrained here.
+   │  
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+   ┌─ aligned-code/main.circom:20:5
+   │
+20 │     signal remainder <-- encoded_len % 4;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `remainder` is not constrained here.
+   ·
+26 │     remainder === remainderBit0 + 2 * remainderBit1;
+   │     ------------------------------------------------ The signal `remainder` is constrained here.
+27 │     encoded_len === q * 4 + remainder;
+   │     ---------------------------------- The signal `remainder` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+warning: The signal `decoded_len` is not used by the template.
+   ┌─ aligned-code/main.circom:17:5
+   │
+17 │     signal output decoded_len;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^ This signal is unused and could be removed.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unused-variable-or-parameter.
+
+warning: Intermediate signals should typically occur in at least two separate constraints.
+   ┌─ aligned-code/main.circom:31:5
+   │
+31 │     signal reducer <== 1 - hasRemainder;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   │     │
+   │     The intermediate signal `reducer` is declared here.
+   │     The intermediate signal `reducer` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#under-constrained-signal.
+
+warning: Intermediate signals should typically occur in at least two separate constraints.
+   ┌─ aligned-code/main.circom:19:5
+   │
+19 │     signal q <-- encoded_len \ 4;
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The intermediate signal `q` is declared here.
+   ·
+27 │     encoded_len === q * 4 + remainder;
+   │     ---------------------------------- The intermediate signal `q` is constrained here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#under-constrained-signal.
+
+circomspect: analyzing template 'PayloadCommitment'
+circomspect: 8 issues found.

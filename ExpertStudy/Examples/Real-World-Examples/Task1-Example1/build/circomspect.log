@@ -1,0 +1,12 @@
+circomspect: analyzing template 'OwnershipProof'
+circomspect: analyzing template 'TransferAuthorization'
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'EdDSAPoseidonVerifier'
+warning: The signal `verified` is not constrained by the template.
+   ┌─ aligned-code/main.circom:23:5
+   │
+23 │     signal output verified;
+   │     ^^^^^^^^^^^^^^^^^^^^^^ This signal does not occur in a constraint.
+
+circomspect: analyzing template 'RollupEntry'
+circomspect: 1 issue found.

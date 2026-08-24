@@ -1,0 +1,17 @@
+circomspect: analyzing template 'ProveCountryIsNotInList'
+circomspect: analyzing template 'DisclosureCircuit'
+circomspect: analyzing template 'CountryMatch'
+circomspect: analyzing template 'ListDigest'
+circomspect: analyzing template 'IsEqual'
+warning: Using the signal assignment operator `<--` does not constrain the assigned signal.
+  ┌─ aligned-code/main.circom:8:5
+  │
+8 │     signal inverse <-- diff != 0 ? 1 / diff : 0;
+  │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ The assigned signal `inverse` is not constrained here.
+9 │     out <== 1 - diff * inverse;
+  │     -------------------------- The signal `inverse` is constrained here.
+  │
+  = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#signal-assignment.
+
+circomspect: analyzing template 'PassportDisclosure'
+circomspect: 1 issue found.

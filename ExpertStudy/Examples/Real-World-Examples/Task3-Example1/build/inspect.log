@@ -1,0 +1,5 @@
+template instances: 6
+warning[CA01]: In template "ProveCountryIsNotInList()": Array of local signals forbiddenCountriesList contains a total of 10 signals that do not appear in any constraint
+ = For example: forbiddenCountriesList[10], forbiddenCountriesList[11].
+
+Everything went okay

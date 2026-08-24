@@ -1,0 +1,4 @@
+template instances: 6
+warning[CA02]: In template "ZSwapV1()": Subcomponent input/output signal zAccountUtxoInNullifierHasherProver.out does not appear in any constraint of the father component
+
+Everything went okay

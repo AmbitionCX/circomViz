@@ -1,0 +1,21 @@
+circomspect: analyzing template 'NullifierHasher'
+circomspect: analyzing template 'LinearDigest'
+circomspect: analyzing template 'ForceEqualIfEnabled'
+warning: The signal `out` is not constrained by the template.
+   ┌─ aligned-code/main.circom:20:5
+   │
+20 │     signal output out;
+   │     ^^^^^^^^^^^^^^^^^ This signal does not occur in a constraint.
+
+circomspect: analyzing template 'ZSwapV1'
+warning: The output signal `out` defined by the template `ForceEqualIfEnabled` is not constrained in `ZSwapV1`.
+   ┌─ aligned-code/main.circom:56:53
+   │
+56 │     component zAccountUtxoInNullifierHasherProver = ForceEqualIfEnabled();
+   │                                                     ^^^^^^^^^^^^^^^^^^^^^ The template `ForceEqualIfEnabled` is instantiated here.
+   │
+   = For more details, see https://github.com/trailofbits/circomspect/blob/main/doc/analysis_passes.md#unused-output-signal.
+
+circomspect: analyzing template 'PrivateTransfer'
+circomspect: analyzing template 'PoolTransaction'
+circomspect: 2 issues found.

@@ -1,0 +1,11 @@
+template instances: 6
+warning[CA01]: In template "ArrayXOR(8)": Array of local signals out contains a total of 8 signals that do not appear in any constraint
+ = For example: out[0], out[1].
+
+warning[CA01]: In template "ArrayXOR(8)": Array of local signals b contains a total of 8 signals that do not appear in any constraint
+ = For example: b[0], b[1].
+
+warning[CA01]: In template "ArrayXOR(8)": Array of local signals a contains a total of 8 signals that do not appear in any constraint
+ = For example: a[0], a[1].
+
+Everything went okay

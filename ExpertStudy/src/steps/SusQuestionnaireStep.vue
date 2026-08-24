@@ -1,8 +1,6 @@
 <template>
   <div class="content-step questionnaire-step">
-    <span class="slide-kicker">{{ t("sus.kicker") }}</span>
-    <h1>{{ t("sus.title") }}</h1>
-    <p class="step-intro">{{ t("sus.intro") }}</p>
+    <p class="step-intro questionnaire-intro questionnaire-intro--standalone">{{ t("sus.intro") }}</p>
 
     <div class="scale-legend">
       <span>1 · {{ t("scale.stronglyDisagree") }}</span>
