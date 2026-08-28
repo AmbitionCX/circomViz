@@ -22,24 +22,94 @@
           <span>Error template</span>
         </div>
       </div>
+      <el-button-group v-if="treeData" class="tree-fold-actions">
+        <el-button round :disabled="!canFoldAll" @click="foldAll">
+          <el-icon><FoldIcon /></el-icon>
+          <span>Fold All</span>
+        </el-button>
+        <el-button round :disabled="!canExpandAll" @click="expandAll">
+          <el-icon><ExpandIcon /></el-icon>
+          <span>Expand All</span>
+        </el-button>
+      </el-button-group>
     </div>
 
     <div class="flex-1 min-h-0 overflow-hidden">
-      <CircuitViewVisualization @template-params-selected="(data: any) => emit('template-params-selected', data)" />
+      <CircuitViewVisualization
+        :collapsed-node-ids="collapsedNodeIdList"
+        :fit-to-view-version="fitToViewVersion"
+        @fold-node="foldNode"
+        @expand-node="expandNode"
+        @template-params-selected="(data: any) => emit('template-params-selected', data)"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue';
-import { QuestionFilled } from '@element-plus/icons-vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { Expand as ExpandIcon, Fold as FoldIcon, QuestionFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import CircuitViewVisualization from './CircuitViewVisualization.vue';
 import { getParseCompilationStatus } from '@/apis';
 import { useCircuitStore } from '@/stores/circuit';
+import {
+  buildD3Hierarchy,
+  collectFoldableNodeIds,
+  collectSubtreeNodeIds,
+  findTreeNode,
+} from '@/utils/templateTree';
 
 const circuitStore = useCircuitStore();
+const collapsedNodeIds = ref<Set<string>>(new Set());
+const fitToViewVersion = ref(0);
 const compilationStatus = computed(() => circuitStore.parseCompilation);
+const treeData = computed(() =>
+  circuitStore.parseData.tree ? buildD3Hierarchy(circuitStore.parseData.tree) : null
+);
+const confirmedNames = computed(() => new Set(circuitStore.confirmedTemplateNames));
+const vulnerableNames = computed(() => new Set(circuitStore.vulnerableTemplateNames));
+const foldableNodeIds = computed(() =>
+  treeData.value
+    ? collectFoldableNodeIds(treeData.value, confirmedNames.value, vulnerableNames.value)
+    : new Set<string>()
+);
+const collapsedNodeIdList = computed(() => [...collapsedNodeIds.value]);
+const canFoldAll = computed(() =>
+  [...foldableNodeIds.value].some(id => !collapsedNodeIds.value.has(id))
+);
+const canExpandAll = computed(() => collapsedNodeIds.value.size > 0);
+
+function foldNode(nodeId: string) {
+  if (!treeData.value) return;
+  const node = findTreeNode(treeData.value, nodeId);
+  if (!node) return;
+
+  const next = new Set(collapsedNodeIds.value);
+  collectFoldableNodeIds(node, confirmedNames.value, vulnerableNames.value)
+    .forEach(id => next.add(id));
+  collapsedNodeIds.value = next;
+}
+
+function expandNode(nodeId: string) {
+  if (!treeData.value) return;
+  const node = findTreeNode(treeData.value, nodeId);
+  if (!node) return;
+
+  const next = new Set(collapsedNodeIds.value);
+  collectSubtreeNodeIds(node).forEach(id => next.delete(id));
+  collapsedNodeIds.value = next;
+}
+
+function foldAll() {
+  collapsedNodeIds.value = new Set(foldableNodeIds.value);
+  fitToViewVersion.value += 1;
+}
+
+function expandAll() {
+  collapsedNodeIds.value = new Set();
+  fitToViewVersion.value += 1;
+}
 const compilationStatusLabel = computed(() => {
   if (compilationStatus.value?.status === 'success') return 'Compile Success';
   if (compilationStatus.value?.status === 'failure') return 'Compile Failed';
@@ -81,6 +151,20 @@ watch(
   },
   { immediate: true },
 );
+
+watch(
+  () => circuitStore.parseData.tree,
+  () => {
+    collapsedNodeIds.value = new Set();
+  },
+);
+
+watch(foldableNodeIds, (ids) => {
+  const validIds = new Set([...collapsedNodeIds.value].filter(id => ids.has(id)));
+  if (validIds.size !== collapsedNodeIds.value.size) {
+    collapsedNodeIds.value = validIds;
+  }
+});
 
 onUnmounted(stopPolling);
 
@@ -134,5 +218,12 @@ const emit = defineEmits<{
 .circuit-view-container {
   background: white;
   border-radius: 8px;
+}
+
+.tree-fold-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 96px;
 }
 </style>

@@ -26,6 +26,7 @@
             @select="store.selectNode"
             @hover="store.hoveredNodeId = $event"
             @navigate-signal="navigateToFileStructureSignal"
+            @navigate-template="navigateToFileStructureTemplate"
             @activate-view="emit('select-view', $event)"
           />
         </el-col>
@@ -209,6 +210,12 @@ const navigateToFileStructureSignal = (nodeId: string) => {
   const sourceFile = findTemplateSourceFile(owner.templateName)
     ?? (owner.componentPath === 'main' ? groupedSourceSignal?.sourceSpan?.file ?? sourceSignal?.sourceSpan?.file : undefined)
   circuitStore.highlightSignal(sourceFile, owner.templateName, declaredSignalName)
+}
+
+const navigateToFileStructureTemplate = (nodeId: string) => {
+  const component = store.sourceGraph?.nodes.find(node => node.id === nodeId && node.kind === 'component-group')
+  if (!component?.templateName) return
+  circuitStore.highlightTemplate(findTemplateSourceFile(component.templateName), component.templateName)
 }
 
 const sourceSignalRoles = computed(() => {

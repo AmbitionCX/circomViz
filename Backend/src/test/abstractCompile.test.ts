@@ -98,6 +98,27 @@ describe('InterfaceExtractor', () => {
     assert.deepEqual(iface!.outputs[0].arraySizes, [2]);
   });
 
+  it('keeps local constants required by interface dimensions', () => {
+    const file = parseSource(`
+      template Batch(levels) {
+        var ARITY = 5;
+        var WIDTH = ARITY - 1;
+        signal input path[levels][WIDTH];
+      }
+    `);
+    const ext = new InterfaceExtractor(makeParsedFilesMap(file));
+    const iface = ext.extract('Batch');
+    assert.ok(iface);
+    assert.deepEqual(iface!.variables, [
+      { name: 'ARITY', value: '5' },
+      { name: 'WIDTH', value: 'ARITY - 1' },
+    ]);
+    const mock = new MockTemplateGenerator().generate(iface!);
+    assert.match(mock.source, /var ARITY = 5;/);
+    assert.match(mock.source, /var WIDTH = ARITY - 1;/);
+    assert.match(mock.source, /signal input path\[levels\]\[WIDTH\];/);
+  });
+
   it('returns null for unknown template', () => {
     const ext = new InterfaceExtractor(new Map());
     assert.equal(ext.extract('Nope'), null);

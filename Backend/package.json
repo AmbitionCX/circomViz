@@ -13,6 +13,8 @@
     "test": "pnpm run build && node --test dist/test/*.test.js",
     "test:unit": "node --test dist/test/*.test.js",
     "test:llm": "pnpm run build && RUN_LLM_CONNECTION_TEST=1 node --test dist/test/llmConnection.test.js",
+    "preeval:llm": "pnpm run build",
+    "eval:llm": "node dist/evaluation/llmBenchmark/cli.js",
     "clean": "rm -rf ./compilations/* && rm -rf ./mockedFiles/*"
   },
   "keywords": [],

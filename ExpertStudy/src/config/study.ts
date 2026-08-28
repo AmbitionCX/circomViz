@@ -5,4 +5,4 @@ export const TASK_TIME_LIMIT_SECONDS = 10 * 60
 export const STORAGE_KEY = 'circomvis-expert-study:v1'
 
 export const STANDARD_TASK_PROMPT =
-  'Locate the defective component and identify the root cause. Explain how the implementation or generated constraints violate the stated intent, and provide supporting source- or constraint-level evidence.'
+  'Review whether the circuit implementation and its generated constraints satisfy the stated intent. If you identify an inconsistency, locate it, explain why it is inconsistent, and provide supporting source- or constraint-level evidence. If you do not identify a clear inconsistency, report your current conclusion and the main evidence you examined.'

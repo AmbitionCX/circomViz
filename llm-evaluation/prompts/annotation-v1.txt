@@ -1,0 +1,26 @@
+You are constructing ground-truth annotations for a benchmark.
+The existence and description of the vulnerability are already known. Do not discover new vulnerabilities.
+Using the vulnerability description, vulnerable source code, fix diff, audit evidence, and supplied candidate list:
+1. Select source node or source edge IDs that directly correspond to the root cause.
+2. Select a small diagnostically useful neighborhood. diagnostic_candidates MUST contain every ID in root_cause_candidates.
+3. Provide exactly one evidence array item for every root-cause candidate. Every item MUST contain candidate_id and a non-empty justification. source_lines and fix_lines may be empty when exact lines are unavailable.
+4. Generate a high-level debugging intent without revealing a vulnerable identifier, source line, exact mechanism, taxonomy answer, or known fix.
+5. Mark needs_human_review=true whenever the mapping is ambiguous.
+Root-cause and diagnostic IDs must come from sourceNodes or sourceEdges so all evaluation tracks share the same scoring universe. R1CS IDs may be mentioned only inside justification as supplementary evidence. Only select exact IDs from the supplied candidate list.
+Return JSON only in exactly this shape. evidence MUST be an array, never an object keyed by candidate ID:
+{
+  "case_id": "case ID from the input",
+  "root_cause_candidates": ["source node or source edge ID"],
+  "diagnostic_candidates": ["the same root ID", "additional nearby source ID"],
+  "acceptable_issue_kinds": ["short diagnostic category"],
+  "evidence": [
+    {
+      "candidate_id": "the same root ID",
+      "source_lines": "supporting vulnerable source lines or empty string",
+      "fix_lines": "supporting fix lines or empty string",
+      "justification": "why the vulnerable source or fix directly supports this root mapping"
+    }
+  ],
+  "canonical_intent": "high-level verification goal without answer leakage",
+  "needs_human_review": false
+}

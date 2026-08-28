@@ -75,7 +75,7 @@ test('keeps source arrays and component arrays aggregated and models used variab
   assert.deepEqual(statements.map((statement) => statement.kind), ['component', 'witness', 'constraint', 'state-update', 'state-update']);
   assert.deepEqual(statements.map((statement) => statement.label), [
     'b[i] = Bit()',
-    'out[i] <-- in >> i & 1',
+    'out[i] <-- (in >> i) & 1',
     'b[i].in <== out[i]',
     'acc = acc + out[i] * pow',
     'pow = pow * 2',
@@ -90,6 +90,37 @@ test('keeps source arrays and component arrays aggregated and models used variab
     assert.ok(update?.nodeIds.includes(state.nextNodeId));
   }
   assert.ok(graph.edges.some((edge) => edge.kind === 'loop-carried'));
+});
+
+test('preserves constrained and unconstrained inline signal assignments', () => {
+  const inlineSource = `
+pragma circom 2.2.3;
+template InlineAssignments() {
+  signal input in;
+  signal constrained <== in + 1;
+  signal output witness <-- constrained * 2;
+  log("witness value", witness);
+}`;
+  const filePath = 'inline-assignments.circom';
+  const ast = new CircomParser(new CircomLexer(inlineSource), filePath).parse(inlineSource, filePath);
+  const template = ast.find((node): node is TemplateDefinitionNode =>
+    node.type === 'TemplateDefinition' && node.name === 'InlineAssignments');
+  assert.ok(template);
+  assert.deepEqual(template.signals.map((signal) => signal.initialOperator), [undefined, '<==', '<--']);
+
+  const file: ParsedFile = {
+    path: filePath,
+    content: inlineSource,
+    ast,
+    includes: [],
+    templates: [template],
+    functions: [],
+    components: [],
+  };
+  const graph = buildSourceGraph(new Map([[filePath, file]]), template, [], []);
+  const assignments = graph.nodes.filter((node) => node.kind === 'assignment');
+  assert.deepEqual(assignments.map((node) => node.operator), ['<==', '<--']);
+  assert.deepEqual(assignments.map((node) => node.generatesConstraint), [true, false]);
 });
 
 test('groups compiled array members without removing element-level constraint data', () => {

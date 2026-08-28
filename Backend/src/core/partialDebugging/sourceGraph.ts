@@ -1,24 +1,70 @@
 import type { ExpressionNode, ForLoopNode, ParsedFile, StatementNode, TemplateDefinitionNode, VariableNode } from '../parser/ast.js';
 import { collectDirectComponents } from '../parser/componentCollector.js';
-import type { SourceGraphDto, SourceGraphEdge, SourceGraphNode, SourceLoopDto, SourceStatementDto } from '../../types/partialDebugging.js';
+import type { SourceBranchCoverageDto, SourceConditionalDto, SourceGraphDto, SourceGraphEdge, SourceGraphNode, SourceLoopDto, SourceStatementDto } from '../../types/partialDebugging.js';
 
 type CompileEnv = Record<string, number>;
 type ArraySize = number | ExpressionNode;
 
-function printExpression(expr: ExpressionNode): string {
+const binaryPrecedence: Record<string, number> = {
+  '||': 2,
+  '&&': 3,
+  '==': 4,
+  '!=': 4,
+  '<': 5,
+  '<=': 5,
+  '>': 5,
+  '>=': 5,
+  '|': 6,
+  '^': 7,
+  '&': 8,
+  '<<': 9,
+  '>>': 9,
+  '+': 10,
+  '-': 10,
+  '*': 11,
+  '/': 11,
+  '%': 11,
+  '\\': 11,
+  '**': 12,
+};
+
+function expressionPrecedence(expr: ExpressionNode) {
+  if (expr.type === 'Ternary') return 1;
+  if (expr.type === 'BinaryOp') return binaryPrecedence[expr.operator] ?? 1;
+  if (expr.type === 'UnaryOp') return 13;
+  if (expr.type === 'ArrayAccess' || expr.type === 'MemberAccess' || expr.type === 'FunctionCall' || expr.type === 'ComponentCall') return 14;
+  return 15;
+}
+
+function printExpression(expr: ExpressionNode, parentPrecedence = 0, rightChild = false): string {
+  const precedence = expressionPrecedence(expr);
+  let printed: string;
   switch (expr.type) {
-    case 'Literal': return String(expr.value);
-    case 'Identifier': return expr.name;
-    case 'ArrayAccess': return `${printExpression(expr.array)}[${printExpression(expr.index)}]`;
-    case 'MemberAccess': return `${printExpression(expr.object)}.${expr.property}`;
-    case 'BinaryOp': return `${printExpression(expr.left)} ${expr.operator} ${printExpression(expr.right)}`;
-    case 'UnaryOp': return expr.isPostfix ? `${printExpression(expr.operand)}${expr.operator}` : `${expr.operator}${printExpression(expr.operand)}`;
-    case 'Ternary': return `${printExpression(expr.condition)} ? ${printExpression(expr.thenExpr)} : ${printExpression(expr.elseExpr)}`;
-    case 'FunctionCall': return `${expr.function}(${expr.arguments.map(printExpression).join(', ')})`;
-    case 'ComponentCall': return `${expr.template}(${expr.templateArgs.map(printExpression).join(', ')})(${expr.callArgs.map(printExpression).join(', ')})`;
-    case 'ArrayLiteral': return `[${expr.elements.map(printExpression).join(', ')}]`;
-    case 'Tuple': return `(${expr.elements.map(printExpression).join(', ')})`;
+    case 'Literal': printed = String(expr.value); break;
+    case 'Identifier': printed = expr.name; break;
+    case 'ArrayAccess': printed = `${printExpression(expr.array, precedence)}[${printExpression(expr.index)}]`; break;
+    case 'MemberAccess': printed = `${printExpression(expr.object, precedence)}.${expr.property}`; break;
+    case 'BinaryOp': {
+      const printOperand = (operand: ExpressionNode, right: boolean) => {
+        const value = printExpression(operand, precedence, right);
+        const readabilityGroup = ['&', '|', '^'].includes(expr.operator)
+          && operand.type === 'BinaryOp'
+          && ['<<', '>>'].includes(operand.operator);
+        return readabilityGroup ? `(${value})` : value;
+      };
+      printed = `${printOperand(expr.left, false)} ${expr.operator} ${printOperand(expr.right, true)}`;
+      break;
+    }
+    case 'UnaryOp': printed = expr.isPostfix ? `${printExpression(expr.operand, precedence)}${expr.operator}` : `${expr.operator}${printExpression(expr.operand, precedence)}`; break;
+    case 'Ternary': printed = `${printExpression(expr.condition, precedence)} ? ${printExpression(expr.thenExpr)} : ${printExpression(expr.elseExpr, precedence, true)}`; break;
+    case 'FunctionCall': printed = `${expr.function}(${expr.arguments.map((argument) => printExpression(argument)).join(', ')})`; break;
+    case 'ComponentCall': printed = `${expr.template}(${expr.templateArgs.map((argument) => printExpression(argument)).join(', ')})(${expr.callArgs.map((argument) => printExpression(argument)).join(', ')})`; break;
+    case 'ArrayLiteral': printed = `[${expr.elements.map((element) => printExpression(element)).join(', ')}]`; break;
+    case 'Tuple': printed = `(${expr.elements.map((element) => printExpression(element)).join(', ')})`; break;
   }
+  const needsParentheses = precedence < parentPrecedence
+    || (rightChild && expr.type === 'BinaryOp' && precedence === parentPrecedence);
+  return needsParentheses ? `(${printed})` : printed;
 }
 
 function evaluate(expr: ExpressionNode, env: CompileEnv): number | undefined {
@@ -84,9 +130,26 @@ function loopIterationCount(loop: ForLoopNode, env: CompileEnv): number | undefi
   return undefined;
 }
 
+const LOOP_DOMAIN_LIMIT = 10_000;
+const COVERAGE_VALUE_LIMIT = 32;
+
+function loopIterationValues(loop: ForLoopNode, env: CompileEnv): number[] | undefined {
+  const start = evaluate(loop.start, env); const step = loopStep(loop, env); const count = loopIterationCount(loop, env);
+  if (start === undefined || step === undefined || count === undefined || count > LOOP_DOMAIN_LIMIT) return undefined;
+  return Array.from({ length: count }, (_, index) => start + index * step);
+}
+
 const dimensions = (sizes?: ArraySize[]) => sizes?.map((size) => typeof size === 'number' ? String(size) : printExpression(size)) ?? [];
+const resolvedDimensions = (sizes: ArraySize[] | undefined, env: CompileEnv) => sizes?.map((size) => {
+  if (typeof size === 'number') return String(size);
+  return String(evaluate(size, env) ?? printExpression(size));
+}) ?? [];
 const withDimensions = (name: string, values: string[]) => `${name}${values.map((value) => `[${value}]`).join('')}`;
 const withoutIndexes = (name: string) => name.replace(/\[[^\]]*\]/g, '');
+const accessLabel = (expr: ExpressionNode) => {
+  const indexes = printExpression(expr).match(/\[[^\]]*\]/g);
+  return indexes?.join('');
+};
 
 interface VariableDefinition {
   name: string;
@@ -99,16 +162,28 @@ interface VariableDefinition {
 
 export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTemplate: TemplateDefinitionNode, params: Array<{ name: string; value: number }>, mockedTemplateNames: string[]): SourceGraphDto {
   const nodes: SourceGraphNode[] = []; const edges: SourceGraphEdge[] = []; const knownNodes = new Set<string>();
-  const loops: SourceLoopDto[] = []; const statements: SourceStatementDto[] = [];
-  let activeLoopId: string | undefined; let activeStatementId: string | undefined;
+  const loops: SourceLoopDto[] = []; const statements: SourceStatementDto[] = []; const conditionals: SourceConditionalDto[] = [];
+  type ConditionalBranch = 'then' | 'else';
+  type ActiveConditional = { id: string; branch: ConditionalBranch };
+  let activeLoopId: string | undefined; let activeLoopIterator: string | undefined;
+  let activeIterationEnvs: CompileEnv[] | undefined; let activeLoopDomainKnown = true;
+  let activeConditional: ActiveConditional | undefined; let activeStatementId: string | undefined;
+  let activeCompileActivity: SourceGraphNode['compileActivity'] = 'active';
   const templates = new Map<string, TemplateDefinitionNode>(); const mockSet = new Set(mockedTemplateNames); let sequence = 0;
   for (const file of parsedFiles.values()) for (const template of file.templates) templates.set(template.name, template);
   const addNode = (node: SourceGraphNode) => {
-    const contextual = { ...node, loopId: node.loopId ?? activeLoopId, statementId: node.statementId ?? activeStatementId };
+    const contextual = {
+      ...node,
+      loopId: node.loopId ?? activeLoopId,
+      statementId: node.statementId ?? activeStatementId,
+      conditionalId: node.conditionalId ?? activeConditional?.id,
+      conditionalBranch: node.conditionalBranch ?? activeConditional?.branch,
+      compileActivity: node.compileActivity ?? activeCompileActivity,
+    };
     if (!knownNodes.has(node.id)) { knownNodes.add(node.id); nodes.push(contextual); }
     return node.id;
   };
-  const addEdge = (source: string, target: string, kind: SourceGraphEdge['kind'], operandIndex?: number, operator?: SourceGraphEdge['operator'], label?: string) => edges.push({ id: `source-edge:${sequence++}`, source, target, kind, operandIndex, operator, label });
+  const addEdge = (source: string, target: string, kind: SourceGraphEdge['kind'], operandIndex?: number, operator?: SourceGraphEdge['operator'], label?: string, accessExpression?: string) => edges.push({ id: `source-edge:${sequence++}`, source, target, kind, operandIndex, operator, label, accessExpression });
 
   const visitInstance = (definition: TemplateDefinitionNode, instancePath: string, initialEnv: CompileEnv, mocked = false) => {
     const env = { ...initialEnv };
@@ -124,11 +199,18 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
       const group = nodes.find((node) => node.id === groupId);
       if (group?.childNodeIds && !group.childNodeIds.includes(id)) group.childNodeIds.push(id);
     };
-    const registerSignal = (baseName: string, displayName: string, role: SourceGraphNode['role'], arrayDimensions: string[] = [], ownerGroupId = groupId) => {
+    const registerSignal = (
+      baseName: string,
+      displayName: string,
+      role: SourceGraphNode['role'],
+      arrayDimensions: string[] = [],
+      ownerGroupId = groupId,
+      declaredArrayDimensions: string[] = arrayDimensions,
+    ) => {
       const qualifiedName = `${instancePath}.${displayName}`;
       const baseQualifiedName = `${instancePath}.${baseName}`;
       const id = `signal:${qualifiedName}`;
-      addNode({ id, kind: 'signal', label: qualifiedName, qualifiedName, localName: displayName, role, templateName: definition.name, componentPath: instancePath, arrayDimensions: arrayDimensions.length ? arrayDimensions : undefined, arrayBaseQualifiedName: arrayDimensions.length ? baseQualifiedName : undefined, sourceSpan: at(definition.line) });
+      addNode({ id, kind: 'signal', label: qualifiedName, qualifiedName, localName: displayName, role, templateName: definition.name, componentPath: instancePath, arrayDimensions: arrayDimensions.length ? arrayDimensions : undefined, declaredArrayDimensions: declaredArrayDimensions.length ? declaredArrayDimensions : undefined, arrayBaseQualifiedName: arrayDimensions.length ? baseQualifiedName : undefined, sourceSpan: at(definition.line) });
       referenceNodes.set(withoutIndexes(baseName), id);
       addToRootGroup(id);
       const owner = nodes.find((node) => node.id === ownerGroupId);
@@ -198,10 +280,18 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
       const childEnv: CompileEnv = {};
       child.parameters.forEach((parameter, index) => { const value = component.arguments[index] ? evaluate(component.arguments[index], env) : undefined; if (value !== undefined) childEnv[parameter.name] = value; });
       for (const signal of child.signals.filter((candidate) => candidate.kind === 'input' || candidate.kind === 'output')) {
-        const portDimensions = dimensions(signal.arraySizes);
+        const declaredPortDimensions = dimensions(signal.arraySizes);
+        const portDimensions = resolvedDimensions(signal.arraySizes, childEnv);
         const baseName = `${component.name}.${signal.name}`;
         const displayName = `${componentDisplayName}.${withDimensions(signal.name, portDimensions)}`;
-        const signalId = registerSignal(baseName, displayName, 'intermediate', [...componentDimensions, ...portDimensions], childGroupId);
+        const signalId = registerSignal(
+          baseName,
+          displayName,
+          'intermediate',
+          [...componentDimensions, ...portDimensions],
+          childGroupId,
+          [...componentDimensions, ...declaredPortDimensions],
+        );
         if (signal.kind === 'input') addEdge(signalId, childGroupId, 'component-input');
         else addEdge(childGroupId, signalId, 'component-output');
       }
@@ -245,7 +335,10 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
       else if (expr.type === 'ComponentCall') { children = [...expr.templateArgs, ...expr.callArgs]; operation = 'component-call'; }
       else if (expr.type === 'ArrayLiteral' || expr.type === 'Tuple') { children = expr.elements; operation = 'alias'; }
       addNode({ id, kind: 'operation', label: operation, operation, componentPath: instancePath, sourceSpan: at(expr.line) });
-      children.forEach((child, index) => addEdge(lower(child), id, 'data', index)); return id;
+      children.forEach((child, index) => {
+        const access = accessLabel(child);
+        addEdge(lower(child), id, 'data', index, undefined, access, access ? printExpression(child) : undefined);
+      }); return id;
     };
     const statementKind = (statement: Extract<StatementNode, { type: 'Assignment' }>): SourceStatementDto['kind'] => {
       if (statement.operator === '=' && statement.right.type === 'FunctionCall' && componentReferenceNames.has(withoutIndexes(printExpression(statement.left)))) return 'component';
@@ -263,14 +356,90 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
       });
       scan(body); return [...names];
     };
-    const orderByLoop = new Map<string, number>();
+    const orderByControlScope = new Map<string, number>();
+    const controlScopeKey = () => activeConditional
+      ? `conditional:${activeConditional.id}:${activeConditional.branch}`
+      : activeLoopId ? `loop:${activeLoopId}` : `root:${instancePath}`;
+    const nextControlOrder = () => {
+      const key = controlScopeKey();
+      const order = orderByControlScope.get(key) ?? 0;
+      orderByControlScope.set(key, order + 1);
+      return order;
+    };
+    const coverage = (
+      status: SourceBranchCoverageDto['status'],
+      matchingEnvs: CompileEnv[] | undefined,
+      totalIterations: number | undefined,
+    ): SourceBranchCoverageDto => {
+      const iteratorValues = matchingEnvs && activeLoopIterator
+        ? [...new Set(matchingEnvs.map((candidate) => candidate[activeLoopIterator!]).filter((value): value is number => value !== undefined))]
+        : undefined;
+      return {
+        status,
+        iterationCount: matchingEnvs?.length,
+        totalIterations,
+        iterator: iteratorValues ? activeLoopIterator : undefined,
+        iteratorValues: iteratorValues?.slice(0, COVERAGE_VALUE_LIMIT),
+        valuesTruncated: iteratorValues ? iteratorValues.length > COVERAGE_VALUE_LIMIT : undefined,
+      };
+    };
     const visitStatements = (items: StatementNode[], localEnv: CompileEnv) => {
       for (const statement of items) {
         if (statement.type === 'Variable') { registerVariable(statement, localEnv); continue; }
         if (statement.type === 'BlockStatement') { visitStatements(statement.body, { ...localEnv }); continue; }
         if (statement.type === 'IfStatement') {
-          const value = evaluate(statement.condition, localEnv);
-          if (value !== undefined) visitStatements(value ? statement.thenBranch : (statement.elseBranch ?? []), { ...localEnv });
+          const conditionalId = `conditional:${instancePath}:${statement.line}:${sequence++}`;
+          const order = nextControlOrder();
+          const parentConditional = activeConditional;
+          const candidateEnvs = activeCompileActivity === 'inactive'
+            ? []
+            : activeCompileActivity === 'unknown'
+              ? undefined
+              : activeLoopId
+                ? activeLoopDomainKnown ? activeIterationEnvs ?? [] : undefined
+                : [localEnv];
+          const evaluated = candidateEnvs?.map((candidate) => ({ env: candidate, value: evaluate(statement.condition, candidate) }));
+          const coverageKnown = Boolean(evaluated) && evaluated!.every((entry) => entry.value !== undefined);
+          const thenEnvs = coverageKnown ? evaluated!.filter((entry) => Boolean(entry.value)).map((entry) => entry.env) : undefined;
+          const elseEnvs = coverageKnown ? evaluated!.filter((entry) => !entry.value).map((entry) => entry.env) : undefined;
+          const totalIterations = coverageKnown ? evaluated!.length : undefined;
+          const thenCoverage = coverage(coverageKnown ? thenEnvs!.length ? 'active' : 'inactive' : 'unknown', thenEnvs, totalIterations);
+          const elseCoverage = coverage(coverageKnown ? elseEnvs!.length ? 'active' : 'inactive' : 'unknown', elseEnvs, totalIterations);
+          const conditional: SourceConditionalDto = {
+            id: conditionalId,
+            condition: printExpression(statement.condition),
+            order,
+            parentLoopId: activeLoopId,
+            parentConditionalId: parentConditional?.id,
+            parentBranch: parentConditional?.branch,
+            hasElse: Boolean(statement.elseBranch),
+            thenStatementIds: [],
+            elseStatementIds: [],
+            thenCoverage,
+            elseCoverage,
+            sourceSpan: at(statement.line),
+          };
+          conditionals.push(conditional);
+
+          const previousConditional = activeConditional;
+          const previousIterationEnvs = activeIterationEnvs;
+          const previousDomainKnown = activeLoopDomainKnown;
+          const previousActivity = activeCompileActivity;
+          const visitBranch = (branch: ConditionalBranch, branchItems: StatementNode[], branchCoverage: SourceBranchCoverageDto, branchEnvs: CompileEnv[] | undefined) => {
+            activeConditional = { id: conditionalId, branch };
+            activeIterationEnvs = branchEnvs;
+            activeLoopDomainKnown = branchCoverage.status !== 'unknown';
+            activeCompileActivity = branchCoverage.status;
+            visitStatements(branchItems, { ...localEnv });
+          };
+          visitBranch('then', statement.thenBranch, thenCoverage, thenEnvs);
+          visitBranch('else', statement.elseBranch ?? [], elseCoverage, elseEnvs);
+          activeConditional = previousConditional;
+          activeIterationEnvs = previousIterationEnvs;
+          activeLoopDomainKnown = previousDomainKnown;
+          activeCompileActivity = previousActivity;
+          conditional.thenStatementIds = statements.filter((candidate) => candidate.conditionalId === conditionalId && candidate.conditionalBranch === 'then').map((candidate) => candidate.id);
+          conditional.elseStatementIds = statements.filter((candidate) => candidate.conditionalId === conditionalId && candidate.conditionalBranch === 'else').map((candidate) => candidate.id);
           continue;
         }
         if (statement.type === 'ForLoop') {
@@ -279,10 +448,27 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
           const count = loopIterationCount(statement, localEnv);
           const header = `for (${statement.variable} = ${printExpression(statement.start)}; ${printExpression(statement.end)}; ${statement.step ? printExpression(statement.step) : `${statement.variable}++`})`;
           const loop: SourceLoopDto = { id: loopId, header, iterator: statement.variable, iterationLabel: count === undefined ? 'symbolic' : `× ${count}`, iterationCount: count, parentLoopId, bodyStatementIds: [], stateVariables: [], sourceSpan: at(statement.line) };
-          loops.push(loop); orderByLoop.set(loopId, 0);
+          loops.push(loop); orderByControlScope.set(`loop:${loopId}`, 0);
           const previousLoopId = activeLoopId; const previousStatementId = activeStatementId;
+          const previousLoopIterator = activeLoopIterator;
+          const previousIterationEnvs = activeIterationEnvs;
+          const previousDomainKnown = activeLoopDomainKnown;
           activeLoopId = loopId; activeStatementId = undefined;
+          activeLoopIterator = statement.variable;
           const start = evaluate(statement.start, localEnv);
+          const parentEnvs = previousLoopId
+            ? previousDomainKnown ? previousIterationEnvs ?? [] : undefined
+            : [localEnv];
+          let loopEnvs: CompileEnv[] | undefined = parentEnvs ? [] : undefined;
+          if (parentEnvs && loopEnvs) {
+            for (const parentEnv of parentEnvs) {
+              const values = loopIterationValues(statement, parentEnv);
+              if (!values || loopEnvs.length + values.length > LOOP_DOMAIN_LIMIT) { loopEnvs = undefined; break; }
+              values.forEach((value) => loopEnvs!.push({ ...parentEnv, [statement.variable]: value }));
+            }
+          }
+          activeIterationEnvs = loopEnvs;
+          activeLoopDomainKnown = Boolean(loopEnvs);
           registerVariable({ name: statement.variable, line: statement.line, initialValue: statement.start }, localEnv, true);
           for (const name of assignedLoopVariables(statement.body)) {
             const variable = variableDefinitions.get(name)!;
@@ -313,13 +499,28 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
           }
           loop.bodyStatementIds = statements.filter((candidate) => candidate.loopId === loopId).map((candidate) => candidate.id);
           activeLoopId = previousLoopId; activeStatementId = previousStatementId;
+          activeLoopIterator = previousLoopIterator;
+          activeIterationEnvs = previousIterationEnvs;
+          activeLoopDomainKnown = previousDomainKnown;
           continue;
         }
         if (statement.type !== 'Assignment' || !['<==', '==>', '<--', '-->', '===', '='].includes(statement.operator)) continue;
         let statementMeta: SourceStatementDto | undefined;
-        if (activeLoopId) {
-          const order = orderByLoop.get(activeLoopId) ?? 0; orderByLoop.set(activeLoopId, order + 1);
-          statementMeta = { id: `statement:${activeLoopId}:${order}`, loopId: activeLoopId, order, kind: statementKind(statement), label: `${printExpression(statement.left)} ${statement.operator} ${printExpression(statement.right)}`, nodeIds: [], sourceSpan: at(statement.line) };
+        if (activeLoopId || activeConditional) {
+          const order = nextControlOrder();
+          const scopeId = activeConditional ? `${activeConditional.id}:${activeConditional.branch}` : activeLoopId!;
+          statementMeta = {
+            id: `statement:${scopeId}:${order}`,
+            loopId: activeLoopId,
+            order,
+            kind: statementKind(statement),
+            label: `${printExpression(statement.left)} ${statement.operator} ${printExpression(statement.right)}`,
+            nodeIds: [],
+            conditionalId: activeConditional?.id,
+            conditionalBranch: activeConditional?.branch,
+            compileActivity: activeCompileActivity,
+            sourceSpan: at(statement.line),
+          };
           statements.push(statementMeta); activeStatementId = statementMeta.id;
         }
         if (statement.operator === '=' && statement.right.type === 'FunctionCall' && componentReferenceNames.has(withoutIndexes(printExpression(statement.left)))) {
@@ -331,11 +532,31 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
         const ternary = statement.operator !== '===' && statement.right.type === 'Ternary' ? lowerTernary(statement.right) : undefined;
         const right = ternary ? undefined : lower(statement.right);
         if (statement.operator === '===') {
-          const id = addNode({ id: `source-constraint:${instancePath}:${statement.line}:${sequence++}`, kind: 'source-constraint', label: '===', operator: '===', generatesConstraint: true, sourceSpan: at(statement.line) });
+          const id = addNode({
+            id: `source-constraint:${instancePath}:${statement.line}:${sequence++}`,
+            kind: 'source-constraint',
+            label: '===',
+            operator: '===',
+            leftExpression: printExpression(statement.left),
+            rightExpression: printExpression(statement.right),
+            generatesConstraint: true,
+            sourceSpan: at(statement.line),
+          });
           addEdge(left, id, 'constraint-relation', undefined, '==='); addEdge(right!, id, 'constraint-relation', undefined, '===');
         } else {
           const operator = statement.operator as SourceGraphEdge['operator']; const constrained = operator === '<==' || operator === '==>'; const witness = operator !== '=';
-          const id = addNode({ id: `assignment:${instancePath}:${statement.line}:${sequence++}`, kind: 'assignment', label: operator!, operator, generatesWitness: witness, generatesConstraint: constrained, dangerLevel: witness ? constrained ? 'safe' : 'review' : undefined, sourceSpan: at(statement.line) });
+          const id = addNode({
+            id: `assignment:${instancePath}:${statement.line}:${sequence++}`,
+            kind: 'assignment',
+            label: operator!,
+            operator,
+            leftExpression: printExpression(statement.left),
+            rightExpression: printExpression(statement.right),
+            generatesWitness: witness,
+            generatesConstraint: constrained,
+            dangerLevel: witness ? constrained ? 'safe' : 'review' : undefined,
+            sourceSpan: at(statement.line),
+          });
           const reverse = operator === '==>' || operator === '-->'; const sources = ternary ? [ternary.thenId, ternary.elseId] : [reverse ? left : right!];
           for (const source of sources) addEdge(source, id, 'data', undefined, operator); addEdge(id, reverse ? right! : left, 'assignment', undefined, operator);
         }
@@ -343,11 +564,24 @@ export function buildSourceGraph(parsedFiles: Map<string, ParsedFile>, rootTempl
         activeStatementId = undefined;
       }
     };
-    visitStatements(definition.statements, env);
+    const inlineSignalAssignments: StatementNode[] = definition.signals
+      .filter((signal) => signal.initialValue)
+      .map((signal) => ({
+        type: 'Assignment' as const,
+        left: { type: 'Identifier' as const, name: signal.name, line: signal.line },
+        operator: signal.initialOperator ?? '<==',
+        right: signal.initialValue!,
+        line: signal.line,
+      }));
+    visitStatements(
+      [...definition.statements, ...inlineSignalAssignments]
+        .sort((left, right) => left.line - right.line),
+      env,
+    );
   };
 
   visitInstance(rootTemplate, 'main', Object.fromEntries(params.map((param) => [param.name, param.value])));
   const adjacency: Record<string, string[]> = {};
   for (const edge of edges) { (adjacency[edge.source] ??= []).push(edge.target); (adjacency[edge.target] ??= []).push(edge.source); }
-  return { nodes, edges, adjacency, loops, statements };
+  return { nodes, edges, adjacency, loops, statements, conditionals };
 }

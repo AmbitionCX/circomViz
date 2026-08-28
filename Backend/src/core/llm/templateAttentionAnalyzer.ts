@@ -9,7 +9,7 @@ import type {
   TemplateAttentionAnalysisResponse,
 } from '../../types/partialDebugging.js';
 
-interface AnchorCatalog {
+export interface AnchorCatalog {
   sourceNodeIds: Set<string>;
   sourceEdgeIds: Set<string>;
   r1csNodeIds: Set<string>;
@@ -18,9 +18,13 @@ interface AnchorCatalog {
   r1csNodes: Array<Record<string, unknown>>;
 }
 
-interface RawAnalysis {
+export interface RawAnalysis {
   summary?: unknown;
   issues?: unknown;
+}
+
+export interface TemplateAttentionProjection {
+  retainedR1csIds?: Iterable<string>;
 }
 
 const MAX_SOURCE_CHARS = 50_000;
@@ -81,7 +85,7 @@ function displaySourceEdges(
   return edges;
 }
 
-function createAnchorCatalog(bundle: PartialDebuggingGraphBundle): AnchorCatalog {
+export function createAnchorCatalog(bundle: PartialDebuggingGraphBundle): AnchorCatalog {
   const visibleSourceNodes = bundle.sourceGraph.nodes.filter((node) =>
     node.kind !== 'assignment'
       && node.kind !== 'source-constraint'
@@ -94,38 +98,30 @@ function createAnchorCatalog(bundle: PartialDebuggingGraphBundle): AnchorCatalog
       label: node.label,
       role: node.role,
       line: node.sourceSpan?.startLine,
-      file: node.sourceSpan?.file,
     })),
     ...bundle.sourceGraph.loops.map((loop) => ({
       id: loop.id,
       kind: 'family',
       label: loop.header,
       line: loop.sourceSpan.startLine,
-      file: loop.sourceSpan.file,
     })),
     ...bundle.sourceGraph.statements.map((statement) => ({
       id: statement.id,
       kind: 'statement',
       label: statement.label,
       line: statement.sourceSpan.startLine,
-      file: statement.sourceSpan.file,
     })),
   ];
-  const sourceNodeIds = new Set(sourceNodes.map((node) => String(node.id)));
-  const nodeLabels = new Map(bundle.sourceGraph.nodes.map((node) => [node.id, node.label]));
+  const allSourceNodeIds = new Set(sourceNodes.map((node) => String(node.id)));
   const sourceEdges = displaySourceEdges(bundle)
-    .filter((edge) => sourceNodeIds.has(edge.source) && sourceNodeIds.has(edge.target))
+    .filter((edge) => allSourceNodeIds.has(edge.source) && allSourceNodeIds.has(edge.target))
     .map((edge) => ({
       id: edge.id,
       kind: edge.kind,
       source: edge.source,
       target: edge.target,
-      from: nodeLabels.get(edge.source) ?? edge.source,
-      to: nodeLabels.get(edge.target) ?? edge.target,
       operator: edge.label ?? edge.operator,
-      relatedNodeIds: edge.relatedNodeIds,
     }));
-  const sourceEdgeIds = new Set(sourceEdges.map((edge) => String(edge.id)));
   const constraintGraph = bundle.constraintGraph;
   const signalById = new Map(constraintGraph.signals.map((signal) => [signal.signalId, signal]));
   const groupBySignalId = new Map(
@@ -176,15 +172,14 @@ function createAnchorCatalog(bundle: PartialDebuggingGraphBundle): AnchorCatalog
     collectSignalReferences(constraint.equation.right);
   });
 
-  const r1csNodes = [
-    ...representativeConstraints.map((constraint) => ({
+  const constraintCandidates = representativeConstraints.map((constraint) => ({
       id: constraint.id,
       kind: 'constraint',
       index: constraint.index,
       complexity: constraint.complexity,
-      signals: (constraintGraph.adjacency[constraint.id] ?? []).slice(0, 16),
-    })),
-    ...constraintGraph.signals
+      signals: (constraintGraph.adjacency[constraint.id] ?? []).slice(0, 8),
+    }));
+  const signalCandidates = constraintGraph.signals
       .filter((signal) => visibleSignalReferenceIds.has(signal.id))
       .map((signal) => ({
         id: signal.id,
@@ -193,8 +188,8 @@ function createAnchorCatalog(bundle: PartialDebuggingGraphBundle): AnchorCatalog
         status: signal.status,
         role: signal.role,
         mockSupplied: signal.mockSupplied,
-      })),
-    ...constraintGraph.signalGroups
+      }));
+  const signalGroupCandidates = constraintGraph.signalGroups
       .filter((group) => visibleSignalReferenceIds.has(group.id))
       .map((group) => ({
         id: group.id,
@@ -202,23 +197,76 @@ function createAnchorCatalog(bundle: PartialDebuggingGraphBundle): AnchorCatalog
         label: group.displayQualifiedName,
         status: group.status,
         role: group.role,
-      })),
-    ...constraintGraph.loopClusters.map((cluster) => ({
+      }));
+  const loopClusterCandidates = constraintGraph.loopClusters.map((cluster) => ({
       id: cluster.id,
       kind: 'constraint-family',
       label: cluster.label,
       confidence: cluster.confidence,
-    })),
+    }));
+  const selectSpread = <T extends { id: string }>(
+    candidates: T[],
+    limit: number,
+    priorityIds: Set<string> = new Set(),
+  ): T[] => {
+    const selected: T[] = [];
+    const seen = new Set<string>();
+    const add = (candidate: T | undefined) => {
+      if (candidate && !seen.has(candidate.id) && selected.length < limit) {
+        seen.add(candidate.id);
+        selected.push(candidate);
+      }
+    };
+    candidates.filter((candidate) => priorityIds.has(candidate.id)).forEach(add);
+    if (selected.length >= limit || !candidates.length) return selected;
+    const remaining = limit - selected.length;
+    for (let index = 0; index < remaining; index += 1) {
+      add(candidates[Math.floor(index * candidates.length / remaining)]);
+    }
+    candidates.forEach(add);
+    return selected;
+  };
+  const priorityConstraintIds = new Set([
+    ...bundle.summary.diagnostics.flatMap((diagnostic) => diagnostic.nodeIds),
+    ...bundle.mappings.sourceToO0.flatMap((mapping) => mapping.constraintNodeIds),
+  ]);
+  const r1csNodes = [
+    ...selectSpread(constraintCandidates, 400, priorityConstraintIds),
+    ...selectSpread(signalCandidates, 120),
+    ...selectSpread(signalGroupCandidates, 40),
+    ...selectSpread(loopClusterCandidates, 40),
   ];
-  const r1csNodeIds = new Set(r1csNodes.map((node) => String(node.id)));
+  const retainedSourceNodes = sourceNodes.slice(0, MAX_CATALOG_ITEMS);
+  const retainedSourceNodeIds = new Set(retainedSourceNodes.map((node) => String(node.id)));
+  const retainedSourceEdges = sourceEdges
+    .filter((edge) => retainedSourceNodeIds.has(String(edge.source)) && retainedSourceNodeIds.has(String(edge.target)))
+    .slice(0, MAX_CATALOG_ITEMS);
+  const retainedR1csNodes = r1csNodes.slice(0, MAX_CATALOG_ITEMS);
 
   return {
-    sourceNodeIds,
-    sourceEdgeIds,
-    r1csNodeIds,
-    sourceNodes: sourceNodes.slice(0, MAX_CATALOG_ITEMS),
-    sourceEdges: sourceEdges.slice(0, MAX_CATALOG_ITEMS),
-    r1csNodes: r1csNodes.slice(0, MAX_CATALOG_ITEMS),
+    sourceNodeIds: retainedSourceNodeIds,
+    sourceEdgeIds: new Set(retainedSourceEdges.map((edge) => String(edge.id))),
+    r1csNodeIds: new Set(retainedR1csNodes.map((node) => String(node.id))),
+    sourceNodes: retainedSourceNodes,
+    sourceEdges: retainedSourceEdges,
+    r1csNodes: retainedR1csNodes,
+  };
+}
+
+export function projectAnchorCatalog(
+  catalog: AnchorCatalog,
+  projection?: TemplateAttentionProjection,
+): AnchorCatalog {
+  if (!projection?.retainedR1csIds) return catalog;
+  const retained = new Set(projection.retainedR1csIds);
+  const r1csNodes = catalog.r1csNodes.filter((node) => retained.has(String(node.id)));
+  return {
+    sourceNodeIds: new Set(catalog.sourceNodeIds),
+    sourceEdgeIds: new Set(catalog.sourceEdgeIds),
+    r1csNodeIds: new Set(r1csNodes.map((node) => String(node.id))),
+    sourceNodes: catalog.sourceNodes,
+    sourceEdges: catalog.sourceEdges,
+    r1csNodes,
   };
 }
 
@@ -389,7 +437,7 @@ function deterministicIssues(evidence: OriginDiagnosticEvidence[]): IssueCard[] 
   });
 }
 
-function mergeIssues(detected: IssueCard[], triaged: IssueCard[]): IssueCard[] {
+export function mergeIssues(detected: IssueCard[], triaged: IssueCard[]): IssueCard[] {
   const merged = new Map<string, IssueCard>();
   for (const issue of detected) {
     const anchor = issue.anchors[0];
@@ -421,7 +469,7 @@ function mergeIssues(detected: IssueCard[], triaged: IssueCard[]): IssueCard[] {
   });
 }
 
-function promptPayload(
+export function buildTemplateAttentionPromptPayload(
   intent: string,
   bundle: PartialDebuggingGraphBundle,
   catalog: AnchorCatalog,
@@ -474,7 +522,7 @@ function promptPayload(
   };
 }
 
-const SYSTEM_PROMPT = [
+export const TEMPLATE_ATTENTION_SYSTEM_PROMPT = [
   'You are the evidence-grounded semantic triage layer for CircomVis.',
   'Report only potential issues in the original, user-authored template.',
   'Use the APC-generated mocked source and its R1CS only as supporting evidence for judging the original template.',
@@ -489,40 +537,73 @@ const SYSTEM_PROMPT = [
   'Prefer the smallest causal node or edge and explain expected versus observed behavior.',
 ].join('\n');
 
-export async function analyzeTemplateAttention(
+export interface PreparedTemplateAttentionRequest {
+  systemPrompt: string;
+  userMessage: string;
+  catalog: AnchorCatalog;
+  detectedIssues: IssueCard[];
+  allowedEvidenceIds: Set<string>;
+}
+
+export function prepareTemplateAttentionRequest(
   intent: string,
   bundle: PartialDebuggingGraphBundle,
-): Promise<TemplateAttentionAnalysisResponse> {
-  const catalog = createAnchorCatalog(bundle);
+  projection?: TemplateAttentionProjection,
+): PreparedTemplateAttentionRequest {
+  const catalog = projectAnchorCatalog(createAnchorCatalog(bundle), projection);
   const diagnosticEvidence = originalTemplateDiagnostics(bundle, catalog);
-  const detected = deterministicIssues(diagnosticEvidence);
+  const detectedIssues = deterministicIssues(diagnosticEvidence);
   const allowedEvidenceIds = new Set<string>([
     ...diagnosticEvidence.map(({ diagnostic }) => diagnostic.id),
     ...catalog.sourceNodeIds,
     ...catalog.sourceEdgeIds,
     ...catalog.r1csNodeIds,
   ]);
+
+  return {
+    systemPrompt: TEMPLATE_ATTENTION_SYSTEM_PROMPT,
+    userMessage: JSON.stringify(buildTemplateAttentionPromptPayload(
+      intent,
+      bundle,
+      catalog,
+      diagnosticEvidence,
+    )),
+    catalog,
+    detectedIssues,
+    allowedEvidenceIds,
+  };
+}
+
+export async function analyzeTemplateAttention(
+  intent: string,
+  bundle: PartialDebuggingGraphBundle,
+): Promise<TemplateAttentionAnalysisResponse> {
+  const prepared = prepareTemplateAttentionRequest(intent, bundle);
   const configuration = getLLMConfiguration();
   const result = await callLLMStructured<RawAnalysis>(
-    SYSTEM_PROMPT,
-    JSON.stringify(promptPayload(intent, bundle, catalog, diagnosticEvidence)),
+    prepared.systemPrompt,
+    prepared.userMessage,
   );
 
   if (!result.success) {
     return {
       intent,
-      summary: detected.length
-        ? 'Deterministic analysis found ' + detected.length + ' item(s); DeepSeek triage was unavailable.'
+      summary: prepared.detectedIssues.length
+        ? 'Deterministic analysis found ' + prepared.detectedIssues.length + ' item(s); DeepSeek triage was unavailable.'
         : 'DeepSeek triage was unavailable and deterministic analysis found no anchored issues.',
-      issues: detected,
+      issues: prepared.detectedIssues,
       provider: configuration.provider,
       model: configuration.model,
       warning: result.error,
     };
   }
 
-  const triaged = normalizeLlmIssues(result.data, catalog, allowedEvidenceIds);
-  const merged = mergeIssues(detected, triaged);
+  const triaged = normalizeLlmIssues(
+    result.data,
+    prepared.catalog,
+    prepared.allowedEvidenceIds,
+  );
+  const merged = mergeIssues(prepared.detectedIssues, triaged);
   return {
     intent,
     summary: text(result.data.summary)
@@ -537,4 +618,3 @@ export async function analyzeTemplateAttention(
       : {}),
   };
 }
-

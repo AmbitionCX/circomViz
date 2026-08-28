@@ -49,8 +49,10 @@ function generateCodeFromTemplate(template: any): string {
         ? `[${signal.arraySizes.map((s: any) => typeof s === 'number' ? s : s.name).join('][')}]`
         : '';
       const kind = signal.kind === 'input' ? 'input ' : signal.kind === 'output' ? 'output ' : '';
-      const initial = signal.initialValue ? ` <== ${formatExpression(signal.initialValue)}` : '';
-      code += `    signal ${kind}${signal.name}${arraySizes};\n`;
+      const initial = signal.initialValue
+        ? ` ${signal.initialOperator ?? '<=='} ${formatExpression(signal.initialValue)}`
+        : '';
+      code += `    signal ${kind}${signal.name}${arraySizes}${initial};\n`;
     });
     code += '\n';
   }

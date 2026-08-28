@@ -158,3 +158,94 @@ export function isNodeSelectable(node: TreeNodeData, confirmedNames: Set<string>
 export function isNodeConfirmable(node: TreeNodeData): boolean {
   return !!node.templateInfo && !node.isRecursiveReference;
 }
+
+function containsVulnerableNode(node: TreeNodeData, vulnerableNames: Set<string>): boolean {
+  if (vulnerableNames.has(node.templateName)) return true;
+  return node.children.some(child => containsVulnerableNode(child, vulnerableNames));
+}
+
+function isFoldableConfirmedBranch(
+  node: TreeNodeData,
+  confirmedNames: Set<string>,
+  vulnerableNames: Set<string>,
+): boolean {
+  return confirmedNames.has(node.templateName)
+    && !containsVulnerableNode(node, vulnerableNames);
+}
+
+export function hasFoldableConfirmedChild(
+  node: TreeNodeData,
+  confirmedNames: Set<string>,
+  vulnerableNames: Set<string>,
+): boolean {
+  return node.children.some(child =>
+    isFoldableConfirmedBranch(child, confirmedNames, vulnerableNames)
+  );
+}
+
+export function collectFoldableNodeIds(
+  node: TreeNodeData,
+  confirmedNames: Set<string>,
+  vulnerableNames: Set<string>,
+): Set<string> {
+  const ids = new Set<string>();
+
+  const visit = (current: TreeNodeData) => {
+    if (hasFoldableConfirmedChild(current, confirmedNames, vulnerableNames)) {
+      ids.add(current.id);
+    }
+    current.children.forEach(visit);
+  };
+
+  visit(node);
+  return ids;
+}
+
+export function collectSubtreeNodeIds(node: TreeNodeData): Set<string> {
+  const ids = new Set<string>();
+
+  const visit = (current: TreeNodeData) => {
+    ids.add(current.id);
+    current.children.forEach(visit);
+  };
+
+  visit(node);
+  return ids;
+}
+
+export function findTreeNode(node: TreeNodeData, nodeId: string): TreeNodeData | null {
+  if (node.id === nodeId) return node;
+  for (const child of node.children) {
+    const match = findTreeNode(child, nodeId);
+    if (match) return match;
+  }
+  return null;
+}
+
+export function buildVisibleTemplateTree(
+  node: TreeNodeData,
+  collapsedNodeIds: Set<string>,
+  confirmedNames: Set<string>,
+  vulnerableNames: Set<string>,
+): TreeNodeData {
+  const visibleChildren = node.children
+    .filter(child =>
+      !collapsedNodeIds.has(node.id)
+      || !isFoldableConfirmedBranch(child, confirmedNames, vulnerableNames)
+    )
+    .map(child => buildVisibleTemplateTree(
+      child,
+      collapsedNodeIds,
+      confirmedNames,
+      vulnerableNames,
+    ));
+
+  return {
+    ...node,
+    children: visibleChildren,
+  };
+}
+
+export function collectTreeNodeIds(node: TreeNodeData): Set<string> {
+  return collectSubtreeNodeIds(node);
+}

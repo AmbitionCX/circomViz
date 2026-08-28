@@ -135,7 +135,7 @@ export async function buildPartialDebuggingBundle(options: {
     return group?.memberSignalNodeIds ?? [sourceSignalId];
   };
 
-  const sourceToO0: ProvenanceLink[] = sourceGraph.nodes.filter((node) => node.generatesConstraint).map((node) => {
+  const sourceToO0: ProvenanceLink[] = sourceGraph.nodes.filter((node) => node.generatesConstraint && node.compileActivity !== 'inactive').map((node) => {
     const signalNames = (sourceGraph.adjacency[node.id] ?? []).filter((id) => id.startsWith('signal:'));
     const constraintSignalIds = signalNames.flatMap(constraintIdsForSourceSignal);
     const candidates = constraintGraph.constraints.filter((constraint) => constraintSignalIds.some((signal) => constraintGraph.adjacency[constraint.id]?.includes(signal)));
@@ -143,11 +143,11 @@ export async function buildPartialDebuggingBundle(options: {
   });
   constraintGraph = addConstraintLoopClusters(sourceGraph, constraintGraph, sourceToO0);
   const diagnostics: GraphDiagnostic[] = [...projection.diagnostics];
-  for (const node of sourceGraph.nodes.filter((candidate) => candidate.kind === 'assignment' && candidate.dangerLevel === 'review')) {
+  for (const node of sourceGraph.nodes.filter((candidate) => candidate.kind === 'assignment' && candidate.dangerLevel === 'review' && candidate.compileActivity === 'active')) {
     const signals = (sourceGraph.adjacency[node.id] ?? []).filter((id) => id.startsWith('signal:'));
     if (!signals.flatMap(constraintIdsForSourceSignal).some((id) => constraintGraph.adjacency[id]?.length)) diagnostics.push({ id: `diagnostic:witness:${node.id}`, type: 'WITNESS_ONLY_UNVERIFIED', severity: 'high', message: 'Witness-only assignment has no related O0 constraint.', nodeIds: [node.id, ...signals] });
   }
-  for (const link of sourceToO0.filter((candidate) => !candidate.constraintNodeIds.length)) diagnostics.push({ id: `diagnostic:mapping:${link.sourceNodeId}`, type: 'SOURCE_CONSTRAINT_UNMATCHED', severity: 'medium', message: 'No O0 constraint candidate was found for this source relation.', nodeIds: [link.sourceNodeId] });
+  for (const link of sourceToO0.filter((candidate) => !candidate.constraintNodeIds.length && sourceGraph.nodes.find((node) => node.id === candidate.sourceNodeId)?.compileActivity === 'active')) diagnostics.push({ id: `diagnostic:mapping:${link.sourceNodeId}`, type: 'SOURCE_CONSTRAINT_UNMATCHED', severity: 'medium', message: 'No O0 constraint candidate was found for this source relation.', nodeIds: [link.sourceNodeId] });
   for (const signal of constraintGraph.signals.filter((candidate) => candidate.status === 'unused-or-unconstrained')) diagnostics.push({ id: `diagnostic:unused:${signal.signalId}`, type: 'UNUSED_OR_UNCONSTRAINED', severity: 'medium', message: `${signal.qualifiedName} has no constraint participation or substitution.`, nodeIds: [signal.id] });
   return {
     summary: {

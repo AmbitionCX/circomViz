@@ -268,7 +268,15 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from
 import * as d3 from 'd3';
 import { Close } from '@element-plus/icons-vue';
 import { useCircuitStore } from '@/stores/circuit';
-import { buildD3Hierarchy, isNodeSelectable, isNodeConfirmable } from '@/utils/templateTree';
+import {
+  buildD3Hierarchy,
+  buildVisibleTemplateTree,
+  collectTreeNodeIds,
+  findTreeNode,
+  hasFoldableConfirmedChild,
+  isNodeSelectable,
+  isNodeConfirmable,
+} from '@/utils/templateTree';
 import type { TreeNodeData } from '@/utils/templateTree';
 import { buildSignalRelationGraph, makeSignalKey } from '@/utils/signalRelations';
 import type { SignalRelationGraph } from '@/utils/signalRelations';
@@ -277,7 +285,17 @@ import { findTemplateParams } from '@/apis';
 import { ElMessage } from 'element-plus';
 import type { FindTemplateParamsResponse, SignalInfo } from '@/types/circuitTypes';
 
+const props = withDefaults(defineProps<{
+  collapsedNodeIds?: string[];
+  fitToViewVersion?: number;
+}>(), {
+  collapsedNodeIds: () => [],
+  fitToViewVersion: 0,
+});
+
 const emit = defineEmits<{
+  'fold-node': [nodeId: string];
+  'expand-node': [nodeId: string];
   'template-params-selected': [data: {
     templateName: string;
     params: { name: string; value: number }[];
@@ -304,6 +322,8 @@ const RECURSIVE_ENCLOSURE_PAD = 8;
 const SELECTED_SIGNAL_COLOR = '#f59e0b';
 const RELATED_SIGNAL_COLOR = '#fbbf24';
 const COMPILATION_FAILURE_RED = '#dc2626';
+const FOLD_ICON_PATH = 'M896 192H128v128h768zm0 256H384v128h512zm0 256H128v128h768zM320 384 128 512l192 128z';
+const EXPAND_ICON_PATH = 'M128 192h768v128H128zm0 256h512v128H128zm0 256h768v128H128zm576-352 192 160-192 128z';
 
 const isSelecting = ref(false);
 const paramResponse = ref<FindTemplateParamsResponse | null>(null);
@@ -515,10 +535,13 @@ function textEllipsis(text: string, maxWidth: number): string {
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
 let resizeObserver: ResizeObserver | null = null;
 
-function renderTree() {
+function renderTree(options: { fitToView?: boolean } = {}) {
   hideSignalTooltip();
 
   const svg = d3.select(svgRef.value);
+  const previousTransform = svgRef.value
+    ? d3.zoomTransform(svgRef.value)
+    : d3.zoomIdentity;
   svg.selectAll('*').remove();
   svg.on('click.signal-highlight', (event: MouseEvent) => {
     const target = event.target;
@@ -529,15 +552,24 @@ function renderTree() {
   if (!circuitStore.parseData.tree || !svgContainer.value) return;
 
   const treeData = buildD3Hierarchy(circuitStore.parseData.tree);
+  const confirmed = confirmedNamesSet();
+  const vulnerable = vulnerableNamesSet();
+  const collapsed = new Set(props.collapsedNodeIds);
+  const visibleTreeData = buildVisibleTemplateTree(treeData, collapsed, confirmed, vulnerable);
+  const visibleNodeIds = collectTreeNodeIds(visibleTreeData);
+
   renderedTreeData = treeData;
   signalRelationGraph = buildSignalRelationGraph(treeData);
   applySharedSignalHighlight(treeData);
 
+  if (detailPanel.node && !visibleNodeIds.has(detailPanel.node.id)) {
+    detailPanel.visible = false;
+    detailPanel.node = null;
+    resetWrapperConfig();
+  }
+
   const containerWidth = svgContainer.value.clientWidth;
   const containerHeight = svgContainer.value.clientHeight;
-
-  const confirmed = confirmedNamesSet();
-  const vulnerable = vulnerableNamesSet();
 
   const defs = svg.append('defs');
 
@@ -596,7 +628,7 @@ function renderTree() {
     .attr('d', 'M 0 0 L 10 5 L 0 10 z')
     .attr('fill', '#94a3b8');
 
-  const root = d3.hierarchy<TreeNodeData>(treeData);
+  const root = d3.hierarchy<TreeNodeData>(visibleTreeData);
 
   const treeLayout = d3.tree<TreeNodeData>()
     .nodeSize([NODE_HEIGHT + NODE_GAP_Y, NODE_GAP_X])
@@ -640,20 +672,21 @@ function renderTree() {
 
   nodeGroups.each(function (d) {
     const nodeG = d3.select(this);
-    const color = circuitStore.getTemplateColor(d.data.templateName);
-    const isExternal = d.data.isExternal;
-    const isRecursiveReference = d.data.isRecursiveReference;
-    const isConfirmed = confirmed.has(d.data.templateName);
-    const isVulnerable = vulnerable.has(d.data.templateName);
-    const isNmLib = !!d.data.nodeModulesLibrary;
+    const fullNode = findTreeNode(treeData, d.data.id) ?? d.data;
+    const color = circuitStore.getTemplateColor(fullNode.templateName);
+    const isExternal = fullNode.isExternal;
+    const isRecursiveReference = fullNode.isRecursiveReference;
+    const isConfirmed = confirmed.has(fullNode.templateName);
+    const isVulnerable = vulnerable.has(fullNode.templateName);
+    const isNmLib = !!fullNode.nodeModulesLibrary;
     const hw = NODE_WIDTH / 2;
 
     nodeG.attr('opacity', 0.85);
 
     const headerColor = color;
     const bodyFill = '#ffffff';
-    const isSelectable = isNodeSelectable(d.data, confirmed);
-    const isCompilationFailure = isCompilationFailureNode(d.data);
+    const isSelectable = isNodeSelectable(fullNode, confirmed);
+    const isCompilationFailure = isCompilationFailureNode(fullNode);
     const borderColor = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerable ? VULNERABLE_RED : (isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0')));
 
     const bgRect = nodeG.append('rect')
@@ -687,11 +720,11 @@ function renderTree() {
       .attr('height', 8)
       .attr('fill', headerColor);
 
-    let headerLabel = d.data.templateName;
+    let headerLabel = fullNode.templateName;
     const maxLabelWidth = NODE_WIDTH - 16;
 
-    if (isNmLib && d.data.nodeModulesLibrary) {
-      const libLabel = d.data.nodeModulesLibrary;
+    if (isNmLib && fullNode.nodeModulesLibrary) {
+      const libLabel = fullNode.nodeModulesLibrary;
       const nameWidth = headerLabel.length * 7;
       const tagTextWidth = libLabel.length * 6.5;
       const tagPadX = 5;
@@ -781,7 +814,7 @@ function renderTree() {
         .attr('font-style', 'italic')
         .text('external / primitive');
     } else {
-      const signals = d.data.templateInfo?.signals || [];
+      const signals = fullNode.templateInfo?.signals || [];
       const inputSignals = signals.filter(s => s.kind === 'input');
       const outputSignals = signals.filter(s => s.kind === 'output');
 
@@ -796,13 +829,13 @@ function renderTree() {
         const sig = inputSignals[i];
         nodeG.append('circle')
           .attr('class', 'signal-dot')
-          .attr('data-signal-key', makeSignalKey(d.data.id, sig.name))
+          .attr('data-signal-key', makeSignalKey(fullNode.id, sig.name))
           .attr('cx', cx)
           .attr('cy', bodyCenterY)
           .attr('r', dotR)
           .attr('fill', '#2563eb')
           .style('cursor', 'pointer')
-          .on('click', (event) => handleSignalClick(event as MouseEvent, d.data, sig.name))
+          .on('click', (event) => handleSignalClick(event as MouseEvent, fullNode, sig.name))
           .on('mouseenter', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mousemove', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mouseleave', hideSignalTooltip);
@@ -814,13 +847,13 @@ function renderTree() {
         const sig = outputSignals[i];
         nodeG.append('circle')
           .attr('class', 'signal-dot')
-          .attr('data-signal-key', makeSignalKey(d.data.id, sig.name))
+          .attr('data-signal-key', makeSignalKey(fullNode.id, sig.name))
           .attr('cx', cx)
           .attr('cy', bodyCenterY)
           .attr('r', dotR)
           .attr('fill', '#16a34a')
           .style('cursor', 'pointer')
-          .on('click', (event) => handleSignalClick(event as MouseEvent, d.data, sig.name))
+          .on('click', (event) => handleSignalClick(event as MouseEvent, fullNode, sig.name))
           .on('mouseenter', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mousemove', (event) => showSignalTooltip(event as MouseEvent, sig.name))
           .on('mouseleave', hideSignalTooltip);
@@ -839,6 +872,52 @@ function renderTree() {
         .attr('opacity', 0.3)
         .attr('pointer-events', 'none');
     }
+
+    if (hasFoldableConfirmedChild(fullNode, confirmed, vulnerable)) {
+      const isCollapsed = collapsed.has(fullNode.id);
+      const actionLabel = `${isCollapsed ? 'Expand' : 'Fold'} confirmed descendants of ${fullNode.templateName}`;
+      const control = nodeG.append('g')
+        .attr('class', 'fold-toggle')
+        .attr('transform', `translate(${hw}, 0)`)
+        .attr('role', 'button')
+        .attr('tabindex', 0)
+        .attr('aria-label', actionLabel)
+        .style('cursor', 'pointer');
+
+      control.append('title').text(actionLabel);
+      control.append('rect')
+        .attr('x', -12)
+        .attr('y', -12)
+        .attr('width', 24)
+        .attr('height', 24)
+        .attr('rx', 5)
+        .attr('fill', '#ffffff')
+        .attr('stroke', isCollapsed ? '#409eff' : '#cbd5e1')
+        .attr('stroke-width', 1.5)
+        .attr('filter', 'url(#node-shadow)');
+      control.append('path')
+        .attr('d', isCollapsed ? EXPAND_ICON_PATH : FOLD_ICON_PATH)
+        .attr('transform', 'translate(-7.2, -7.2) scale(0.014)')
+        .attr('fill', isCollapsed ? '#409eff' : '#475569')
+        .attr('pointer-events', 'none');
+
+      const activate = (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (isCollapsed) emit('expand-node', fullNode.id);
+        else emit('fold-node', fullNode.id);
+      };
+
+      control
+        .on('click', activate)
+        .on('dblclick', (event: Event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        })
+        .on('keydown', (event: KeyboardEvent) => {
+          if (event.key === 'Enter' || event.key === ' ') activate(event);
+        });
+    }
   });
 
   nodeGroups
@@ -846,11 +925,12 @@ function renderTree() {
       d3.select(this).select('.node-bg').attr('stroke-width', isCompilationFailureNode(d.data) ? 3.5 : 2.5);
     })
     .on('mouseleave', function (_event, d) {
-      const isSelected = d.data.templateInfo === circuitStore.selectedTemplate;
-      const isConfirmedNode = confirmed.has(d.data.templateName);
-      const isVulnerableNode = vulnerable.has(d.data.templateName);
-      const isSel = isNodeSelectable(d.data, confirmed);
-      const isCompilationFailure = isCompilationFailureNode(d.data);
+      const fullNode = findTreeNode(treeData, d.data.id) ?? d.data;
+      const isSelected = fullNode.templateInfo === circuitStore.selectedTemplate;
+      const isConfirmedNode = confirmed.has(fullNode.templateName);
+      const isVulnerableNode = vulnerable.has(fullNode.templateName);
+      const isSel = isNodeSelectable(fullNode, confirmed);
+      const isCompilationFailure = isCompilationFailureNode(fullNode);
       const border = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerableNode ? VULNERABLE_RED : (isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0'))));
       const sw = isCompilationFailure ? 3.5 : (isConfirmedNode ? 2 : (isSelected ? 2.5 : (isSel ? 2.5 : 1.5)));
       d3.select(this).select('.node-bg')
@@ -858,18 +938,20 @@ function renderTree() {
         .attr('stroke-width', sw);
     })
     .on('click', (_event, d) => {
-      if (d.data.templateInfo && !d.data.isRecursiveReference) {
-        circuitStore.setSelectedTemplate(d.data.templateInfo, d.data.path);
+      const fullNode = findTreeNode(treeData, d.data.id) ?? d.data;
+      if (fullNode.templateInfo && !fullNode.isRecursiveReference) {
+        circuitStore.setSelectedTemplate(fullNode.templateInfo, fullNode.path);
       }
     })
     .on('dblclick', (event: MouseEvent, d) => {
       event.preventDefault();
       event.stopPropagation();
-      if (!d.data.templateInfo || d.data.isExternal || d.data.isRecursiveReference) return;
-      if (!isNodeSelectable(d.data, confirmedNamesSet())) return;
-      detailPanel.node = d.data;
+      const fullNode = findTreeNode(treeData, d.data.id) ?? d.data;
+      if (!fullNode.templateInfo || fullNode.isExternal || fullNode.isRecursiveReference) return;
+      if (!isNodeSelectable(fullNode, confirmedNamesSet())) return;
+      detailPanel.node = fullNode;
       detailPanel.visible = true;
-      circuitStore.highlightTemplate(d.data.sourceFile, d.data.templateName);
+      circuitStore.highlightTemplate(fullNode.sourceFile, fullNode.templateName);
       resetWrapperConfig();
       void handlePanelSelect();
     });
@@ -920,12 +1002,12 @@ function renderTree() {
       .attr('pointer-events', 'none');
 
     bordersGroup.append('text')
-      .attr('x', deepest.rightX + 8)
+      .attr('x', deepest.rightX + 16)
       .attr('y', (deepest.topY + deepest.bottomY) / 2)
       .attr('text-anchor', 'start')
       .attr('dominant-baseline', 'middle')
       .attr('fill', '#475569')
-      .attr('font-size', '18px')
+      .attr('font-size', '20px')
       .attr('font-weight', '700')
       .attr('pointer-events', 'none')
       .text(`×${node.data.instanceCount}`);
@@ -939,7 +1021,7 @@ function renderTree() {
 
   svg.call(zoomBehavior as unknown as (selection: d3.Selection<SVGSVGElement | null, unknown, null, undefined>) => void);
 
-  nextTick(() => {
+  if (options.fitToView !== false) nextTick(() => {
     const bbox = (g.node() as SVGGElement | null)?.getBBox();
     if (!bbox) return;
 
@@ -961,6 +1043,12 @@ function renderTree() {
       d3.zoomIdentity.translate(tx, ty).scale(scale)
     );
   });
+  else {
+    (svg as unknown as d3.Selection<SVGSVGElement, unknown, null, undefined>).call(
+      zoomBehavior.transform,
+      previousTransform,
+    );
+  }
 
   updateSelection();
   updateSignalHighlights();
@@ -1084,7 +1172,9 @@ function updateSelection() {
 
   svg.selectAll<SVGGElement, d3.HierarchyPointNode<TreeNodeData>>('g.node').each(function (d) {
     const nodeGroup = d3.select(this);
-    const data = d.data;
+    const data = renderedTreeData
+      ? (findTreeNode(renderedTreeData, d.data.id) ?? d.data)
+      : d.data;
     const isSelected = data.templateInfo === circuitStore.selectedTemplate;
     const isConfirmedNode = confirmed.has(data.templateName);
     const isVulnerableNode = vulnerable.has(data.templateName);
@@ -1195,9 +1285,20 @@ watch(
 watch(
   [() => circuitStore.confirmedTemplateNames, () => circuitStore.vulnerableTemplateNames],
   () => {
-    renderTree();
+    renderTree({ fitToView: false });
   },
   { deep: true }
+);
+
+let lastFitToViewVersion = props.fitToViewVersion;
+watch(
+  [() => props.collapsedNodeIds, () => props.fitToViewVersion],
+  ([, fitToViewVersion]) => {
+    const shouldFit = fitToViewVersion !== lastFitToViewVersion;
+    lastFitToViewVersion = fitToViewVersion;
+    renderTree({ fitToView: shouldFit });
+  },
+  { deep: true },
 );
 
 onMounted(() => {

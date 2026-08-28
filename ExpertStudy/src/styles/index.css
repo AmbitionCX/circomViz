@@ -786,6 +786,38 @@ textarea {
   line-height: 1.6;
 }
 
+.task-prompt ul {
+  margin: 8px 0 0;
+  padding-left: 22px;
+  color: #334b5d;
+  font-family: Georgia, serif;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.task-prompt .task-time-limit {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.think-aloud-prompt {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #d9e4e1;
+}
+
+.think-aloud-prompt strong {
+  color: var(--teal-dark);
+  font-size: 12px;
+}
+
+.think-aloud-prompt p {
+  margin-top: 6px;
+  font-family: inherit;
+  font-size: 14px;
+}
+
 .task-timer {
   min-width: 178px;
   display: flex;

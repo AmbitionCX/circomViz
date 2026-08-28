@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ConstraintGraphDto, ConstraintNodeDto } from '../types/partialDebugging.js'
-import { buildConstraintFamilies, exactConstraintPage, familyMatches, prioritizeConstraintFamilies } from '../utils/r1csProjection.js'
+import { buildConstraintFamilies, exactConstraintPage, familyMatches, negatedSignalId, prioritizeConstraintFamilies, signalGroupsRequiringMemberLabels } from '../utils/r1csProjection.js'
 
 function constraint(index: number, signalId: number): ConstraintNodeDto {
   return {
@@ -60,4 +60,35 @@ test('paginates exact family members without losing family references', () => {
   assert.equal(secondPage.length, 5)
   assert.deepEqual(secondPage.map(item => item.constraints[0].id), constraints.slice(25).map(item => item.id))
   assert.equal(secondPage[0].referenceIds.has('signal:1'), true)
+})
+
+test('uses concrete labels when one equation contains distinct members of an array group', () => {
+  const groupedGraph = graph([])
+  groupedGraph.signals = [
+    { id: 'signal:main.in[0]', kind: 'signal', signalId: 1, witnessIndex: 1, componentId: 0, qualifiedName: 'main.in[0]', status: 'surviving', role: 'input' },
+    { id: 'signal:main.in[1]', kind: 'signal', signalId: 2, witnessIndex: 2, componentId: 0, qualifiedName: 'main.in[1]', status: 'surviving', role: 'input' },
+  ]
+  groupedGraph.signalGroups = [{
+    id: 'signal-group:main.in',
+    sourceNodeId: 'signal:main.in[2]',
+    displayQualifiedName: 'main.in[2]',
+    arrayDimensions: ['2'],
+    memberSignalIds: [1, 2],
+    memberSignalNodeIds: ['signal:main.in[0]', 'signal:main.in[1]'],
+    status: 'surviving',
+    role: 'input',
+  }]
+  const equation: ConstraintNodeDto['equation'] = {
+    left: {
+      kind: 'add',
+      operands: [
+        { kind: 'signal', signalId: 1 },
+        { kind: 'mul', operands: [{ kind: 'signal', signalId: 2 }, { kind: 'constant', value: '-1' }] },
+      ],
+    },
+    right: { kind: 'constant', value: '0' },
+  }
+
+  assert.deepEqual([...signalGroupsRequiringMemberLabels(groupedGraph, equation)], ['signal-group:main.in'])
+  assert.equal(negatedSignalId(equation.left.kind === 'add' ? equation.left.operands[1]! : equation.left), 2)
 })

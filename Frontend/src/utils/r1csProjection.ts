@@ -11,6 +11,45 @@ export interface R1csConstraintFamily {
   firstIndex: number
 }
 
+function collectExpressionSignalIds(expression: ConstraintExpressionDto, signalIds: Set<number>) {
+  if (expression.kind === 'signal') {
+    signalIds.add(expression.signalId)
+    return
+  }
+  if (expression.kind !== 'constant') {
+    expression.operands.forEach(operand => collectExpressionSignalIds(operand, signalIds))
+  }
+}
+
+export function signalGroupsRequiringMemberLabels(
+  graph: ConstraintGraphDto,
+  equation: ConstraintGraphDto['constraints'][number]['equation'],
+) {
+  const groupBySignalId = new Map(graph.signalGroups.flatMap(group =>
+    group.memberSignalIds.map(signalId => [signalId, group.id] as const),
+  ))
+  const signalIds = new Set<number>()
+  collectExpressionSignalIds(equation.left, signalIds)
+  collectExpressionSignalIds(equation.right, signalIds)
+  const membersByGroup = new Map<string, Set<number>>()
+  for (const signalId of signalIds) {
+    const groupId = groupBySignalId.get(signalId)
+    if (!groupId) continue
+    const members = membersByGroup.get(groupId) ?? new Set<number>()
+    members.add(signalId)
+    membersByGroup.set(groupId, members)
+  }
+  return new Set([...membersByGroup].filter(([, members]) => members.size > 1).map(([groupId]) => groupId))
+}
+
+export function negatedSignalId(expression: ConstraintExpressionDto) {
+  if (expression.kind !== 'mul' || expression.operands.length !== 2) return undefined
+  const [first, second] = expression.operands
+  if (first.kind === 'signal' && second.kind === 'constant' && second.value === '-1') return first.signalId
+  if (second.kind === 'signal' && first.kind === 'constant' && first.value === '-1') return second.signalId
+  return undefined
+}
+
 function normalizedSignalName(name: string) {
   return (name.startsWith('main.') ? name.slice('main.'.length) : name).replace(/\[\d+\]/g, '[n]')
 }

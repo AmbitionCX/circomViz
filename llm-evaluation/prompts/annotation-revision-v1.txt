@@ -1,0 +1,30 @@
+You are revising an existing ground-truth annotation for a benchmark.
+The vulnerability is already known. Do not discover new vulnerabilities and do not expand the candidate universe.
+Use the proposed annotation, critic feedback, deterministic validation errors, vulnerable source, available fix diff, audit evidence, and supplied candidates to correct only the reported problems.
+
+Requirements:
+1. Select root-cause and diagnostic IDs only from sourceNodes or sourceEdges in the supplied candidate list.
+2. diagnostic_candidates must contain every root_cause_candidates ID.
+3. Provide exactly one evidence item with a non-empty justification for every root-cause candidate.
+4. If fixDiff is absent or empty, every fix_lines value must be an empty string. Never infer or invent fix lines.
+5. The canonical intent must be a high-level verification goal and must not reveal candidate identifiers, source lines, the exact vulnerability mechanism, taxonomy answer, or fix.
+6. Preserve valid parts of the proposed annotation unless the feedback requires changing them.
+7. Set needs_human_review=true only when the candidate mapping remains genuinely ambiguous after applying the feedback.
+
+Return JSON only in exactly this shape:
+{
+  "case_id": "case ID from the input",
+  "root_cause_candidates": ["source node or source edge ID"],
+  "diagnostic_candidates": ["the same root ID", "additional nearby source ID"],
+  "acceptable_issue_kinds": ["short diagnostic category"],
+  "evidence": [
+    {
+      "candidate_id": "the same root ID",
+      "source_lines": "supporting vulnerable source lines or empty string",
+      "fix_lines": "supporting fix lines or empty string",
+      "justification": "why the vulnerable source or supplied fix directly supports this root mapping"
+    }
+  ],
+  "canonical_intent": "high-level verification goal without answer leakage",
+  "needs_human_review": false
+}

@@ -3,5 +3,24 @@ Backend/compilations/
 logs
 /compilations/
 toy-demos-analysis
+*.zip
+
+# LLM evaluation runtime data and local credentials
+llm-evaluation/.env
+llm-evaluation/config/models.json
+llm-evaluation/benchmark/*.jsonl
+llm-evaluation/benchmark/*.csv
+llm-evaluation/benchmark/bundle-inputs.jsonl
+llm-evaluation/benchmark/preflight*.json
+llm-evaluation/benchmark/preflight*.csv
+llm-evaluation/benchmark/human-review-sample*.jsonl
+llm-evaluation/benchmark/gold.draft*.jsonl
+llm-evaluation/benchmark/review*.jsonl
+llm-evaluation/benchmark/annotation-revision-history*.jsonl
+llm-evaluation/benchmark/projection*.jsonl
+llm-evaluation/benchmark/annotation-inputs.projected*.jsonl
+llm-evaluation/runs/
+llm-evaluation/results/
+llm-evaluation/work/
 
 .DS_Store

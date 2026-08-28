@@ -12,13 +12,13 @@ export const susQuestions = [
 ] as const
 
 export const contributionQuestions = [
-  'The hierarchy view helped me narrow the search scope.',
-  'The coordinated views helped me distinguish source-level computation from constraint-level enforcement.',
-  'The provenance links helped me justify my diagnosis.',
-  'Scope comparison helped me identify anomalous components.',
-  'Partial compilation made large circuits easier to inspect.',
-  'The property checks helped me connect the stated intent with enforced constraints.',
-  'The visual representations increased my confidence in the diagnosis.',
+  'The Template Tree view helped me narrow the search scope.',
+  'The coordination of the two views in Partial Debugging helped me distinguish source-level computation from constraint-level enforcement.',
+  'Signal provenance and linking helped me justify my diagnosis.',
+  'The File Structure view helped me identify anomalous components.',
+  'Partial Debugging made large circuits easier to inspect.',
+  'Issue cards helped me connect the stated intent with enforced constraints.',
+  'The visualization of the circuit increased my confidence in the bug diagnosis.',
 ] as const
 
 export const interviewQuestions = [
@@ -57,13 +57,13 @@ export const susQuestionsZh = [
 ] as const
 
 export const contributionQuestionsZh = [
-  "层级视图帮助我缩小了搜索范围。",
-  "协同视图帮助我区分源码层面的计算和约束层面的执行。",
-  "溯源链接帮助我为诊断提供依据。",
-  "作用域比较帮助我识别异常组件。",
-  "部分编译使大型电路更容易检查。",
-  "属性检查帮助我将既定意图与实际执行的约束联系起来。",
-  "可视化表示提升了我对诊断的信心。",
+  "Template Tree视图帮助我缩小了搜索范围。",
+  "Partial Debugging 中两个视图的协同，帮助我区分源码层面的计算和约束层面的执行。",
+  "信号的溯源与联动帮助我为诊断提供依据。",
+  "File Structure 视图能帮助我识别异常组件。",
+  "Partial Debugging 使大型电路更容易检查。",
+  "Issue card 帮助我将既定意图与实际执行的约束联系起来。",
+  "对电路的可视化表示提升了我对bug诊断的信心。",
 ] as const
 
 export const interviewQuestionsZh = [

@@ -247,7 +247,12 @@ export class CircomParser {
       const arraySizes = this.parseArraySizes();
 
       let initialValue: ExpressionNode | undefined;
+      let initialOperator: '<==' | '<--' | undefined;
       if (this.matchOperator('<==')) {
+        initialOperator = '<==';
+        initialValue = this.parseExpression();
+      } else if (this.matchOperator('<--')) {
+        initialOperator = '<--';
         initialValue = this.parseExpression();
       }
 
@@ -258,6 +263,7 @@ export class CircomParser {
         isArray: !!arraySizes,
         arraySizes,
         initialValue,
+        initialOperator,
         line
       });
     } while (!declarations[declarations.length - 1].initialValue && this.matchPunctuation(','));
@@ -293,7 +299,12 @@ export class CircomParser {
     this.consumePunctuation(')');
 
     let initialValue: ExpressionNode | undefined;
+    let initialOperator: '<==' | '<--' | undefined;
     if (this.matchOperator('<==')) {
+      initialOperator = '<==';
+      initialValue = this.parseExpression();
+    } else if (this.matchOperator('<--')) {
+      initialOperator = '<--';
       initialValue = this.parseExpression();
     }
 
@@ -304,6 +315,7 @@ export class CircomParser {
       kind,
       elements,
       initialValue,
+      initialOperator,
       line
     };
   }
@@ -1228,6 +1240,14 @@ export class CircomParser {
       return {
         type: 'Literal',
         value: parseInt(this.previous().value),
+        line: this.previous().line
+      };
+    }
+
+    if (this.matchType('STRING')) {
+      return {
+        type: 'Literal',
+        value: this.previous().value,
         line: this.previous().line
       };
     }

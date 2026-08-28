@@ -9,6 +9,7 @@ export interface SourceGraphNode {
   qualifiedName?: string
   localName?: string
   arrayDimensions?: string[]
+  declaredArrayDimensions?: string[]
   arrayBaseQualifiedName?: string
   initialExpression?: string
   initialValue?: number
@@ -22,21 +23,36 @@ export interface SourceGraphNode {
   componentPath?: string
   operation?: string
   operator?: '<==' | '==>' | '<--' | '-->' | '===' | '='
+  leftExpression?: string
+  rightExpression?: string
   generatesWitness?: boolean
   generatesConstraint?: boolean
   dangerLevel?: 'safe' | 'review'
   mocked?: boolean
   childNodeIds?: string[]
+  conditionalId?: string
+  conditionalBranch?: 'then' | 'else'
+  compileActivity?: 'active' | 'inactive' | 'unknown'
   sourceSpan?: SourceSpan
 }
-export interface SourceGraphEdge { id: string; source: string; target: string; kind: string; operandIndex?: number; operator?: string; label?: string }
+export interface SourceGraphEdge { id: string; source: string; target: string; kind: string; operandIndex?: number; operator?: string; label?: string; accessExpression?: string }
 export interface SourceStatementDto {
-  id: string; loopId: string; order: number; kind: 'component' | 'witness' | 'constraint' | 'state-update' | 'other'
-  label: string; nodeIds: string[]; sourceSpan: SourceSpan
+  id: string; loopId?: string; order: number; kind: 'component' | 'witness' | 'constraint' | 'state-update' | 'other'
+  label: string; nodeIds: string[]; conditionalId?: string; conditionalBranch?: 'then' | 'else'
+  compileActivity?: 'active' | 'inactive' | 'unknown'; sourceSpan: SourceSpan
 }
 export interface SourceLoopStateDto { variableName: string; initialNodeId: string; currentNodeId: string; nextNodeId: string; finalNodeId: string }
 export interface SourceLoopDto { id: string; header: string; iterator: string; iterationLabel: string; iterationCount?: number; parentLoopId?: string; bodyStatementIds: string[]; stateVariables: SourceLoopStateDto[]; sourceSpan: SourceSpan }
-export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEdge[]; adjacency: Record<string, string[]>; loops: SourceLoopDto[]; statements: SourceStatementDto[] }
+export interface SourceBranchCoverageDto {
+  status: 'active' | 'inactive' | 'unknown'; iterationCount?: number; totalIterations?: number
+  iterator?: string; iteratorValues?: number[]; valuesTruncated?: boolean
+}
+export interface SourceConditionalDto {
+  id: string; condition: string; order: number; parentLoopId?: string; parentConditionalId?: string
+  parentBranch?: 'then' | 'else'; hasElse: boolean; thenStatementIds: string[]; elseStatementIds: string[]
+  thenCoverage: SourceBranchCoverageDto; elseCoverage: SourceBranchCoverageDto; sourceSpan: SourceSpan
+}
+export interface SourceGraphDto { nodes: SourceGraphNode[]; edges: SourceGraphEdge[]; adjacency: Record<string, string[]>; loops: SourceLoopDto[]; statements: SourceStatementDto[]; conditionals?: SourceConditionalDto[] }
 
 export interface LinearCombinationTerm { signalId: number; coefficient: string; displayCoefficient: string }
 export interface LinearCombination { terms: LinearCombinationTerm[] }

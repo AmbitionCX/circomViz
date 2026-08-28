@@ -30,7 +30,6 @@
       class="case-familiarity-alert"
     />
 
-    <p class="case-disclosure-note">{{ t("case.note") }}</p>
   </div>
 </template>
 

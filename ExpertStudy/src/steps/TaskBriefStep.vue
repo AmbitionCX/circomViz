@@ -18,7 +18,19 @@
 
     <div class="task-prompt">
       <span>{{ t("task.promptLabel") }}</span>
-      <p>{{ t("task.prompt") }}</p>
+      <p>{{ t("task.promptIntro") }}</p>
+      <p class="task-time-limit">{{ t("task.timeLimit") }}</p>
+      <p>{{ t("task.reportIntro") }}</p>
+      <ul>
+        <li>{{ t("task.reportJudgment") }}</li>
+        <li>{{ t("task.reportMismatch") }}</li>
+        <li>{{ t("task.reportEvidence") }}</li>
+      </ul>
+      <p>{{ t("task.noMismatch") }}</p>
+      <div class="think-aloud-prompt">
+        <strong>{{ t("task.thinkAloudLabel") }}</strong>
+        <p>{{ t("task.thinkAloud") }}</p>
+      </div>
     </div>
   </div>
 </template>

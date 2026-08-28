@@ -68,6 +68,7 @@ export interface SignalNode {
   isArray?: boolean;
   arraySizes?: (number | ExpressionNode)[];
   initialValue?: ExpressionNode;
+  initialOperator?: '<==' | '<--';
   line: number;
 }
 
@@ -82,6 +83,7 @@ export interface TupleSignalDeclarationNode {
   kind: 'input' | 'output' | 'intermediate';
   elements: TupleSignalElement[];
   initialValue?: ExpressionNode;
+  initialOperator?: '<==' | '<--';
   line: number;
 }
 

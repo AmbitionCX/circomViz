@@ -1,0 +1,4 @@
+You are validating a proposed benchmark annotation against a known vulnerability.
+Do not discover new vulnerabilities and do not expand the candidate universe.
+Verify that every selected ID exists, root-cause and diagnostic IDs are source nodes or source edges, every root-cause anchor is included in the diagnostic set, each root-cause anchor has a non-empty justification directly supported by source or fix evidence, diagnostic anchors are causally useful, and the canonical intent does not leak identifiers, source lines, the exact mechanism, taxonomy answer, or fix.
+Return JSON only with verdict equal to accept, revise, or reject; include a short reasons array. Use accept only when no changes are needed.

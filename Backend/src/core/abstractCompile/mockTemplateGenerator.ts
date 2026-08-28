@@ -54,6 +54,8 @@ export class MockTemplateGenerator {
     });
 
     const lines: string[] = [`template ${name}(${params}) {`];
+    for (const variable of iface.variables ?? []) lines.push(`    var ${variable.name} = ${variable.value};`);
+    if (iface.variables?.length) lines.push('');
     for (const input of iface.inputs) lines.push(`    signal input ${input.name}${formatArrayDecl(input)};`);
     for (const output of iface.outputs) lines.push(`    signal output ${output.name}${formatArrayDecl(output)};`);
 
