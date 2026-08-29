@@ -504,21 +504,25 @@ export function buildTemplateAttentionPromptPayload(
       sourceEdges: catalog.sourceEdges,
       r1csNodes: catalog.r1csNodes,
     },
-    responseSchema: {
-      summary: 'short string',
-      issues: [{
-        kind: 'RoleMismatch | DependencyGap | CoverageGap | IndexAnomaly | ConstantAnomaly | IdiomDiff',
-        title: 'short string',
-        explanation: 'evidence-grounded explanation',
-        severity: 'high | medium | low',
-        confidence: 'high | medium | low',
-        anchors: [{ view: 'source first; optional r1cs evidence after it', type: 'node | edge | family', id: 'exact allowed id', relatedNodeIds: [] }],
-        observed: 'what the code/enforcement does',
-        expected: 'what the user intent suggests',
-        evidenceIds: ['one or more exact diagnostic or anchor ids'],
-        followUpQuestion: 'optional intent clarification',
-      }],
-    },
+    responseSchema: templateAttentionResponseSchema(),
+  };
+}
+
+export function templateAttentionResponseSchema() {
+  return {
+    summary: 'short string',
+    issues: [{
+      kind: 'RoleMismatch | DependencyGap | CoverageGap | IndexAnomaly | ConstantAnomaly | IdiomDiff',
+      title: 'short string',
+      explanation: 'evidence-grounded explanation',
+      severity: 'high | medium | low',
+      confidence: 'high | medium | low',
+      anchors: [{ view: 'source first; optional r1cs evidence after it', type: 'node | edge | family', id: 'exact allowed id', relatedNodeIds: [] }],
+      observed: 'what the code/enforcement does',
+      expected: 'what the user intent suggests',
+      evidenceIds: ['one or more exact diagnostic or anchor ids'],
+      followUpQuestion: 'optional intent clarification',
+    }],
   };
 }
 

@@ -1,4 +1,4 @@
-export const expertIds = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8'] as const
+export const expertIds = ['E1', 'E2', 'E5', 'E6'] as const
 export type ExpertId = (typeof expertIds)[number]
 
 export const taskIds = ['T1', 'T2', 'T3', 'T4'] as const

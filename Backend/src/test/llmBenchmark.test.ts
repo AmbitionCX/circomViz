@@ -13,7 +13,7 @@ import type {
   ReadyBenchmarkCase,
 } from '../evaluation/llmBenchmark/types.js';
 import { BENCHMARK_SCHEMA_VERSION, NEUTRAL_INTENT } from '../evaluation/llmBenchmark/types.js';
-import { buildTrackPayload, deserializeCatalog } from '../evaluation/llmBenchmark/runner.js';
+import { buildTrackPayload, deserializeCatalog, loadBenchmarkPrompt } from '../evaluation/llmBenchmark/runner.js';
 import {
   callConfiguredModel,
   effectiveRequestConfig,
@@ -32,6 +32,10 @@ import type { ReviewRow } from '../evaluation/llmBenchmark/annotator.js';
 import { refineAnnotations } from '../evaluation/llmBenchmark/refiner.js';
 import { modelConfigHash } from '../evaluation/llmBenchmark/runner.js';
 import { conservativelyEstimateTokens } from '../evaluation/llmBenchmark/preflight.js';
+import {
+  normalizeOutcomeOnlyIntent,
+  validateOutcomeOnlyIntent,
+} from '../evaluation/llmBenchmark/intentSanitizer.js';
 import {
   createProjection,
   filterAnnotationInputByProjection,
@@ -97,6 +101,136 @@ test('builds the four benchmark payloads without leaking intent across neutral t
   assert.equal(systemIntent.intent, benchmarkCase.canonicalIntent);
   assert.equal('deterministicEvidence' in directIntent, false);
   assert.equal((directIntent.allowedAnchors as any).r1csNodes, undefined);
+  assert.deepEqual(
+    { ...directNeutral, intent: 'normalized' },
+    { ...directIntent, intent: 'normalized' },
+  );
+  assert.deepEqual(
+    { ...systemNeutral, intent: 'normalized' },
+    { ...systemIntent, intent: 'normalized' },
+  );
+  assert.deepEqual(
+    (directIntent.allowedAnchors as any).sourceNodes,
+    benchmarkCase.systemContext.candidates.sourceNodes,
+  );
+  assert.deepEqual(
+    (directIntent.allowedAnchors as any).sourceEdges,
+    benchmarkCase.systemContext.candidates.sourceEdges,
+  );
+  for (const payload of [directNeutral, directIntent, systemNeutral, systemIntent]) {
+    for (const forbidden of ['bugFamily', 'vulnerableLines', 'fixDiff', 'rootCauseAnchors', 'diagnosticAnchors']) {
+      assert.equal(forbidden in payload, false);
+    }
+  }
+});
+
+test('uses one prompt within each intent ablation pair', async () => {
+  const promptDir = path.resolve(process.cwd(), '../llm-evaluation/prompts');
+  assert.equal(
+    await loadBenchmarkPrompt(promptDir, 'direct-neutral'),
+    await loadBenchmarkPrompt(promptDir, 'direct-intent'),
+  );
+  assert.equal(
+    await loadBenchmarkPrompt(promptDir, 'system-neutral'),
+    await loadBenchmarkPrompt(promptDir, 'system-intent'),
+  );
+});
+
+test('rejects answer-bearing intents while accepting outcome-only goals', () => {
+  const input: AnnotationInput = {
+    caseId: 'case-1',
+    vulnerabilityDescription: 'Known issue',
+    vulnerableSource: 'signal input amount;',
+    candidates: readyCase().directContext.candidates,
+    forbiddenIntentTerms: ['Example'],
+  };
+  assert.deepEqual(
+    validateOutcomeOnlyIntent(input, 'Verify that every valid transaction preserves the intended balance relationship.'),
+    [],
+  );
+  assert.deepEqual(
+    validateOutcomeOnlyIntent(input, 'Verify that the payout accurately includes all earned components.'),
+    [],
+  );
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that the component produces the expected output.',
+  ).some((error) => error.startsWith('implementation-mechanism:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Check whether the comparator input has a missing range check that allows overflow.',
+  ).some((error) => error.startsWith('range-mechanism:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that Example behaves correctly.',
+  ).some((error) => error.startsWith('identifier-leak:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that every output is deterministically derived from the internal state transition.',
+  ).some((error) => error.startsWith('underconstraint-clue:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that the process produces a valid and consistent output.',
+  ).some((error) => error.startsWith('underconstraint-clue:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that the process produces a unique and correct result.',
+  ).some((error) => error.startsWith('underconstraint-clue:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that inputs outside the expected range are rejected.',
+  ).some((error) => error.startsWith('numeric-edge-clue:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that every invalid path selection is rejected.',
+  ).some((error) => error.startsWith('input-shape-clue:')));
+  assert.ok(validateOutcomeOnlyIntent(
+    input,
+    'Verify that the circuit produces a single, valid result for every input length.',
+  ).some((error) => error.startsWith('implementation-mechanism:')));
+  assert.equal(
+    normalizeOutcomeOnlyIntent(
+      'Verify that the operation has one valid result, ensuring no state remains unconstrained for identical inputs.',
+    ),
+    'Verify that the operation has one valid result.',
+  );
+  assert.equal(
+    normalizeOutcomeOnlyIntent(
+      'Verify that transfers follow the configured policy, regardless of the transaction routing mechanism used.',
+    ),
+    'Verify that transfers follow the configured policy.',
+  );
+  assert.equal(
+    normalizeOutcomeOnlyIntent(
+      'Verify that extraction returns only the data within the declared length.',
+    ),
+    'Verify that extraction returns the intended content.',
+  );
+  assert.equal(
+    normalizeOutcomeOnlyIntent(
+      'Verify that conversion returns a valid, well-defined result.',
+    ),
+    'Verify that conversion returns a correct result.',
+  );
+});
+
+test('does not treat generic operator labels as leaked prose identifiers', () => {
+  const input: AnnotationInput = {
+    caseId: 'case-operator',
+    vulnerabilityDescription: 'Known issue',
+    vulnerableSource: 'signal input amount;',
+    candidates: {
+      ...readyCase().directContext.candidates,
+      sourceNodes: [
+        ...readyCase().directContext.candidates.sourceNodes,
+        { id: 'operation:main:1', kind: 'operation', label: 'AND' },
+      ],
+    },
+  };
+  assert.deepEqual(
+    validateOutcomeOnlyIntent(input, 'Verify that valid requests are accepted and invalid requests are rejected.'),
+    [],
+  );
 });
 
 test('reconstructs candidate allow-lists and parses fenced JSON output', () => {
@@ -105,6 +239,7 @@ test('reconstructs candidate allow-lists and parses fenced JSON output', () => {
   assert.equal(catalog.sourceEdgeIds.has('collapsed:assignment:8:0'), true);
   assert.equal(catalog.r1csNodeIds.has('constraint:0'), true);
   assert.deepEqual(parseStructuredOutput('```json\n{"issues": []}\n```'), { issues: [] });
+  assert.deepEqual(parseStructuredOutput('```json\n{"issues": []}'), { issues: [] });
 });
 
 test('disables Qwen thinking through vLLM chat template kwargs', async () => {
@@ -806,4 +941,6 @@ test('reports a paired project bootstrap interval for the full system gain', asy
   assert.equal(comparison.fullSystemGain, 1);
   assert.equal(comparison.pairedProjectDeltas.fullSystemGain.mean, 1);
   assert.deepEqual(comparison.pairedProjectDeltas.fullSystemGain.projectBootstrap95, [1, 1]);
+  assert.equal(summary.comparisonsByScope.test['model-a/end-to-end'].fullSystemGain, 1);
+  assert.equal(summary.comparisonsByScope.development['model-a/end-to-end'].fullSystemGain, null);
 });

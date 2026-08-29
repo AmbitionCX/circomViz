@@ -59,7 +59,7 @@
         <div class="mb-1"><span class="font-semibold">Type:</span> {{ selectionModeLabel }}</div>
         <div class="mb-1"><span class="font-semibold">Entry:</span> {{ selectedCircuitConfig.entry }}</div>
         <div class="mb-1"><span class="font-semibold">Root Component:</span> {{ selectedCircuitConfig.rootComponent }}</div>
-        <div v-if="selectionMode === 'example'" class="mb-1"><span class="font-semibold">{{ props.expertStudy ? 'Purpose:' : 'Bug family:' }}</span> {{ selectedCircuitConfig.description }}</div>
+        <div v-if="selectionMode === 'example'" class="mb-1"><span class="font-semibold">Bug family:</span> {{ selectedCircuitConfig.description }}</div>
       </div>
     </div>
     
@@ -125,7 +125,8 @@ const selectionModeOptions = [
 ];
 
 const selectionModeLabel = computed(() => selectionMode.value === 'example' ? 'Example' : 'Project');
-const circuitCatalog = computed(() => props.expertStudy ? 'expert-study' as const : 'default' as const);
+const getSubmodulesCatalog = (): 'expert-study' | 'default' =>
+  props.expertStudy ? 'expert-study' : 'default';
 
 const availableCircuits = computed(() => {
   return selectionMode.value === 'example' ? examples.value : submodules.value;
@@ -154,8 +155,8 @@ const loadCircuits = async () => {
   isLoading.value = true;
   try {
     const [submodulesResponse, examplesResponse] = await Promise.all([
-      getSubmodules(circuitCatalog.value) as any,
-      getExamples(circuitCatalog.value) as any
+      getSubmodules(getSubmodulesCatalog()) as any,
+      getExamples('default') as any,
     ]);
     if (requestId !== loadRequestId) return;
 
@@ -186,11 +187,9 @@ const parseCircuit = async () => {
 
   try {
     const request: parse_circuit_request = {
-      repo: props.expertStudy
-        ? (selectionMode.value === 'example'
-          ? 'expert-study-toy-examples'
-          : 'expert-study-real-world-examples')
-        : (selectionMode.value === 'example' ? 'toy-demos' : selectedCircuitConfig.value.id),
+      repo: selectionMode.value === 'example'
+        ? 'toy-demos'
+        : (props.expertStudy ? 'expert-study-real-world-examples' : selectedCircuitConfig.value.id),
       entry: selectedCircuitConfig.value.entry,
       rootComponent: selectedCircuitConfig.value.rootComponent,
       rootArguments: selectedCircuitConfig.value.rootArguments

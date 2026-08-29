@@ -9,7 +9,8 @@
     "pnpm": "11.22.0"
   },
   "scripts": {
-    "dev": "vite --open",
+    "dev": "vite",
+    "dev:experiment": "vite --mode experiment --host 0.0.0.0 --port 9375 --strictPort",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test:r1cs": "tsc -p tsconfig.r1cs-test.json && node --test .test-dist/test/r1csProjection.test.js",

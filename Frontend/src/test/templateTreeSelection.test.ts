@@ -3,11 +3,13 @@ import test from 'node:test'
 import type { TemplateInfo } from '../types/circuitTypes.js'
 import {
   buildVisibleTemplateTree,
+  collectAncestorNodeIds,
   collectFoldableNodeIds,
   collectSubtreeNodeIds,
   collectTreeNodeIds,
   hasFoldableConfirmedChild,
   isNodeSelectable,
+  treeNodeIdForSelection,
 } from '../utils/templateTree.js'
 import type { TreeNodeData } from '../utils/templateTree.js'
 
@@ -41,30 +43,40 @@ function node(
   }
 }
 
-test('keeps the leaf-first rule for unresolved templates', () => {
+test('allows any resolved template regardless of tree depth or confirmation state', () => {
   const unresolvedChild = node('Child')
   const unresolvedParent = node('Parent', { children: [unresolvedChild] })
-  assert.equal(isNodeSelectable(unresolvedChild, new Set()), true)
-  assert.equal(isNodeSelectable(unresolvedParent, new Set()), false)
-  assert.equal(isNodeSelectable(unresolvedParent, new Set(['Child'])), true)
-})
-
-test('allows a confirmed non-leaf template to be selected again', () => {
-  const parent = node('Parent', { children: [node('UnconfirmedChild')] })
-  assert.equal(isNodeSelectable(parent, new Set(['Parent'])), true)
-})
-
-test('allows an auto-confirmed library template to bypass the leaf rule', () => {
-  const libraryTemplate = node('LibraryTemplate', {
-    children: [node('LibraryChild')],
-    library: 'circomlib',
-  })
-  assert.equal(isNodeSelectable(libraryTemplate, new Set(['LibraryTemplate'])), true)
+  assert.equal(isNodeSelectable(unresolvedChild), true)
+  assert.equal(isNodeSelectable(unresolvedParent), true)
 })
 
 test('never selects unresolved external or recursive-reference placeholders', () => {
-  assert.equal(isNodeSelectable(node('External', { external: true }), new Set(['External'])), false)
-  assert.equal(isNodeSelectable(node('Recursive', { recursive: true }), new Set(['Recursive'])), false)
+  const missingTemplateInfo = node('MissingTemplateInfo')
+  missingTemplateInfo.templateInfo = null
+
+  assert.equal(isNodeSelectable(node('External', { external: true })), false)
+  assert.equal(isNodeSelectable(node('Recursive', { recursive: true })), false)
+  assert.equal(isNodeSelectable(missingTemplateInfo), false)
+})
+
+test('uses the instance path as the selected node identity', () => {
+  assert.equal(treeNodeIdForSelection('Root', []), 'Root')
+  assert.equal(treeNodeIdForSelection('Repeated', ['left', 'child']), 'left.child')
+  assert.notEqual(
+    treeNodeIdForSelection('Repeated', ['left']),
+    treeNodeIdForSelection('Repeated', ['right']),
+  )
+})
+
+test('collects only the ancestors needed to reveal a marked node', () => {
+  const target = node('Target', { id: 'left.nested.target' })
+  const nested = node('Nested', { id: 'left.nested', children: [target] })
+  const left = node('Left', { id: 'left', children: [nested] })
+  const root = node('Root', { children: [left, node('Right', { id: 'right' })] })
+
+  assert.deepEqual(collectAncestorNodeIds(root, target.id), ['Root', 'left', 'left.nested'])
+  assert.deepEqual(collectAncestorNodeIds(root, root.id), [])
+  assert.equal(collectAncestorNodeIds(root, 'missing'), null)
 })
 
 test('folds confirmed branches while preserving unconfirmed siblings', () => {

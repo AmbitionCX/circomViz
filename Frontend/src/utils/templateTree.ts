@@ -140,23 +140,8 @@ export function buildD3Hierarchy(tree: TemplateInfo): TreeNodeData {
   return buildTemplateNode(tree, [], [], 0);
 }
 
-export function isAllChildrenConfirmed(node: TreeNodeData, confirmedNames: Set<string>): boolean {
-  if (node.children.length === 0) return true;
-  return node.children.every(child => {
-    if (child.isExternal || child.isRecursiveReference) return true;
-    return confirmedNames.has(child.templateName) && isAllChildrenConfirmed(child, confirmedNames);
-  });
-}
-
-export function isNodeSelectable(node: TreeNodeData, confirmedNames: Set<string>): boolean {
-  if (node.isExternal || node.isRecursiveReference || !node.templateInfo) return false;
-  if (confirmedNames.has(node.templateName)) return true;
-  if (node.isLeaf) return true;
-  return isAllChildrenConfirmed(node, confirmedNames);
-}
-
-export function isNodeConfirmable(node: TreeNodeData): boolean {
-  return !!node.templateInfo && !node.isRecursiveReference;
+export function isNodeSelectable(node: TreeNodeData): boolean {
+  return !!node.templateInfo && !node.isExternal && !node.isRecursiveReference;
 }
 
 function containsVulnerableNode(node: TreeNodeData, vulnerableNames: Set<string>): boolean {
@@ -218,6 +203,19 @@ export function findTreeNode(node: TreeNodeData, nodeId: string): TreeNodeData |
   for (const child of node.children) {
     const match = findTreeNode(child, nodeId);
     if (match) return match;
+  }
+  return null;
+}
+
+export function treeNodeIdForSelection(templateName: string, path: string[]): string {
+  return path.join('.') || templateName;
+}
+
+export function collectAncestorNodeIds(node: TreeNodeData, targetId: string): string[] | null {
+  if (node.id === targetId) return [];
+  for (const child of node.children) {
+    const childAncestors = collectAncestorNodeIds(child, targetId);
+    if (childAncestors) return [node.id, ...childAncestors];
   }
   return null;
 }

@@ -247,10 +247,19 @@ export async function scoreBenchmark(options: {
   const gold = new Map((await readJsonl<BenchmarkGold>(options.goldPath))
     .filter((entry) => entry.annotationStatus === 'frozen')
     .map((entry) => [entry.caseId, entry]));
-  const predictionFiles = await findPredictionFiles(options.predictionsRoot);
+  const discoveredPredictionFiles = await findPredictionFiles(options.predictionsRoot);
   const selectedModels = options.modelIds ? new Set(options.modelIds) : undefined;
-  const predictions = (await Promise.all(predictionFiles.map((file) => readJsonl<BenchmarkPrediction>(file))))
-    .flat()
+  const loadedPredictionFiles = await Promise.all(discoveredPredictionFiles.map(async (file) => ({
+    file,
+    predictions: await readJsonl<BenchmarkPrediction>(file),
+  })));
+  const predictionFiles = loadedPredictionFiles
+    .filter((loaded) => loaded.predictions.some((prediction) =>
+      (!selectedModels || selectedModels.has(prediction.modelId))
+      && (!options.experimentId || prediction.experimentId === options.experimentId)))
+    .map((loaded) => loaded.file);
+  const predictions = loadedPredictionFiles
+    .flatMap((loaded) => loaded.predictions)
     .filter((prediction) => !selectedModels || selectedModels.has(prediction.modelId))
     .filter((prediction) => !options.experimentId || prediction.experimentId === options.experimentId);
   for (const [modelId, modelPredictions] of groupBy(predictions, (prediction) => prediction.modelId)) {
@@ -292,54 +301,62 @@ export async function scoreBenchmark(options: {
   const summary = summarize(rows);
   const testSummary = summarize(rows.filter((row) => row.split === 'test'));
   const developmentSummary = summarize(rows.filter((row) => row.split === 'development'));
-  const comparisons: Record<string, unknown> = {};
   const modelIds = [...new Set(rows.map((row) => row.modelId))];
-  const primaryValue = (modelId: string, track: string, layer: string) =>
-    testSummary[`${modelId}/${track}/${layer}`]?.diagnosticCoverageAt3.caseMacro ?? null;
   const difference = (left: number | null, right: number | null) =>
     left === null || right === null ? null : left - right;
-  for (const modelId of modelIds) {
-    for (const layer of ['llm-only', 'end-to-end']) {
-      const directNeutral = primaryValue(modelId, 'direct-neutral', layer);
-      const directIntent = primaryValue(modelId, 'direct-intent', layer);
-      const systemNeutral = primaryValue(modelId, 'system-neutral', layer);
-      const systemIntent = primaryValue(modelId, 'system-intent', layer);
-      comparisons[`${modelId}/${layer}`] = {
-        metric: 'test case-macro Diagnostic Coverage@3',
-        directNeutral,
-        directIntent,
-        systemNeutral,
-        systemIntent,
-        intentGainWithoutSystem: difference(directIntent, directNeutral),
-        intentGainWithSystem: difference(systemIntent, systemNeutral),
-        systemGainWithoutIntent: difference(systemNeutral, directNeutral),
-        systemGainWithIntent: difference(systemIntent, directIntent),
-        fullSystemGain: difference(systemIntent, directNeutral),
-        pairedProjectDeltas: {
-          intentGainWithoutSystem: pairedProjectDelta(
-            rows.filter((row) => row.modelId === modelId && row.evaluationLayer === layer && row.split === 'test'),
-            'direct-intent', 'direct-neutral',
-          ),
-          intentGainWithSystem: pairedProjectDelta(
-            rows.filter((row) => row.modelId === modelId && row.evaluationLayer === layer && row.split === 'test'),
-            'system-intent', 'system-neutral',
-          ),
-          systemGainWithoutIntent: pairedProjectDelta(
-            rows.filter((row) => row.modelId === modelId && row.evaluationLayer === layer && row.split === 'test'),
-            'system-neutral', 'direct-neutral',
-          ),
-          systemGainWithIntent: pairedProjectDelta(
-            rows.filter((row) => row.modelId === modelId && row.evaluationLayer === layer && row.split === 'test'),
-            'system-intent', 'direct-intent',
-          ),
-          fullSystemGain: pairedProjectDelta(
-            rows.filter((row) => row.modelId === modelId && row.evaluationLayer === layer && row.split === 'test'),
-            'system-intent', 'direct-neutral',
-          ),
-        },
-      };
+  const compareScope = (
+    scope: 'development' | 'test',
+    scopedRows: PerPredictionScore[],
+    scopedSummary: ReturnType<typeof summarize>,
+  ): Record<string, unknown> => {
+    const comparisons: Record<string, unknown> = {};
+    const primaryValue = (modelId: string, track: string, layer: string) =>
+      scopedSummary[`${modelId}/${track}/${layer}`]?.diagnosticCoverageAt3.caseMacro ?? null;
+    for (const modelId of modelIds) {
+      for (const layer of ['llm-only', 'end-to-end']) {
+        const directNeutral = primaryValue(modelId, 'direct-neutral', layer);
+        const directIntent = primaryValue(modelId, 'direct-intent', layer);
+        const systemNeutral = primaryValue(modelId, 'system-neutral', layer);
+        const systemIntent = primaryValue(modelId, 'system-intent', layer);
+        const pairedRows = scopedRows.filter((row) =>
+          row.modelId === modelId && row.evaluationLayer === layer);
+        comparisons[`${modelId}/${layer}`] = {
+          scope,
+          metric: `${scope} case-macro Diagnostic Coverage@3`,
+          directNeutral,
+          directIntent,
+          systemNeutral,
+          systemIntent,
+          intentGainWithoutSystem: difference(directIntent, directNeutral),
+          intentGainWithSystem: difference(systemIntent, systemNeutral),
+          systemGainWithoutIntent: difference(systemNeutral, directNeutral),
+          systemGainWithIntent: difference(systemIntent, directIntent),
+          fullSystemGain: difference(systemIntent, directNeutral),
+          pairedProjectDeltas: {
+            intentGainWithoutSystem: pairedProjectDelta(pairedRows, 'direct-intent', 'direct-neutral'),
+            intentGainWithSystem: pairedProjectDelta(pairedRows, 'system-intent', 'system-neutral'),
+            systemGainWithoutIntent: pairedProjectDelta(pairedRows, 'system-neutral', 'direct-neutral'),
+            systemGainWithIntent: pairedProjectDelta(pairedRows, 'system-intent', 'direct-intent'),
+            fullSystemGain: pairedProjectDelta(pairedRows, 'system-intent', 'direct-neutral'),
+          },
+        };
+      }
     }
-  }
+    return comparisons;
+  };
+  const comparisonsByScope = {
+    development: compareScope(
+      'development',
+      rows.filter((row) => row.split === 'development'),
+      developmentSummary,
+    ),
+    test: compareScope(
+      'test',
+      rows.filter((row) => row.split === 'test'),
+      testSummary,
+    ),
+  };
+  const comparisons = comparisonsByScope.test;
   const completion: Record<string, unknown> = {};
   for (const modelId of modelIds) {
     const modelPredictions = predictions.filter((prediction) =>
@@ -390,29 +407,31 @@ export async function scoreBenchmark(options: {
       });
     }
   }
-  const comparisonRows = Object.entries(comparisons).map(([key, rawValue]) => {
-    const [modelId, evaluationLayer] = key.split('/');
-    const value = rawValue as any;
-    const paired = value.pairedProjectDeltas.fullSystemGain;
-    return {
-      modelId,
-      evaluationLayer,
-      directNeutral: value.directNeutral,
-      directIntent: value.directIntent,
-      systemNeutral: value.systemNeutral,
-      systemIntent: value.systemIntent,
-      intentGainWithoutSystem: value.intentGainWithoutSystem,
-      intentGainWithSystem: value.intentGainWithSystem,
-      systemGainWithoutIntent: value.systemGainWithoutIntent,
-      systemGainWithIntent: value.systemGainWithIntent,
-      fullSystemGain: value.fullSystemGain,
-      fullSystemGainPairedProjectMean: paired.mean,
-      fullSystemGainPairedCiLow: paired.projectBootstrap95?.[0],
-      fullSystemGainPairedCiHigh: paired.projectBootstrap95?.[1],
-      fullSystemGainPairs: paired.pairs,
-      fullSystemGainProjects: paired.projects,
-    };
-  });
+  const comparisonRows = Object.entries(comparisonsByScope).flatMap(([scope, scoped]) =>
+    Object.entries(scoped).map(([key, rawValue]) => {
+      const [modelId, evaluationLayer] = key.split('/');
+      const value = rawValue as any;
+      const paired = value.pairedProjectDeltas.fullSystemGain;
+      return {
+        scope,
+        modelId,
+        evaluationLayer,
+        directNeutral: value.directNeutral,
+        directIntent: value.directIntent,
+        systemNeutral: value.systemNeutral,
+        systemIntent: value.systemIntent,
+        intentGainWithoutSystem: value.intentGainWithoutSystem,
+        intentGainWithSystem: value.intentGainWithSystem,
+        systemGainWithoutIntent: value.systemGainWithoutIntent,
+        systemGainWithIntent: value.systemGainWithIntent,
+        fullSystemGain: value.fullSystemGain,
+        fullSystemGainPairedProjectMean: paired.mean,
+        fullSystemGainPairedCiLow: paired.projectBootstrap95?.[0],
+        fullSystemGainPairedCiHigh: paired.projectBootstrap95?.[1],
+        fullSystemGainPairs: paired.pairs,
+        fullSystemGainProjects: paired.projects,
+      };
+    }));
   await writeCsv(options.outputDir + '/summary.csv', [
     'scope', 'modelId', 'track', 'evaluationLayer', 'predictions', 'cases', 'projects',
     'apiSuccessRate', 'diagnosticCoverageAt3CaseMacro', 'diagnosticCoverageAt3ProjectMacro',
@@ -422,7 +441,7 @@ export async function scoreBenchmark(options: {
     'averageDurationMs', 'averageTotalTokens',
   ], aggregateRows);
   await writeCsv(options.outputDir + '/comparisons.csv', [
-    'modelId', 'evaluationLayer', 'directNeutral', 'directIntent', 'systemNeutral', 'systemIntent',
+    'scope', 'modelId', 'evaluationLayer', 'directNeutral', 'directIntent', 'systemNeutral', 'systemIntent',
     'intentGainWithoutSystem', 'intentGainWithSystem', 'systemGainWithoutIntent',
     'systemGainWithIntent', 'fullSystemGain', 'fullSystemGainPairedProjectMean',
     'fullSystemGainPairedCiLow', 'fullSystemGainPairedCiHigh', 'fullSystemGainPairs',
@@ -438,7 +457,7 @@ export async function scoreBenchmark(options: {
   await writeJsonFile(options.outputDir + '/summary.json', {
     generatedAt: new Date().toISOString(),
     primaryMetric: 'Diagnostic Coverage@3',
-    primaryScope: 'test',
+    primaryScope: requestedSplit === 'all' ? 'test' : requestedSplit,
     experimentId: options.experimentId ?? 'all',
     requestedSplit,
     casesHash: sha256(allCases),
@@ -452,6 +471,7 @@ export async function scoreBenchmark(options: {
     testResults: testSummary,
     developmentResults: developmentSummary,
     comparisons,
+    comparisonsByScope,
     completion,
   });
   return { rows, summary };

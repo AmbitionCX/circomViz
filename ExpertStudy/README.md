@@ -26,7 +26,7 @@ pnpm run preview
 1. 在 `src/config/tasks.ts` 中用最终的 participant-visible intent cards 替换占位说明。此文件不得出现 ground truth、bug 类型、正确位置、审计报告或评分答案。
    同时核对每个 A/B 案例的 `sourceProject`，该字段只允许包含上游仓库名。
 2. 用经过所在机构伦理审查的正式文本替换 `ConsentStep.vue` 中的 consent 草案，并更新 `src/config/study.ts` 的 `CONSENT_VERSION`。
-3. 核对 `src/config/experts.ts` 的 E1–E8 顺序和 A/B、BL/CV 分配。
+3. 核对 `src/config/experts.ts` 的 E1、E2、E5、E6 的 A/B、BL/CV 分配（当前为 4 人 pilot 方案）。
 4. 在正式设备上验证 Markdown 下载、中文字符、刷新恢复以及浏览器的下载权限。
 5. Ground truth 与评分 rubric 必须存放在不向参与者发布的研究人员文档中。
 

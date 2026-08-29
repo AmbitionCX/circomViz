@@ -12,6 +12,7 @@ import { readJsonFile } from './io.js';
 import { probeModels } from './probe.js';
 import { preflightBenchmark } from './preflight.js';
 import { refineAnnotations } from './refiner.js';
+import { sanitizeBenchmarkIntents } from './intentSanitizer.js';
 
 function parseArgs(argv: string[]): { command: string; values: Map<string, string> } {
   const normalized = argv[0] === '--' ? argv.slice(1) : argv;
@@ -94,6 +95,9 @@ function printHelp() {
     '  review-sample [--draft gold.draft.jsonl] [--review review.jsonl] [--rate 0.1]',
     '  freeze --draft gold.draft.jsonl [--decisions human-decisions.jsonl]',
     '      [--cases bundle-inputs.jsonl] [--output gold.jsonl]',
+    '  sanitize-intents --annotator MODEL_ID --critic MODEL_ID [--apply true|false]',
+    '      [--input annotation-inputs.projected.jsonl] [--gold gold.jsonl] [--cases cases.jsonl]',
+    '      [--output intent-rewrites.jsonl] [--config models.json] [--prompts prompts/]',
   ].join('\n'));
 }
 
@@ -265,6 +269,21 @@ async function main() {
       split,
     });
     console.log(`Evaluation completed: models=${modelIds.length}, scoreRows=${result.rows.length}`);
+    return;
+  }
+  if (command === 'sanitize-intents') {
+    const result = await sanitizeBenchmarkIntents({
+      inputsPath: path.resolve(value(values, 'input', path.join(benchmarkRoot(), 'benchmark', 'annotation-inputs.projected.jsonl'))),
+      goldPath: path.resolve(value(values, 'gold', path.join(benchmarkRoot(), 'benchmark', 'gold.jsonl'))),
+      casesPath: path.resolve(value(values, 'cases', path.join(benchmarkRoot(), 'benchmark', 'cases.jsonl'))),
+      configPath: path.resolve(value(values, 'config', path.join(benchmarkRoot(), 'config', 'models.json'))),
+      promptDir: path.resolve(value(values, 'prompts', path.join(benchmarkRoot(), 'prompts'))),
+      annotatorId: value(values, 'annotator'),
+      criticId: value(values, 'critic'),
+      outputPath: path.resolve(value(values, 'output', path.join(benchmarkRoot(), 'benchmark', 'intent-rewrites.jsonl'))),
+      apply: value(values, 'apply', 'false') === 'true',
+    });
+    console.log(`Intent sanitization completed: accepted=${result.accepted}, rejected=${result.rejected}, applied=${result.applied}`);
     return;
   }
   if (command === 'annotate') {

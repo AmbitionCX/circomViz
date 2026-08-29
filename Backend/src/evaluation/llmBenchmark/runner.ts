@@ -4,6 +4,7 @@ import {
   mergeIssues,
   normalizeLlmIssues,
   TEMPLATE_ATTENTION_SYSTEM_PROMPT,
+  templateAttentionResponseSchema,
 } from '../../core/llm/templateAttentionAnalyzer.js';
 import type { AnchorCatalog } from '../../core/llm/templateAttentionAnalyzer.js';
 import type { IssueCard } from '../../types/partialDebugging.js';
@@ -25,8 +26,8 @@ import { appendJsonl, readJsonFile, readJsonl, sha256 } from './io.js';
 import { callConfiguredModel, effectiveRequestConfig } from './modelClient.js';
 
 const PROMPT_FILES: Record<BenchmarkTrack, string> = {
-  'direct-neutral': 'direct-neutral-v1.txt',
-  'direct-intent': 'direct-intent-v1.txt',
+  'direct-neutral': 'direct-v2.txt',
+  'direct-intent': 'direct-v2.txt',
   'system-neutral': 'suggestion-neutral-v1.txt',
   'system-intent': 'suggestion-v1.txt',
 };
@@ -72,20 +73,7 @@ export function buildTrackPayload(
       sourceNodes: benchmarkCase.directContext.candidates.sourceNodes,
       sourceEdges: benchmarkCase.directContext.candidates.sourceEdges,
     },
-    responseSchema: {
-      summary: 'short string',
-      issues: [{
-        kind: 'short diagnostic category',
-        title: 'short string',
-        explanation: 'evidence-grounded explanation',
-        severity: 'high | medium | low',
-        confidence: 'high | medium | low',
-        anchors: [{ view: 'source', type: 'node | edge | family', id: 'exact allowed id', relatedNodeIds: [] }],
-        observed: 'what the code does',
-        expected: 'what should be enforced',
-        evidenceIds: ['one or more exact allowed ids'],
-      }],
-    },
+    responseSchema: templateAttentionResponseSchema(),
   };
 }
 

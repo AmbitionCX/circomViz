@@ -8,7 +8,7 @@
         <div class="case-source-identity">
           <span class="case-source-order">{{ String(task.order).padStart(2, "0") }}</span>
           <div>
-            <small>{{ task.publicCaseId }}</small>
+            <small>{{ task.publicCaseId }}（{{ taskLabel(task) }}）</small>
             <h2>{{ stimulusFor(task).sourceProject }}</h2>
           </div>
         </div>
@@ -48,5 +48,11 @@ const hasVulnerabilityFamiliarity = computed(() =>
 
 function stimulusFor(task: TaskResponse) {
   return taskStimuli[task.taskId][task.example]
+}
+
+function taskLabel(task: TaskResponse) {
+  const exampleIndex = task.example === "A" ? 1 : 2
+  const taskNumber = task.taskId.replace("T", "Task")
+  return `${taskNumber}-Example${exampleIndex}`
 }
 </script>

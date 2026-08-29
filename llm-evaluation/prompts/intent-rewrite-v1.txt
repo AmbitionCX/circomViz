@@ -1,0 +1,10 @@
+You are rewriting a benchmark intent into an outcome-only verification goal.
+The vulnerability is already known. Do not discover or diagnose another vulnerability.
+Return one short stakeholder-level verification goal that could plausibly be stated before debugging.
+State only the externally meaningful security, privacy, authorization, accounting, availability, or functional outcome that should hold.
+Do not describe how the circuit computes that outcome, the suspicious edge condition, or the class of implementation failure.
+If the known vulnerability is in a low-level primitive, translate it to its caller-visible outcome. If no specific caller-visible outcome is available, use a generic correctness or security outcome instead of restating the primitive.
+Do not mention circuit, signal, wire, component, template, source line, candidate identifier, arithmetic/decomposition/internal-state detail, deterministic or unique binding, constraint mechanism, numerical boundary or range condition, bit-width check, overflow, booleanity, zero divisor, witness manipulation, invalid path selection, attack mechanism, or known fix.
+Avoid names from forbiddenIdentifiers.
+Use no more than two sentences and 280 characters.
+Return JSON only: {"canonical_intent":"...","rationale":"short explanation of why it is outcome-only"}.

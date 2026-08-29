@@ -40,7 +40,12 @@
         />
       </el-form-item>
       <el-form-item :label="t(`background.notes`)" class="form-span-two">
-        <el-input v-model="background.notes" type="textarea" :rows="2" />
+        <el-input
+          v-model="background.notes"
+          type="textarea"
+          :rows="2"
+          :placeholder="t(`background.notesPlaceholder`)"
+        />
       </el-form-item>
     </el-form>
   </div>

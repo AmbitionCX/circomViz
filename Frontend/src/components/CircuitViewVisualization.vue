@@ -36,10 +36,6 @@
           <span class="text-gray-600 text-xs">Output signal</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="w-4 h-3 border border-dashed border-blue-600 rounded inline-block flex-shrink-0"></span>
-          <span class="text-gray-600 text-xs">Selectable template</span>
-        </div>
-        <div class="flex items-center gap-2">
           <span class="w-4 h-3 border border-green-600 bg-green-600/30 rounded inline-block flex-shrink-0"></span>
           <span class="text-gray-600 text-xs">Confirmed template</span>
         </div>
@@ -149,13 +145,6 @@
             <div class="text-xs text-gray-500">
               Source: <span class="font-mono">{{ detailPanel.node.sourceFile }}</span>
             </div>
-          </div>
-
-          <div v-if="!isNodeSelectableForPanel" class="mt-2 p-2 bg-amber-50 rounded border border-amber-200 text-xs text-amber-700">
-            Confirm child templates first
-          </div>
-          <div v-else-if="!isNodeConfirmableForPanel" class="mt-2 p-2 bg-blue-50 rounded border border-blue-200 text-xs text-blue-700">
-            User Code
           </div>
 
           <div v-if="showParamDialog && paramResponse" class="wrapper-config mt-4 pt-4">
@@ -275,7 +264,7 @@ import {
   findTreeNode,
   hasFoldableConfirmedChild,
   isNodeSelectable,
-  isNodeConfirmable,
+  treeNodeIdForSelection,
 } from '@/utils/templateTree';
 import type { TreeNodeData } from '@/utils/templateTree';
 import { buildSignalRelationGraph, makeSignalKey } from '@/utils/signalRelations';
@@ -288,9 +277,17 @@ import type { FindTemplateParamsResponse, SignalInfo } from '@/types/circuitType
 const props = withDefaults(defineProps<{
   collapsedNodeIds?: string[];
   fitToViewVersion?: number;
+  searchQuery?: string;
+  markedNodeIds?: string[];
+  focusNodeId?: string;
+  focusRequestVersion?: number;
 }>(), {
   collapsedNodeIds: () => [],
   fitToViewVersion: 0,
+  searchQuery: '',
+  markedNodeIds: () => [],
+  focusNodeId: '',
+  focusRequestVersion: 0,
 });
 
 const emit = defineEmits<{
@@ -470,14 +467,17 @@ function vulnerableNamesSet(): Set<string> {
   return new Set(circuitStore.vulnerableTemplateNames);
 }
 
+function selectedTreeNodeId(): string | null {
+  if (!circuitStore.selectedTemplate) return null;
+  return treeNodeIdForSelection(
+    circuitStore.selectedTemplate.templateName,
+    circuitStore.selectedTemplatePath,
+  );
+}
+
 const isNodeSelectableForPanel = computed(() => {
   if (!detailPanel.node) return false;
-  return isNodeSelectable(detailPanel.node, confirmedNamesSet());
-});
-
-const isNodeConfirmableForPanel = computed(() => {
-  if (!detailPanel.node) return false;
-  return isNodeConfirmable(detailPanel.node);
+  return isNodeSelectable(detailPanel.node);
 });
 
 const rootTemplateName = computed(() => circuitStore.parseData.tree?.templateName ?? '');
@@ -685,9 +685,8 @@ function renderTree(options: { fitToView?: boolean } = {}) {
 
     const headerColor = color;
     const bodyFill = '#ffffff';
-    const isSelectable = isNodeSelectable(fullNode, confirmed);
     const isCompilationFailure = isCompilationFailureNode(fullNode);
-    const borderColor = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerable ? VULNERABLE_RED : (isConfirmed ? CONFIRMED_GREEN : (isSelectable ? '#2563eb' : '#e2e8f0')));
+    const borderColor = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerable ? VULNERABLE_RED : (isConfirmed ? CONFIRMED_GREEN : '#e2e8f0'));
 
     const bgRect = nodeG.append('rect')
       .attr('class', 'node-bg')
@@ -698,8 +697,8 @@ function renderTree(options: { fitToView?: boolean } = {}) {
       .attr('rx', 8)
       .attr('fill', bodyFill)
       .attr('stroke', borderColor)
-      .attr('stroke-width', isCompilationFailure ? 3.5 : (isConfirmed ? 2 : (isSelectable ? 2.5 : 1.5)))
-      .attr('stroke-dasharray', isCompilationFailure ? 'none' : (isConfirmed ? 'none' : ((isExternal || isSelectable) ? '6 3' : 'none')));
+      .attr('stroke-width', isCompilationFailure ? 3.5 : (isConfirmed ? 2 : 1.5))
+      .attr('stroke-dasharray', isCompilationFailure ? 'none' : (isConfirmed ? 'none' : (isExternal ? '6 3' : 'none')));
 
     if (!isExternal) {
       bgRect.attr('filter', 'url(#node-shadow)');
@@ -918,6 +917,7 @@ function renderTree(options: { fitToView?: boolean } = {}) {
           if (event.key === 'Enter' || event.key === ' ') activate(event);
         });
     }
+
   });
 
   nodeGroups
@@ -926,13 +926,12 @@ function renderTree(options: { fitToView?: boolean } = {}) {
     })
     .on('mouseleave', function (_event, d) {
       const fullNode = findTreeNode(treeData, d.data.id) ?? d.data;
-      const isSelected = fullNode.templateInfo === circuitStore.selectedTemplate;
+      const isSelected = fullNode.id === selectedTreeNodeId();
       const isConfirmedNode = confirmed.has(fullNode.templateName);
       const isVulnerableNode = vulnerable.has(fullNode.templateName);
-      const isSel = isNodeSelectable(fullNode, confirmed);
       const isCompilationFailure = isCompilationFailureNode(fullNode);
-      const border = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerableNode ? VULNERABLE_RED : (isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : (isSel ? '#2563eb' : '#e2e8f0'))));
-      const sw = isCompilationFailure ? 3.5 : (isConfirmedNode ? 2 : (isSelected ? 2.5 : (isSel ? 2.5 : 1.5)));
+      const border = isCompilationFailure ? COMPILATION_FAILURE_RED : (isVulnerableNode ? VULNERABLE_RED : (isConfirmedNode ? CONFIRMED_GREEN : (isSelected ? '#1a73e8' : '#e2e8f0')));
+      const sw = isCompilationFailure ? 3.5 : (isConfirmedNode ? 2 : (isSelected ? 2.5 : 1.5));
       d3.select(this).select('.node-bg')
         .attr('stroke', border)
         .attr('stroke-width', sw);
@@ -948,7 +947,8 @@ function renderTree(options: { fitToView?: boolean } = {}) {
       event.stopPropagation();
       const fullNode = findTreeNode(treeData, d.data.id) ?? d.data;
       if (!fullNode.templateInfo || fullNode.isExternal || fullNode.isRecursiveReference) return;
-      if (!isNodeSelectable(fullNode, confirmedNamesSet())) return;
+      if (!isNodeSelectable(fullNode)) return;
+      circuitStore.setSelectedTemplate(fullNode.templateInfo, fullNode.path);
       detailPanel.node = fullNode;
       detailPanel.visible = true;
       circuitStore.highlightTemplate(fullNode.sourceFile, fullNode.templateName);
@@ -1013,6 +1013,33 @@ function renderTree(options: { fitToView?: boolean } = {}) {
       .text(`×${node.data.instanceCount}`);
   });
 
+  const markedFlagsGroup = g.append('g')
+    .attr('class', 'marked-template-flags')
+    .attr('pointer-events', 'none');
+  const markedFlags = markedFlagsGroup
+    .selectAll<SVGGElement, d3.HierarchyPointNode<TreeNodeData>>('g.marked-template-flag')
+    .data(root.descendants())
+    .join('g')
+    .attr('class', 'marked-template-flag')
+    .attr('transform', d => `translate(${(d.y ?? 0) + NODE_WIDTH / 2 - 2}, ${(d.x ?? 0) - NODE_HEIGHT / 2 + 2})`);
+  markedFlags.append('circle')
+    .attr('r', 13)
+    .attr('fill', '#ffffff')
+    .attr('stroke', '#ef4444')
+    .attr('stroke-width', 2)
+    .attr('filter', 'url(#node-shadow)');
+  markedFlags.append('line')
+    .attr('x1', -4)
+    .attr('y1', -7)
+    .attr('x2', -4)
+    .attr('y2', 8)
+    .attr('stroke', '#dc2626')
+    .attr('stroke-width', 2.4)
+    .attr('stroke-linecap', 'round');
+  markedFlags.append('path')
+    .attr('d', 'M-3,-7 H7 L4,-2 L7,3 H-3 Z')
+    .attr('fill', '#ef4444');
+
   zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.15, 3])
     .on('zoom', (event) => {
@@ -1052,6 +1079,8 @@ function renderTree(options: { fitToView?: boolean } = {}) {
 
   updateSelection();
   updateSignalHighlights();
+  updateSearchHighlights();
+  updateMarkedFlags();
 }
 
 function resetWrapperConfig() {
@@ -1067,10 +1096,7 @@ function resetWrapperConfig() {
 async function handlePanelSelect() {
   if (!detailPanel.node?.templateInfo) return;
 
-  if (!isNodeSelectable(detailPanel.node, confirmedNamesSet())) {
-    ElMessage.warning('All child templates must be confirmed first');
-    return;
-  }
+  if (!isNodeSelectable(detailPanel.node)) return;
 
   isSelecting.value = true;
   try {
@@ -1175,12 +1201,11 @@ function updateSelection() {
     const data = renderedTreeData
       ? (findTreeNode(renderedTreeData, d.data.id) ?? d.data)
       : d.data;
-    const isSelected = data.templateInfo === circuitStore.selectedTemplate;
+    const isSelected = data.id === selectedTreeNodeId();
     const isConfirmedNode = confirmed.has(data.templateName);
     const isVulnerableNode = vulnerable.has(data.templateName);
     const isCompilationFailure = isCompilationFailureNode(data);
 
-    const isSel = isNodeSelectable(data, confirmed);
     const bgRect = nodeGroup.select('.node-bg');
     if (isCompilationFailure) {
       bgRect
@@ -1210,13 +1235,6 @@ function updateSelection() {
         .attr('stroke-width', 2.5)
         .attr('stroke-dasharray', 'none')
         .attr('fill', '#ffffff');
-    } else if (isSel) {
-      bgRect
-        .attr('filter', 'url(#node-shadow)')
-        .attr('stroke', '#2563eb')
-        .attr('stroke-width', 2.5)
-        .attr('stroke-dasharray', '6 3')
-        .attr('fill', '#ffffff');
     } else if (!data.isExternal) {
       bgRect
         .attr('filter', 'url(#node-shadow)')
@@ -1226,6 +1244,50 @@ function updateSelection() {
         .attr('fill', '#ffffff');
     }
   });
+}
+
+function updateSearchHighlights() {
+  const query = props.searchQuery.trim().toLowerCase();
+  const svg = d3.select(svgRef.value);
+
+  svg.selectAll<SVGGElement, d3.HierarchyPointNode<TreeNodeData>>('g.node')
+    .attr('opacity', d => {
+      if (!query) return 0.85;
+      const data = renderedTreeData
+        ? (findTreeNode(renderedTreeData, d.data.id) ?? d.data)
+        : d.data;
+      const searchText = [data.templateName, data.instanceName, ...data.instanceNames]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return searchText.includes(query) ? 1 : 0.18;
+    });
+}
+
+function updateMarkedFlags() {
+  const marked = new Set(props.markedNodeIds);
+  const svg = d3.select(svgRef.value);
+
+  svg.selectAll<SVGGElement, d3.HierarchyPointNode<TreeNodeData>>('g.marked-template-flag')
+    .attr('display', d => marked.has(d.data.id) ? null : 'none');
+}
+
+function focusTreeNode(nodeId: string) {
+  if (!nodeId || !zoomBehavior || !svgRef.value || !svgContainer.value) return;
+  const svg = d3.select(svgRef.value);
+  const target = svg
+    .selectAll<SVGGElement, d3.HierarchyPointNode<TreeNodeData>>('g.node')
+    .data()
+    .find(d => d.data.id === nodeId);
+  if (!target) return;
+
+  const currentTransform = d3.zoomTransform(svgRef.value);
+  const scale = Math.min(Math.max(currentTransform.k, 0.65), 1.2);
+  const tx = svgContainer.value.clientWidth / 2 - target.y * scale;
+  const ty = svgContainer.value.clientHeight / 2 - target.x * scale;
+  const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+  const svgSelection = svg as unknown as d3.Selection<SVGSVGElement, unknown, null, undefined>;
+  svgSelection.transition().duration(320).call(zoomBehavior.transform, transform);
 }
 
 watch(selectedCandidateIndex, (newIndex) => {
@@ -1273,7 +1335,26 @@ watch(
   () => circuitStore.selectedTemplate,
   () => {
     updateSelection();
+    updateSearchHighlights();
   }
+);
+
+watch(
+  () => props.searchQuery,
+  () => updateSearchHighlights(),
+);
+
+watch(
+  () => props.markedNodeIds,
+  () => updateMarkedFlags(),
+  { deep: true },
+);
+
+watch(
+  [() => props.focusNodeId, () => props.focusRequestVersion],
+  ([nodeId]) => {
+    if (nodeId) nextTick(() => focusTreeNode(nodeId));
+  },
 );
 
 watch(

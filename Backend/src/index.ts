@@ -119,7 +119,10 @@ server.post('/file_content', fileContentHandler);
 // contract generation helper
 server.post('/generate_contract', generateContractHandler);
 
-server.listen({ port: 8080 }, (err, address) => {
+const host = process.env.HOST || '127.0.0.1';
+const port = Number(process.env.PORT || 8080);
+
+server.listen({ host, port }, (err, address) => {
   if (err) {
     logger.error(`Failed to start server: ${err.message}`);
     process.exit(1);

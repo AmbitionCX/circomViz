@@ -54,11 +54,21 @@ export function effectiveRequestConfig(config: BenchmarkModelConfig): {
 
 export function parseStructuredOutput(raw: string): unknown {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return JSON.parse((fenced ? fenced[1] : raw).trim());
+  const candidate = fenced
+    ? fenced[1]
+    : raw.trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '');
+  return JSON.parse(candidate.trim());
 }
 
 function retryableStatus(status: number): boolean {
   return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function retryableResponse(status: number, errorText: string): boolean {
+  return retryableStatus(status)
+    || (status === 400 && /output became abnormal|please retry the request/i.test(errorText));
 }
 
 async function retryDelay(attempt: number): Promise<void> {
@@ -148,7 +158,7 @@ export async function callConfiguredModel(options: {
           httpStatus: response.status,
           error: lastError,
         });
-        if (attempt < maxRetries && retryableStatus(response.status)) {
+        if (attempt < maxRetries && retryableResponse(response.status, errorText)) {
           await retryDelay(attempt);
           continue;
         }
