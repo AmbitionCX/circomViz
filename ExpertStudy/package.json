@@ -12,7 +12,10 @@
     "dev": "vite",
     "dev:experiment": "vite --host 0.0.0.0 --port 9377 --strictPort",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "build:experiment": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "preview:experiment": "vite preview --host 0.0.0.0 --port 9377 --strictPort",
+    "start:experiment": "pnpm run build:experiment && pnpm run preview:experiment"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
