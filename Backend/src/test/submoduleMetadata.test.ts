@@ -12,6 +12,39 @@ describe('submodule metadata', () => {
     assert.equal(submodule.rootComponent, 'ZkFranchiseProofCircuit');
   });
 
+  it('exposes the added real-world circuit submodules', () => {
+    const pathGuard = new PathGuard();
+    const expectedSubmodules = [
+      {
+        id: 'email-tx-builder',
+        name: 'ZK Email TX Builder',
+        entry: 'packages/circuits/src/email_auth.circom'
+      },
+      {
+        id: 'circom-pairing',
+        name: 'Circom Pairing',
+        entry: 'scripts/subgroupcheckG1/subgroupcheckG1.circom'
+      },
+      {
+        id: 'panther-core',
+        name: 'Panther Core',
+        entry: 'circuits/circuits/mainZSwapV1.circom'
+      }
+    ];
+
+    for (const expected of expectedSubmodules) {
+      const submodule = CircomParser.getSubmoduleById(expected.id);
+      const repo = pathGuard.validateRepoPath(expected.id);
+
+      assert.ok(submodule);
+      assert.equal(submodule.name, expected.name);
+      assert.equal(submodule.entry, expected.entry);
+      assert.equal(submodule.rootComponent, 'main');
+      assert.ok(repo.valid && repo.path);
+      assert.ok(pathGuard.validateEntryPath(repo.path, expected.entry).valid, expected.entry);
+    }
+  });
+
   it('exposes the Expert Study toy and real-world catalogs', () => {
     const examples = CircomParser.getAllExpertStudyToyExamples();
     const projects = CircomParser.getAllExpertStudyRealWorldExamples();

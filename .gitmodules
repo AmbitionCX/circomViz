@@ -19,3 +19,12 @@
 [submodule "Dataset/zkbugs"]
 	path = Dataset/zkbugs
 	url = https://github.com/zksecurity/zkbugs.git
+[submodule "submodules/email-tx-builder"]
+	path = submodules/email-tx-builder
+	url = https://github.com/zkemail/email-tx-builder.git
+[submodule "submodules/circom-pairing"]
+	path = submodules/circom-pairing
+	url = https://github.com/yi-sun/circom-pairing.git
+[submodule "submodules/panther-core"]
+	path = submodules/panther-core
+	url = https://github.com/pantherfoundation/panther-core.git

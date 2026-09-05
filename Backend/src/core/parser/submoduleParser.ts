@@ -203,6 +203,13 @@ export class CircomParser {
 
   private static readonly SUBMODULES = [
     {
+      id: 'email-tx-builder',
+      name: 'ZK Email TX Builder',
+      entry: 'packages/circuits/src/email_auth.circom',
+      rootComponent: 'main',
+      description: 'Email authentication circuit for transaction building'
+    },
+    {
       id: 'zk-email-verify',
       name: 'ZK Email Verify',
       entry: 'packages/circuits/email-verifier.circom',
@@ -239,6 +246,20 @@ export class CircomParser {
       rootComponent: 'Semaphore',
       rootArguments: [20],
       description: 'Anonymous group membership circuit'
+    },
+    {
+      id: 'circom-pairing',
+      name: 'Circom Pairing',
+      entry: 'scripts/subgroupcheckG1/subgroupcheckG1.circom',
+      rootComponent: 'main',
+      description: 'BLS12-381 G1 subgroup check circuit'
+    },
+    {
+      id: 'panther-core',
+      name: 'Panther Core',
+      entry: 'circuits/circuits/mainZSwapV1.circom',
+      rootComponent: 'main',
+      description: 'Privacy-preserving swap circuit'
     }
   ] as const;
 
@@ -274,4 +295,3 @@ export class CircomParser {
     return this.EXAMPLES;
   }
 }
-
