@@ -21,11 +21,6 @@ describe('submodule metadata', () => {
         entry: 'packages/circuits/src/email_auth.circom'
       },
       {
-        id: 'circom-pairing',
-        name: 'Circom Pairing',
-        entry: 'scripts/subgroupcheckG1/subgroupcheckG1.circom'
-      },
-      {
         id: 'panther-core',
         name: 'Panther Core',
         entry: 'circuits/circuits/mainZSwapV1.circom'

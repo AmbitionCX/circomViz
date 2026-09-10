@@ -248,13 +248,6 @@ export class CircomParser {
       description: 'Anonymous group membership circuit'
     },
     {
-      id: 'circom-pairing',
-      name: 'Circom Pairing',
-      entry: 'scripts/subgroupcheckG1/subgroupcheckG1.circom',
-      rootComponent: 'main',
-      description: 'BLS12-381 G1 subgroup check circuit'
-    },
-    {
       id: 'panther-core',
       name: 'Panther Core',
       entry: 'circuits/circuits/mainZSwapV1.circom',
